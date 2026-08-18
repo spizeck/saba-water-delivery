@@ -5,7 +5,13 @@ import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 
 import { appConfig } from "./config";
-import type { WaterRequest, WaterRequestStatus } from "./types";
+import type {
+  WaterRequest,
+  WaterRequestCustomerSnapshot,
+  WaterRequestSource,
+  WaterRequestStatus,
+} from "./types";
+import { getUserProfile } from "./users";
 
 /**
  * Domain/service layer for water request operations.
@@ -37,7 +43,21 @@ const ACTIVE_STATUSES: WaterRequestStatus[] = [
 export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
   return {
     id,
-    customerId: data.customerId,
+    customerId: data.customerId ?? null,
+    customer: data.customer
+      ? {
+          displayName: data.customer.displayName ?? "",
+          phone: data.customer.phone ?? null,
+          email: data.customer.email ?? null,
+          isRegistered: Boolean(data.customer.isRegistered),
+        }
+      : null,
+    // Historical documents predate `source`/`createdBy` — every request
+    // that existed before this field was added came from the resident
+    // portal, so "resident" is the correct (not merely convenient)
+    // default rather than a guess.
+    source: (data.source as WaterRequestSource) ?? "resident",
+    createdBy: data.createdBy ?? null,
     gallons: data.gallons,
     village: data.village,
     deliveryDirections: data.deliveryDirections,
@@ -98,6 +118,53 @@ export async function getRequestsForCustomer(
 }
 
 // ---------------------------------------------------------------------------
+// Queries — Dispatcher request creation
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the set of customer uids that currently have an unresolved
+ * (active) request. Used by the dispatcher "Create Water Request" search
+ * to flag registered residents who already have one, before the
+ * dispatcher even attempts to submit — see PRODUCT.md "Duplicate
+ * Requests".
+ */
+export async function getActiveCustomerIds(): Promise<Set<string>> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("status", "in", ACTIVE_STATUSES)
+    .get();
+
+  const ids = new Set<string>();
+  for (const doc of snapshot.docs) {
+    const customerId = doc.data().customerId;
+    if (customerId) ids.add(customerId);
+  }
+  return ids;
+}
+
+/**
+ * Returns unresolved requests whose customer snapshot has a matching
+ * phone number. Used to warn dispatcher staff of a *possible* duplicate
+ * before creating a request for an unregistered customer.
+ *
+ * Phone-number matching is NOT reliable identity verification (shared
+ * household phones, typos, reused numbers, etc.) — this is a soft
+ * warning for staff judgment, never a silent block. See PRODUCT.md
+ * "Duplicate Requests".
+ */
+export async function findActiveRequestsByPhone(phone: string): Promise<WaterRequest[]> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("customer.phone", "==", phone)
+    .where("status", "in", ACTIVE_STATUSES)
+    .get();
+
+  return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+}
+
+// ---------------------------------------------------------------------------
 // Queries — Driver dispatch
 // ---------------------------------------------------------------------------
 //
@@ -140,30 +207,101 @@ export async function getClaimedRequestsForDriver(
 // ---------------------------------------------------------------------------
 
 export interface CreateWaterRequestInput {
-  customerId: string;
+  /** Firebase uid of the resident, or null for an unregistered/manual customer. */
+  customerId: string | null;
   village: string;
   deliveryDirections: string;
   preferredDriverId?: string | null;
+  /** Defaults to "resident" — the resident portal never needs to pass this. */
+  source?: WaterRequestSource;
+  /** uid of the dispatcher/admin creating the request. Required when source is "dispatcher". */
+  createdBy?: string | null;
+  /**
+   * Customer identity snapshot. Required (displayName + phone) when
+   * `customerId` is null (unregistered customer). Optional when
+   * `customerId` is set — if omitted, it is built automatically from the
+   * resident's saved profile so every request gets a consistent snapshot.
+   */
+  customer?: Pick<WaterRequestCustomerSnapshot, "displayName" | "phone" | "email"> | null;
+  /**
+   * Request IDs of a possible-duplicate match the caller deliberately
+   * chose to proceed past (see `findActiveRequestsByPhone`). Recorded on
+   * the creation audit event for traceability — never silent.
+   */
+  overrideMatchedRequestIds?: string[];
 }
 
 /**
  * Creates a new water request.
  *
- * Uses a Firestore transaction to atomically verify that the resident
- * does not already have an active request before creating a new one.
+ * For a registered resident (`customerId` set), a Firestore transaction
+ * atomically verifies the resident does not already have an active
+ * request before creating a new one — this hard one-active-request rule
+ * applies identically whether the resident submits it themselves or a
+ * dispatcher enters it on their behalf.
+ *
+ * For an unregistered/manual customer (`customerId` null), there is no
+ * stable uid to enforce that same hard rule against, so duplicate
+ * protection is a caller-side soft check (see `findActiveRequestsByPhone`)
+ * rather than a transactional guarantee — see PRODUCT.md "Duplicate
+ * Requests".
  *
  * - Sets gallons to the system standard (1,000).
  * - If a preferred driver is selected, sets status to
  *   "preferred_driver_hold" with the configured expiration window.
  * - Otherwise, sets status to "available" immediately.
- * - Records a "request_created" audit event (and optionally
- *   "preferred_driver_selected").
+ * - Records a "request_created" (resident) or "request_created_by_dispatcher"
+ *   (staff) audit event, and optionally "preferred_driver_selected".
  */
 export async function createWaterRequest(
   input: CreateWaterRequestInput,
 ): Promise<WaterRequest> {
   const db = getAdminDb();
-  const { customerId, village, deliveryDirections, preferredDriverId } = input;
+  const {
+    customerId,
+    village,
+    deliveryDirections,
+    preferredDriverId,
+    source = "resident",
+    createdBy = null,
+    customer: customerInput,
+    overrideMatchedRequestIds,
+  } = input;
+
+  if (!customerId && !customerInput?.displayName?.trim()) {
+    throw new Error("CUSTOMER_NAME_REQUIRED");
+  }
+  if (!customerId && !customerInput?.phone?.trim()) {
+    throw new Error("CUSTOMER_PHONE_REQUIRED");
+  }
+  if (source === "dispatcher" && !createdBy) {
+    throw new Error("CREATED_BY_REQUIRED");
+  }
+
+  // Build a stable customer snapshot at creation time. Registered
+  // residents get one built from their saved profile unless the caller
+  // already supplied one; unregistered customers must supply their own.
+  let customerSnapshot: WaterRequestCustomerSnapshot;
+  if (customerId) {
+    if (customerInput) {
+      customerSnapshot = { ...customerInput, isRegistered: true };
+    } else {
+      const profile = await getUserProfile(customerId);
+      customerSnapshot = {
+        displayName: profile?.displayName ?? "",
+        phone: profile?.phone ?? null,
+        email: profile?.email ?? null,
+        isRegistered: true,
+      };
+    }
+  } else {
+    customerSnapshot = {
+      displayName: customerInput!.displayName.trim(),
+      phone: customerInput!.phone,
+      email: customerInput!.email ?? null,
+      isRegistered: false,
+    };
+  }
 
   const hasPreferredDriver = Boolean(preferredDriverId);
   const now = FieldValue.serverTimestamp();
@@ -177,25 +315,34 @@ export async function createWaterRequest(
     ? "preferred_driver_hold"
     : "available";
 
-  // Use a transaction to prevent duplicate active requests.
   const requestRef = db.collection(REQUESTS_COLLECTION).doc();
 
   await db.runTransaction(async (txn) => {
-    // Check for existing active request within the transaction.
-    const existingSnapshot = await txn.get(
-      db
-        .collection(REQUESTS_COLLECTION)
-        .where("customerId", "==", customerId)
-        .where("status", "in", ACTIVE_STATUSES)
-        .limit(1),
-    );
+    // The hard one-active-request rule only applies to registered
+    // residents, who have a stable uid to check against. Unregistered
+    // customers are handled by a caller-side soft duplicate check
+    // instead (see `findActiveRequestsByPhone`) — checking by customerId
+    // here would be meaningless since every unregistered request shares
+    // customerId === null.
+    if (customerId) {
+      const existingSnapshot = await txn.get(
+        db
+          .collection(REQUESTS_COLLECTION)
+          .where("customerId", "==", customerId)
+          .where("status", "in", ACTIVE_STATUSES)
+          .limit(1),
+      );
 
-    if (!existingSnapshot.empty) {
-      throw new Error("DUPLICATE_ACTIVE_REQUEST");
+      if (!existingSnapshot.empty) {
+        throw new Error("DUPLICATE_ACTIVE_REQUEST");
+      }
     }
 
     const requestData: Record<string, unknown> = {
       customerId,
+      customer: customerSnapshot,
+      source,
+      createdBy: source === "dispatcher" ? createdBy : null,
       gallons: appConfig.standardLoadGallons,
       village,
       deliveryDirections,
@@ -214,16 +361,22 @@ export async function createWaterRequest(
 
     txn.set(requestRef, requestData);
 
-    // Audit event: request_created
+    const creationActorId = source === "dispatcher" ? createdBy : customerId;
+
+    // Audit event: request_created / request_created_by_dispatcher
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
-      type: "request_created",
-      actorId: customerId,
-      actorRole: "resident",
+      type: source === "dispatcher" ? "request_created_by_dispatcher" : "request_created",
+      actorId: creationActorId,
+      actorRole: source === "dispatcher" ? "dispatcher" : "resident",
       createdAt: now,
       metadata: {
         village,
         preferredDriverId: preferredDriverId ?? null,
+        isRegisteredCustomer: Boolean(customerId),
+        ...(overrideMatchedRequestIds?.length
+          ? { overrodeDuplicateWarningFor: overrideMatchedRequestIds }
+          : {}),
       },
     });
 
@@ -232,8 +385,8 @@ export async function createWaterRequest(
       const prefEventRef = requestRef.collection("events").doc();
       txn.set(prefEventRef, {
         type: "preferred_driver_selected",
-        actorId: customerId,
-        actorRole: "resident",
+        actorId: creationActorId,
+        actorRole: source === "dispatcher" ? "dispatcher" : "resident",
         createdAt: now,
         metadata: {
           driverId: preferredDriverId,
@@ -569,6 +722,74 @@ export async function disputeWaterDelivery(
       actorRole: "resident",
       createdAt: now,
       metadata: reason ? { reason } : null,
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Staff confirmation (unregistered customers)
+// ---------------------------------------------------------------------------
+
+export interface ConfirmDeliveryByStaffInput {
+  requestId: string;
+  actorId: string;
+}
+
+/**
+ * Allows dispatcher/admin staff to operationally close out a delivery on
+ * behalf of an unregistered customer, who has no authenticated resident
+ * portal to confirm or dispute through themselves.
+ *
+ * Deliberately scoped to unregistered requests only — a registered
+ * resident's delivery must go through their own confirm/dispute workflow
+ * (`confirmWaterDelivery` / `disputeWaterDelivery`); staff should use the
+ * existing dispute-resolution tools for those instead of this shortcut.
+ *
+ * Records a distinct `delivery_confirmed_by_dispatcher` audit event
+ * rather than `customer_confirmed`, so the record never misrepresents
+ * this as the customer's own action. Designed to remain compatible with
+ * a future WhatsApp confirmation flow for unregistered customers, which
+ * would call `confirmWaterDelivery`-equivalent logic once that customer
+ * can respond directly — this staff path is a V1 stand-in, not a
+ * replacement for that.
+ */
+export async function confirmDeliveryByStaff(
+  input: ConfirmDeliveryByStaffInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+
+    if (data.customerId) {
+      throw new Error("REQUEST_HAS_REGISTERED_CUSTOMER");
+    }
+    if (data.status !== "delivered" && data.status !== "delivered_unconfirmed") {
+      throw new Error("INVALID_STATUS_FOR_CONFIRM");
+    }
+
+    txn.update(requestRef, {
+      status: "confirmed",
+      confirmedAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "delivery_confirmed_by_dispatcher",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: null,
     });
   });
 

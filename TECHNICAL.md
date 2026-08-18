@@ -142,7 +142,28 @@ Role changes are recorded here for audit. These are admin-only operations.
 
 ```ts
 {
-  customerId: string
+  // null for an unregistered/manual customer (see "Dispatcher-Created
+  // Requests" below). Never trust this alone for identity — prefer
+  // `customer` for display.
+  customerId: string | null
+
+  // Snapshot of the customer's identity at creation time. Present on
+  // every new request (registered or not); null only on historical
+  // documents that predate this field.
+  customer: {
+    displayName: string
+    phone: string | null
+    email: string | null
+    isRegistered: boolean
+  } | null
+
+  // Where the request originated. Historical documents without this
+  // field are treated as "resident" (all pre-existing requests were).
+  source: "resident" | "dispatcher"
+
+  // uid of the dispatcher/admin who created this request. Always null
+  // when source is "resident".
+  createdBy: string | null
 
   gallons: 1000
 
@@ -175,6 +196,12 @@ Role changes are recorded here for audit. These are admin-only operations.
   updatedAt: Timestamp
 }
 ```
+
+> **Migration note:** Historical documents predate `customer`, `source`,
+> and `createdBy`. `toWaterRequest()` in `src/lib/domain/waterRequests.ts`
+> defaults `source` to `"resident"`, `createdBy` to `null`, and `customer`
+> to `null` (callers fall back to a live `users/{uid}` profile lookup via
+> `customerId` for those). No backfill/migration is required.
 
 ## users/{uid}/propertyPhotos/{photoId}
 
@@ -274,6 +301,7 @@ Examples:
 
 ```text
 request_created
+request_created_by_dispatcher
 preferred_driver_selected
 preferred_driver_expired
 preferred_driver_declined
@@ -282,9 +310,15 @@ driver_claimed
 driver_reassigned
 marked_delivered
 customer_confirmed
+delivery_confirmed_by_dispatcher
 customer_disputed
 request_cancelled
 ```
+
+`request_created_by_dispatcher` and `delivery_confirmed_by_dispatcher`
+are deliberately distinct from their resident-initiated equivalents —
+never disguise a staff-initiated action as the customer's own (see
+"Dispatcher-Created Requests" below).
 
 Driver events (`drivers/{uid}/events/{eventId}`) additionally include
 `driver_cooldown_started`, recorded when a driver reaches the daily
@@ -434,6 +468,97 @@ Implementation details may evolve, but business logic should be isolated from UI
 
 ---
 
+# Dispatcher-Created Requests
+
+Dispatcher/admin staff can create a water request on behalf of a
+customer who called or visited the office (`/dispatcher/new`). Both the
+resident portal and this staff flow call the **same**
+`createWaterRequest()` — there is no separate manual queue or duplicated
+business logic (see PRODUCT.md "Dispatcher-Created Requests").
+
+## Registered vs unregistered
+
+- **Registered resident**: `customerId` is their uid. The dispatcher
+  selects them from `getResidentDirectory()` (`src/lib/domain/users.ts`),
+  a lightweight staff-facing directory distinct from the full admin user
+  list. `createWaterRequest()` still enforces the hard one-active-request
+  rule via the same transactional check used for resident-submitted
+  requests — the caller (`src/app/dispatcher/actions.ts`,
+  `createManualRequest`) surfaces the resident's existing active request
+  on conflict rather than a generic error.
+- **Unregistered/manual customer**: `customerId` is `null`. No Firebase
+  Auth account is created. `createWaterRequest()` requires a `customer`
+  snapshot (`displayName` + `phone`; `email` optional) and skips the
+  customerId-based duplicate transaction (checking by `customerId` would
+  be meaningless — every unregistered request shares `customerId ===
+  null`).
+
+## Customer snapshot
+
+Every new request stores a `customer` snapshot
+(`WaterRequestCustomerSnapshot`) at creation time:
+
+```ts
+{ displayName: string; phone: string | null; email: string | null; isRegistered: boolean }
+```
+
+For a registered resident, `createWaterRequest()` builds this
+automatically from their saved profile if the caller doesn't supply one
+— so resident-submitted requests get the same consistent snapshot
+structure as dispatcher-created ones, for stable historical display
+regardless of later profile edits. UI code should prefer `request.customer`
+over a live profile lookup; see `resolveCustomerInfo()` in
+`src/app/driver/page.tsx` and the analogous logic in the dispatcher pages
+for the fallback pattern used on legacy (pre-snapshot) documents.
+
+## Duplicate detection
+
+- Registered resident: hard block via the existing transactional
+  one-active-request check (`DUPLICATE_ACTIVE_REQUEST`).
+- Unregistered customer: soft warning only.
+  `findActiveRequestsByPhone()` looks for unresolved requests with a
+  matching `customer.phone`. Phone matching is not identity verification
+  (shared household phones, typos, reused numbers), so a match blocks
+  nothing by itself — the dispatcher action returns a
+  `"duplicate_warning"` state with the matching request(s), and staff can
+  explicitly acknowledge and proceed. Proceeding is recorded on the
+  creation audit event as `overrodeDuplicateWarningFor: [requestId, ...]`
+  — never silent.
+- `getActiveCustomerIds()` lets the create-request UI flag registered
+  residents who already have an active request directly in the search
+  results, before the dispatcher even attempts to submit.
+
+## Same dispatch workflow
+
+A dispatcher-created request is a normal `waterRequests` document like
+any other — preferred-driver hold/decline, oldest-first offer selection,
+one-offer-at-a-time driver dispatch, atomic claiming, delivery, dispute,
+reassignment, cancellation, and statistics all operate on it identically.
+No driver-facing code branches on `source`.
+
+## Staff confirmation for unregistered customers
+
+`confirmDeliveryByStaff()` lets dispatcher/admin staff close out a
+`delivered`/`delivered_unconfirmed` request on behalf of an unregistered
+customer, who has no authenticated portal to confirm through themselves.
+It is scoped to `customerId === null` requests only — it throws
+`REQUEST_HAS_REGISTERED_CUSTOMER` if called against a registered
+resident's request, which must go through their own
+`confirmWaterDelivery()` / `disputeWaterDelivery()` (or the existing
+dispute-resolution tools) instead. It records
+`delivery_confirmed_by_dispatcher`, never `customer_confirmed`, so the
+audit trail never misrepresents a staff action as the customer's own.
+
+## Future account linking
+
+Not implemented. An unregistered customer's historical requests could
+later be associated with a registered account, but this must be a
+deliberate, staff-initiated, auditable action — never an automatic
+background match by name alone. Do not build this until explicitly
+requested.
+
+---
+
 # Domain Logic
 
 Do not bury important business logic directly inside React components.
@@ -457,6 +582,9 @@ declineDriverOffer()
 startDriverCooldown()
 getDispatchSettings()
 updateDispatchSettings()
+findActiveRequestsByPhone()
+getActiveCustomerIds()
+confirmDeliveryByStaff()
 ```
 
 Future WhatsApp actions should call the same domain operations.
@@ -489,6 +617,17 @@ Privileged operations such as role changes, delivery access restrictions and for
 Design Firestore queries together with Security Rules.
 
 Do not assume Security Rules will filter unauthorized documents out of an overly broad query.
+
+## Unregistered customers
+
+An unregistered/manual request has `customerId: null`. The existing rule
+`resource.data.customerId == request.auth.uid` remains safe for these
+documents without modification: `request.auth.uid` is always a non-null
+string for a signed-in user, so it can never equal `null` — no resident
+can read another customer's unregistered request through this
+comparison. Staff access (`isStaff()`) is unaffected. This was reviewed
+when dispatcher-created requests were added; no rule changes were
+required.
 
 ---
 
@@ -552,12 +691,13 @@ Important state changes should generate events.
 
 At minimum audit:
 
-- Request creation
-- Preferred-driver selection/expiration
+- Request creation (distinguishing resident-submitted vs dispatcher-created)
+- Preferred-driver selection/expiration/decline
 - Driver claim
 - Manual assignment/reassignment
 - Delivery marking
 - Customer confirmation
+- Staff confirmation on behalf of an unregistered customer
 - Customer dispute
 - Cancellation
 - Driver delivery access restricted
@@ -591,6 +731,13 @@ Use completed request count to calculate gallons:
 ```text
 completedRequests * 1000
 ```
+
+Dispatcher-created requests count toward every metric identically to
+resident-submitted ones (same demand, same gallons, same driver/village/
+preferred-driver/dispute calculations) — `source` is preserved on each
+request purely to answer "how many requests came in online vs were
+entered by staff," not to segregate them from the rest of the numbers.
+See `SummaryMetrics.bySource` in `src/lib/domain/statistics.ts`.
 
 Design indexes intentionally as query patterns become clear.
 

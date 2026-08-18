@@ -2,7 +2,7 @@ import "server-only";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 
-import type { WaterRequestStatus } from "./types";
+import type { WaterRequestSource, WaterRequestStatus } from "./types";
 import { appConfig } from "./config";
 import { getOfferAggregate } from "./driverOffers";
 
@@ -47,6 +47,8 @@ export interface SummaryMetrics {
   disputed: number;
   cancelled: number;
   gallonsDelivered: number;
+  /** How many requests were submitted online (resident) vs entered by staff. */
+  bySource: { resident: number; dispatcher: number };
 }
 
 export interface CurrentOperationalMetrics {
@@ -189,6 +191,7 @@ interface RawRequest {
   id: string;
   status: WaterRequestStatus;
   village: string;
+  source: WaterRequestSource;
   preferredDriverId: string | null;
   assignedDriverId: string | null;
   requestedAt: Date | null;
@@ -218,6 +221,9 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       id: doc.id,
       status: d.status as WaterRequestStatus,
       village: d.village ?? "Unknown",
+      // Historical requests predate `source` — all of them came from the
+      // resident portal (see toWaterRequest() in waterRequests.ts).
+      source: (d.source as WaterRequestSource) ?? "resident",
       preferredDriverId: d.preferredDriverId ?? null,
       assignedDriverId: d.assignedDriverId ?? null,
       requestedAt: d.requestedAt?.toDate?.() ?? null,
@@ -242,6 +248,10 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     gallonsDelivered:
       requests.filter((r) => DELIVERED_STATUSES.includes(r.status)).length *
       appConfig.standardLoadGallons,
+    bySource: {
+      resident: requests.filter((r) => r.source === "resident").length,
+      dispatcher: requests.filter((r) => r.source === "dispatcher").length,
+    },
   };
 
   // ---------------------------------------------------------------------------

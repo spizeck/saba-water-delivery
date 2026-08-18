@@ -126,6 +126,7 @@ restoreDriverAccess
 getNextOfferForDriver
 acceptDriverOffer
 declineDriverOffer
+confirmDeliveryByStaff
 ```
 
 These functions should be reusable later by non-web interfaces such as WhatsApp.
@@ -193,6 +194,14 @@ A dispatcher should quickly see:
 - Delivered/unconfirmed requests
 - Disputes
 - Ineligible drivers
+
+A dispatcher can also create a request on behalf of a customer who
+called or visited the office (`/dispatcher/new`), for either an existing
+registered resident (searched by name/phone/email) or an unregistered
+customer (name/phone/village/directions, no account created). This
+enters the same delivery workflow as any other request — see
+PRODUCT.md / TECHNICAL.md "Dispatcher-Created Requests". Keep this entry
+flow fast: search/fill → review → create, no multi-step wizard.
 
 ## Admin
 
@@ -429,6 +438,59 @@ staff. Accessible via "View Statistics" links in both portals.
 
 - `src/lib/domain/statistics.ts` — all aggregation logic
 - `src/app/statistics/` — page and UI components
+
+---
+
+# Dispatcher-Created Requests
+
+`/dispatcher/new` lets dispatcher/admin staff create a water request for
+a customer who called or visited the office. See PRODUCT.md and
+TECHNICAL.md for the full "Dispatcher-Created Requests" spec — summary
+for maintainers:
+
+## Access
+
+- `dispatcher` and `admin` roles only (enforced server-side via
+  `requireRole(["dispatcher", "admin"])`, same as the rest of the
+  dispatcher portal). Having only the `driver` role does not grant this.
+
+## Two customer paths, one workflow
+
+- **Existing resident:** searched via `getResidentDirectory()`
+  (`src/lib/domain/users.ts`), a staff-facing subset of user profiles
+  distinct from the admin user list. Village/directions are editable for
+  this request only — never written back to the profile.
+- **Unregistered customer:** name + phone required, email optional, no
+  Firebase Auth account created. `customerId` is stored as `null`.
+- Both paths call the same `createWaterRequest()` used by the resident
+  portal, with `source: "dispatcher"` and `createdBy: <staff uid>`. There
+  is no separate manual queue or duplicated claiming/dispatch logic.
+
+## Duplicate handling
+
+- Registered resident: hard block (existing one-active-request rule),
+  surfaced with a link/description of the conflicting request.
+- Unregistered customer: soft warning by phone match
+  (`findActiveRequestsByPhone()`), with an explicit "this is not a
+  duplicate — continue" override that is recorded on the creation event,
+  never silently bypassed.
+
+## Staff confirmation
+
+For unregistered customers only, `confirmDeliveryByStaff()` lets staff
+operationally confirm a delivered request from the request detail page
+(`/dispatcher/[requestId]`, `RequestActions.tsx`), recording
+`delivery_confirmed_by_dispatcher` rather than `customer_confirmed`.
+
+## Domain logic
+
+- `src/lib/domain/waterRequests.ts` — `createWaterRequest()` (extended
+  for source/snapshot/duplicate handling), `findActiveRequestsByPhone()`,
+  `getActiveCustomerIds()`, `confirmDeliveryByStaff()`
+- `src/lib/domain/users.ts` — `getResidentDirectory()`
+- `src/app/dispatcher/actions.ts` — `createManualRequest`,
+  `confirmUnregisteredDelivery`
+- `src/app/dispatcher/new/` — page and form UI
 
 ---
 

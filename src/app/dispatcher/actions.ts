@@ -6,8 +6,12 @@ import { requireRole } from "@/lib/auth/session";
 import { restrictDriverAccess, restoreDriverAccess } from "@/lib/domain/drivers";
 import {
   cancelWaterRequest,
+  confirmDeliveryByStaff,
+  createWaterRequest,
   dispatcherAssign,
   dispatcherReassign,
+  findActiveRequestsByPhone,
+  getActiveRequestForCustomer,
   resolveDisputeCompleted,
   resolveDisputeReopened,
 } from "@/lib/domain/waterRequests";
@@ -219,4 +223,177 @@ export async function reassignRequest(
 
   revalidatePath("/dispatcher");
   return { status: "success", message: "Request reassigned." };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher-created requests
+// ---------------------------------------------------------------------------
+
+export interface DuplicateMatch {
+  id: string;
+  village: string;
+  requestedAt: string;
+  status: string;
+}
+
+export interface CreateRequestActionState {
+  status: "idle" | "success" | "error" | "duplicate_warning";
+  message?: string;
+  duplicates?: DuplicateMatch[];
+}
+
+/**
+ * Creates a water request on behalf of a customer who called or visited
+ * the office. Supports both a registered resident (selected from the
+ * directory) and an unregistered/manual customer. Both paths call the
+ * same `createWaterRequest()` used by the resident portal — there is no
+ * separate manual queue (see PRODUCT.md "Dispatcher-Created Requests").
+ */
+export async function createManualRequest(
+  _prevState: CreateRequestActionState,
+  formData: FormData,
+): Promise<CreateRequestActionState> {
+  const session = await requireStaff();
+
+  const customerType = String(formData.get("customerType") ?? "existing");
+  const village = String(formData.get("village") ?? "").trim();
+  const deliveryDirections = String(formData.get("deliveryDirections") ?? "").trim();
+  const preferredDriverIdRaw = String(formData.get("preferredDriverId") ?? "").trim();
+  const preferredDriverId =
+    preferredDriverIdRaw && preferredDriverIdRaw !== "none" ? preferredDriverIdRaw : null;
+  const overrideDuplicate = formData.get("overrideDuplicate") === "true";
+
+  if (!village) return { status: "error", message: "Village/area is required." };
+  if (!deliveryDirections) {
+    return { status: "error", message: "Delivery directions are required." };
+  }
+
+  if (customerType === "existing") {
+    const residentUid = String(formData.get("residentUid") ?? "").trim();
+    if (!residentUid) {
+      return { status: "error", message: "Select an existing resident." };
+    }
+
+    try {
+      await createWaterRequest({
+        customerId: residentUid,
+        village,
+        deliveryDirections,
+        preferredDriverId,
+        source: "dispatcher",
+        createdBy: session.uid,
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "DUPLICATE_ACTIVE_REQUEST") {
+        const existing = await getActiveRequestForCustomer(residentUid);
+        return {
+          status: "error",
+          message: existing
+            ? `This resident already has an active request (status: ${existing.status}). Resolve it before creating a new one.`
+            : "This resident already has an active request.",
+        };
+      }
+      throw err;
+    }
+
+    revalidatePath("/dispatcher");
+    return { status: "success", message: "Water request created." };
+  }
+
+  // --- Unregistered / manual customer ---
+  const customerName = String(formData.get("customerName") ?? "").trim();
+  const customerPhone = String(formData.get("customerPhone") ?? "").trim();
+  const customerEmail = String(formData.get("customerEmail") ?? "").trim();
+
+  if (!customerName) return { status: "error", message: "Customer name is required." };
+  if (!customerPhone) return { status: "error", message: "Phone number is required." };
+
+  // Soft duplicate check: phone-number matching is not reliable identity
+  // verification, so this is a warning staff can deliberately override,
+  // never a silent block (see PRODUCT.md "Duplicate Requests").
+  const possibleMatches = await findActiveRequestsByPhone(customerPhone);
+  if (possibleMatches.length > 0 && !overrideDuplicate) {
+    return {
+      status: "duplicate_warning",
+      message: "A request with this phone number is already active.",
+      duplicates: possibleMatches.map((m) => ({
+        id: m.id,
+        village: m.village,
+        requestedAt: m.requestedAt,
+        status: m.status,
+      })),
+    };
+  }
+
+  try {
+    await createWaterRequest({
+      customerId: null,
+      village,
+      deliveryDirections,
+      preferredDriverId,
+      source: "dispatcher",
+      createdBy: session.uid,
+      customer: {
+        displayName: customerName,
+        phone: customerPhone,
+        email: customerEmail || null,
+      },
+      overrideMatchedRequestIds: overrideDuplicate
+        ? possibleMatches.map((m) => m.id)
+        : undefined,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "CUSTOMER_NAME_REQUIRED":
+          return { status: "error", message: "Customer name is required." };
+        case "CUSTOMER_PHONE_REQUIRED":
+          return { status: "error", message: "Phone number is required." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  return { status: "success", message: "Water request created." };
+}
+
+// ---------------------------------------------------------------------------
+// Staff confirmation for unregistered customers
+// ---------------------------------------------------------------------------
+
+export async function confirmUnregisteredDelivery(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+
+  try {
+    await confirmDeliveryByStaff({ requestId, actorId: session.uid });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_HAS_REGISTERED_CUSTOMER":
+          return {
+            status: "error",
+            message: "This request has a registered customer and must be confirmed through the normal resident workflow.",
+          };
+        case "INVALID_STATUS_FOR_CONFIRM":
+          return { status: "error", message: "This delivery cannot be confirmed right now." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  return { status: "success", message: "Delivery confirmed on behalf of the customer." };
 }

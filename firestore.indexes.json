@@ -68,6 +68,14 @@
         { "fieldPath": "response", "order": "ASCENDING" },
         { "fieldPath": "respondedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "waterRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "customer.phone", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

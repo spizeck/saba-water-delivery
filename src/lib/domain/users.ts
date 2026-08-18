@@ -50,6 +50,63 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   return toUserProfile(uid, snapshot.data()!);
 }
 
+// ---------------------------------------------------------------------------
+// Staff-facing resident directory (dispatcher "Create Water Request")
+// ---------------------------------------------------------------------------
+
+export interface ResidentDirectoryEntry {
+  uid: string;
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+  village: string | null;
+  deliveryDirections: string | null;
+}
+
+/**
+ * Returns a lightweight directory of registered residents for dispatcher
+ * staff to search by name/phone/email when creating a water request on
+ * behalf of someone who called or visited the office. Deliberately
+ * excludes role/driver-management fields present in the admin user list
+ * (`src/lib/domain/admin.ts`) — this is scoped to what dispatchers need
+ * to identify a customer and pre-fill their delivery info, not full
+ * account administration.
+ *
+ * At island scale, returning the full list and filtering client-side
+ * (matching the existing admin `UserList` pattern) is simpler than
+ * building a search index.
+ */
+export async function getResidentDirectory(): Promise<ResidentDirectoryEntry[]> {
+  const db = getAdminDb();
+  const snapshot = await db.collection(USERS_COLLECTION).get();
+
+  const results: ResidentDirectoryEntry[] = [];
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    let roles: UserRole[];
+    if (Array.isArray(data.roles) && data.roles.length > 0) {
+      roles = data.roles.filter((r: unknown) => isUserRole(r));
+    } else if (isUserRole(data.role)) {
+      roles = [data.role];
+    } else {
+      roles = ["resident"];
+    }
+    if (!roles.includes("resident")) continue;
+
+    results.push({
+      uid: doc.id,
+      displayName: data.displayName ?? "",
+      email: data.email ?? null,
+      phone: data.phone ?? null,
+      village: data.village ?? null,
+      deliveryDirections: data.deliveryDirections ?? null,
+    });
+  }
+
+  results.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  return results;
+}
+
 export interface EnsureUserProfileInput {
   uid: string;
   displayName: string;

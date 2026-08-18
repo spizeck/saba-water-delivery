@@ -10,6 +10,7 @@ import type { WaterRequestStatus } from "@/lib/domain/types";
 import {
   assignRequest,
   cancelRequest,
+  confirmUnregisteredDelivery,
   reassignRequest,
   resolveDisputeAsCompleted,
   resolveDisputeAsReopened,
@@ -22,9 +23,16 @@ interface Props {
   requestId: string;
   status: WaterRequestStatus;
   eligibleDrivers: DriverListItem[];
+  /** True when this is an unregistered customer's delivered/unconfirmed request. */
+  canConfirmUnregisteredDelivery: boolean;
 }
 
-export function RequestActions({ requestId, status, eligibleDrivers }: Props) {
+export function RequestActions({
+  requestId,
+  status,
+  eligibleDrivers,
+  canConfirmUnregisteredDelivery,
+}: Props) {
   const [activePanel, setActivePanel] = useState<string | null>(null);
 
   const isDisputed = status === "disputed";
@@ -77,6 +85,16 @@ export function RequestActions({ requestId, status, eligibleDrivers }: Props) {
             Reassign
           </Button>
         )}
+        {canConfirmUnregisteredDelivery && (
+          <Button
+            size="md"
+            variant="primary"
+            onClick={() => setActivePanel(activePanel === "confirmUnregistered" ? null : "confirmUnregistered")}
+            className="text-sm !h-9 !px-3"
+          >
+            Confirm delivery (unregistered)
+          </Button>
+        )}
         {isUnresolved && (
           <Button
             size="md"
@@ -106,6 +124,9 @@ export function RequestActions({ requestId, status, eligibleDrivers }: Props) {
       )}
       {activePanel === "cancel" && (
         <CancelPanel requestId={requestId} onDone={() => setActivePanel(null)} />
+      )}
+      {activePanel === "confirmUnregistered" && (
+        <ConfirmUnregisteredPanel requestId={requestId} onDone={() => setActivePanel(null)} />
       )}
     </Card>
   );
@@ -230,6 +251,34 @@ function ReassignPanel({ requestId, drivers, onDone }: { requestId: string; driv
       <div className="flex gap-2">
         <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
           {pending ? "Reassigning\u2026" : "Reassign"}
+        </Button>
+        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ConfirmUnregisteredPanel({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const [state, formAction, pending] = useActionState(confirmUnregisteredDelivery, initialState);
+  if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 p-3">
+      <input type="hidden" name="requestId" value={requestId} />
+      <p className="text-sm font-medium text-slate-700">
+        Confirm this delivery on behalf of the customer
+      </p>
+      <p className="text-xs text-slate-500">
+        This customer has no application account and cannot confirm through
+        the resident portal. Only confirm after verifying the delivery was
+        received.
+      </p>
+      {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+          {pending ? "Confirming\u2026" : "Confirm delivery"}
         </Button>
         <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
           Cancel

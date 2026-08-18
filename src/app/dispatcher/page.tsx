@@ -45,15 +45,35 @@ export default async function DispatcherPortalPage() {
     return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
   });
 
-  // Resolve customer names for display.
-  const customerIds = [...new Set(sortedRequests.map((r) => r.customerId))];
+  // Resolve customer display names, keyed by REQUEST id (not customer id —
+  // unregistered/manual requests all share customerId === null, so a
+  // customerId-keyed map would collide across different customers).
+  // Prefer the request's own customer snapshot; only fall back to a live
+  // profile lookup for legacy requests that predate the snapshot field.
   const customerNames: Record<string, string> = {};
+  const legacyCustomerIds = [
+    ...new Set(
+      sortedRequests
+        .filter((r) => !r.customer && r.customerId)
+        .map((r) => r.customerId as string),
+    ),
+  ];
+  const legacyProfiles: Record<string, string> = {};
   await Promise.all(
-    customerIds.map(async (id) => {
+    legacyCustomerIds.map(async (id) => {
       const p = await getUserProfile(id);
-      if (p) customerNames[id] = p.displayName;
+      if (p) legacyProfiles[id] = p.displayName;
     }),
   );
+  for (const r of sortedRequests) {
+    if (r.customer) {
+      customerNames[r.id] = r.customer.displayName;
+    } else if (r.customerId) {
+      customerNames[r.id] = legacyProfiles[r.customerId] ?? "Unknown";
+    } else {
+      customerNames[r.id] = "Unknown";
+    }
+  }
 
   // Resolve driver names for display.
   const driverIds = [
@@ -81,7 +101,13 @@ export default async function DispatcherPortalPage() {
       <PortalHeader portalName="Dispatcher" roles={profile.roles} />
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-8 max-w-5xl">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-3">
+            <Link
+              href="/dispatcher/new"
+              className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+            >
+              + Create Water Request
+            </Link>
             <Link
               href="/statistics"
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"

@@ -39,6 +39,7 @@ function formatAge(isoDate: string): string {
 
 interface Props {
   requests: WaterRequest[];
+  /** Customer display name, keyed by REQUEST id (see dispatcher/page.tsx). */
   customerNames: Record<string, string>;
   driverNames: Record<string, string>;
 }
@@ -84,7 +85,12 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                       {formatAge(req.requestedAt)}
                     </td>
                     <td className="py-2 pr-3 text-slate-900">
-                      {customerNames[req.customerId] ?? "Unknown"}
+                      {customerNames[req.id] ?? "Unknown"}
+                      {req.source === "dispatcher" && (
+                        <span className="ml-1.5 inline-flex rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                          staff
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-3 text-slate-600">{req.village}</td>
                     <td className="py-2 pr-3 text-slate-600">
@@ -134,7 +140,7 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                       </span>
                     </td>
                     <td className="py-2 pr-3 text-slate-900">
-                      {customerNames[req.customerId] ?? "Unknown"}
+                      {customerNames[req.id] ?? "Unknown"}
                     </td>
                     <td className="py-2 pr-3 text-slate-600">{req.village}</td>
                     <td className="py-2 text-right">

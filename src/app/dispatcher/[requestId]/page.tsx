@@ -43,12 +43,15 @@ const STATUS_COLORS: Record<WaterRequestStatus, string> = {
 
 const EVENT_LABELS: Record<string, string> = {
   request_created: "Request created",
+  request_created_by_dispatcher: "Request created by staff",
   preferred_driver_selected: "Preferred driver selected",
   preferred_driver_expired: "Preferred driver hold expired",
+  preferred_driver_declined: "Preferred driver declined",
   request_opened: "Opened to queue",
   driver_claimed: "Driver claimed",
   marked_delivered: "Marked delivered",
   customer_confirmed: "Customer confirmed",
+  delivery_confirmed_by_dispatcher: "Delivery confirmed by staff",
   customer_disputed: "Customer disputed",
   delivery_confirmation_expired: "Confirmation window expired",
   dispute_resolved_completed: "Dispute resolved (completed)",
@@ -99,13 +102,23 @@ export default async function RequestDetailPage({ params }: PageProps) {
 
   const data = requestDoc.data()!;
   const status = data.status as WaterRequestStatus;
+  const isRegisteredCustomer = Boolean(data.customerId);
 
-  // Fetch related data in parallel.
-  const [customer, events, eligibleDrivers] = await Promise.all([
-    getUserProfile(data.customerId),
+  // Fetch related data in parallel. Prefer the request's own customer
+  // snapshot; only fall back to a live profile lookup for legacy requests
+  // that predate the snapshot field (and never for unregistered customers,
+  // who have no `users/{uid}` document to look up).
+  const [legacyCustomerProfile, events, eligibleDrivers] = await Promise.all([
+    !data.customer && data.customerId ? getUserProfile(data.customerId) : null,
     getRequestEvents(requestId),
     getAllDrivers(),
   ]);
+
+  const customer = data.customer
+    ? { displayName: data.customer.displayName, phone: data.customer.phone ?? null }
+    : legacyCustomerProfile
+      ? { displayName: legacyCustomerProfile.displayName, phone: legacyCustomerProfile.phone }
+      : null;
 
   // Resolve driver names.
   const driverNames: Record<string, string> = {};
@@ -124,7 +137,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
   // Resolve actor names in events.
   const actorIds = [...new Set(events.map((e) => e.actorId).filter(Boolean))] as string[];
   const actorNames: Record<string, string> = { ...driverNames };
-  if (customer) actorNames[customer.uid] = customer.displayName;
+  if (customer && data.customerId) actorNames[data.customerId] = customer.displayName;
   await Promise.all(
     actorIds
       .filter((id) => !actorNames[id])
@@ -149,15 +162,27 @@ export default async function RequestDetailPage({ params }: PageProps) {
           <Card>
             <div className="flex items-start justify-between gap-4">
               <h1 className="text-xl font-bold text-slate-900">Request detail</h1>
-              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[status]}`}>
-                {STATUS_LABELS[status]}
-              </span>
+              <div className="flex flex-col items-end gap-1">
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[status]}`}>
+                  {STATUS_LABELS[status]}
+                </span>
+                <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                  {data.source === "dispatcher" ? "Entered by staff" : "Submitted online"}
+                </span>
+              </div>
             </div>
 
             <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               <div>
                 <dt className="font-medium text-slate-500">Customer</dt>
-                <dd className="text-slate-900">{customer?.displayName ?? "Unknown"}</dd>
+                <dd className="text-slate-900">
+                  {customer?.displayName ?? "Unknown"}
+                  {!isRegisteredCustomer && (
+                    <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                      unregistered
+                    </span>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Phone</dt>
@@ -243,6 +268,9 @@ export default async function RequestDetailPage({ params }: PageProps) {
             requestId={requestId}
             status={status}
             eligibleDrivers={eligibleDrivers.filter((d) => d.eligibilityStatus === "eligible")}
+            canConfirmUnregisteredDelivery={
+              !isRegisteredCustomer && (status === "delivered" || status === "delivered_unconfirmed")
+            }
           />
 
           {/* Event history */}

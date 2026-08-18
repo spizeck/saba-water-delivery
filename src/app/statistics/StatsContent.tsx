@@ -87,6 +87,12 @@ export function StatsContent({ stats }: StatsContentProps) {
         />
       </div>
 
+      {/* Request source breakdown */}
+      <p className="text-xs text-slate-500">
+        {stats.summary.bySource.resident.toLocaleString()} submitted online &middot;{" "}
+        {stats.summary.bySource.dispatcher.toLocaleString()} entered by staff
+      </p>
+
       {/* Current operations */}
       <CurrentOpsSection current={stats.current} />
 

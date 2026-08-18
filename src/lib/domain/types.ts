@@ -72,9 +72,55 @@ export type WaterRequestStatus =
  */
 export type StandardLoadGallons = 1000;
 
+/**
+ * Who originated the request. Resident-created requests come from the
+ * authenticated resident portal; dispatcher-created requests are entered
+ * by government staff on behalf of a customer who called or visited the
+ * office. Both sources enter the exact same delivery workflow — there is
+ * no separate manual queue. See PRODUCT.md "Dispatcher-Created Requests".
+ */
+export type WaterRequestSource = "resident" | "dispatcher";
+
+/**
+ * A snapshot of the customer's identity at request creation time,
+ * preserved on the request itself so it remains stable and auditable
+ * regardless of later profile edits, and so unregistered/manual
+ * customers (who have no `users/{uid}` document) can still be served.
+ *
+ * `isRegistered` mirrors `customerId !== null` at creation time — it is
+ * denormalized onto the snapshot for convenience in UI code and
+ * statistics.
+ */
+export interface WaterRequestCustomerSnapshot {
+  displayName: string;
+  phone: string | null;
+  email: string | null;
+  isRegistered: boolean;
+}
+
 export interface WaterRequest {
   id: string;
-  customerId: string;
+  /**
+   * The requesting resident's Firebase uid, or `null` for a request
+   * created by dispatcher/admin staff on behalf of a customer who does
+   * not have (and is not required to have) an application account. See
+   * PRODUCT.md "Unregistered Customers".
+   */
+  customerId: string | null;
+
+  /** Snapshot of the customer's name/contact info at creation time. Only
+   * `null` for historical documents created before this field existed —
+   * new code should prefer this over a live profile lookup. */
+  customer: WaterRequestCustomerSnapshot | null;
+
+  /** Where the request originated. Defaults to "resident" for historical
+   * documents that predate this field (all pre-existing requests were
+   * resident-created). */
+  source: WaterRequestSource;
+
+  /** uid of the dispatcher/admin who created this request. Always null
+   * for `source === "resident"`. */
+  createdBy: string | null;
 
   gallons: StandardLoadGallons;
 
@@ -146,6 +192,7 @@ export interface WaterRequestPhoto {
 
 export type WaterRequestEventType =
   | "request_created"
+  | "request_created_by_dispatcher"
   | "preferred_driver_selected"
   | "preferred_driver_expired"
   | "preferred_driver_declined"
@@ -153,6 +200,7 @@ export type WaterRequestEventType =
   | "driver_claimed"
   | "marked_delivered"
   | "customer_confirmed"
+  | "delivery_confirmed_by_dispatcher"
   | "customer_disputed"
   | "delivery_confirmation_expired"
   | "dispute_resolved_completed"

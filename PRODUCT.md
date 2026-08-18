@@ -102,10 +102,14 @@ concepts.
 Dispatchers can:
 
 - View all water requests.
-- Create a request for a customer who calls or visits the office.
+- Create a request for a customer who calls or visits the office — for
+  either an existing registered resident or an unregistered/manual
+  customer. See "Dispatcher-Created Requests" below.
 - View request status and history.
 - Assign or reassign requests when necessary.
 - Handle delivery problems and disputes.
+- Operationally confirm a delivery on behalf of an unregistered customer
+  who has no application account to confirm through themselves.
 - View operational statistics.
 
 ## Administrator
@@ -147,6 +151,75 @@ A resident normally requests delivery:
 **ASAP**
 
 Scheduled delivery dates and time slots are outside the initial scope.
+
+---
+
+# Dispatcher-Created Requests
+
+Not every resident submits their own request online. Government staff
+can create a water request on behalf of a customer who calls or visits
+the office — a phone/walk-in request is a **first-class request in the
+central system**, not an alternate or secondary workflow.
+
+A dispatcher-created request enters the exact same delivery workflow as
+a resident-created one:
+
+- The same preferred-driver hold behavior.
+- The same oldest-request-first fairness.
+- The same one-offer-at-a-time driver dispatch, accept/decline, and
+  decline/cooldown rules.
+- The same atomic claiming guarantee.
+- The same delivery, dispute, reassignment, cancellation, and statistics
+  handling.
+
+There is no separate "manual queue" — drivers never know or need to know
+whether a request came from the web or from a phone call, except where
+there is a genuine operational reason (see "Unregistered Customers"
+below).
+
+## Existing (registered) resident
+
+A dispatcher can search for a resident by name, phone, or email and
+select them, pre-filling their saved village and delivery directions. The
+dispatcher may adjust delivery directions (and village) **for this
+request only** — this never overwrites the resident's saved profile.
+
+The existing one-active-request-per-resident rule is preserved exactly:
+if the resident already has an unresolved request, the dispatcher sees
+this clearly before submitting and cannot create a duplicate. Resolving
+that conflict uses the same dispatcher tools already available for any
+request (reassign, cancel, resolve a dispute, etc.).
+
+## Unregistered customers
+
+A resident must **not** be required to create an application account
+just to receive government water. A dispatcher can create a request for
+someone with no account by entering:
+
+- Customer name (required)
+- Phone number (required)
+- Village/area (required)
+- Delivery directions (required)
+- Email (optional)
+
+No Firebase account is created for this customer, and none is required.
+
+Because an unregistered customer has no stable account identity, exact
+duplicate detection is not possible the way it is for a registered
+resident. Instead, the dispatcher is warned when an unresolved request
+already exists with a matching phone number, and shown that existing
+request. Phone matching is **not** treated as proof of identity — a
+dispatcher may deliberately proceed anyway (e.g. a shared household
+phone), and doing so is recorded, never silent.
+
+## Future account linking
+
+An unregistered customer's past requests could eventually be associated
+with a registered account if that customer signs up later. This is
+**not implemented yet** — do not automatically link requests by name
+alone. Any future linking should be a deliberate, staff-initiated,
+auditable action, potentially assisted by matching phone/email, not an
+automatic background process.
 
 ---
 
@@ -308,6 +381,19 @@ If the customer does not respond within a configurable period, the request may b
 
 The system must preserve the driver's delivery timestamp and customer's confirmation timestamp separately.
 
+## Unregistered customers
+
+An unregistered customer has no authenticated resident portal to confirm
+or dispute through. Their delivery is never automatically marked
+confirmed merely because they lack an account. Instead, once the driver
+marks it delivered, authorized dispatcher/admin staff may operationally
+confirm the delivery on the customer's behalf. This is recorded with a
+distinct audit event (staff confirmation, not a customer action) and
+requires the confirming staff member to be identified — see TECHNICAL.md
+"Dispatcher-Created Requests". This is a V1 stand-in; it remains
+compatible with a future WhatsApp flow where the customer could
+eventually confirm directly.
+
 ---
 
 # Customer Delivery Location
@@ -410,6 +496,7 @@ The underlying data must support at minimum:
 - Delivered but unconfirmed requests
 - Driver online/offline activity where useful
 - Dispatch offers sent, accepted, and declined, and acceptance rate
+- Requests by source (submitted online vs entered by staff)
 
 Because every completed request represents 1,000 gallons:
 

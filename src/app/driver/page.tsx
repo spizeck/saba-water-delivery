@@ -6,6 +6,7 @@ import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getNextOfferForDriver } from "@/lib/domain/dispatch";
 import { ensureDriverProfile } from "@/lib/domain/drivers";
+import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
 
@@ -20,6 +21,25 @@ export const metadata: Metadata = {
 /** Whether `cooldownUntil` (ISO string) represents an active cooldown as of `now`. */
 function isCooldownActive(cooldownUntil: string | null, now: Date): boolean {
   return cooldownUntil !== null && new Date(cooldownUntil).getTime() > now.getTime();
+}
+
+/**
+ * Resolves display info for the customer on a request. Prefers the
+ * request's own customer snapshot (present on all new requests,
+ * registered or unregistered) and only falls back to a live profile
+ * lookup for legacy requests that predate the snapshot field.
+ */
+function resolveCustomerInfo(
+  request: WaterRequest,
+  profileMap: Record<string, { displayName: string; phone: string | null }>,
+): { displayName: string; phone: string | null } | null {
+  if (request.customer) {
+    return { displayName: request.customer.displayName, phone: request.customer.phone };
+  }
+  if (request.customerId) {
+    return profileMap[request.customerId] ?? null;
+  }
+  return null;
 }
 
 export default async function DriverPortalPage() {
@@ -43,16 +63,19 @@ export default async function DriverPortalPage() {
     getClaimedRequestsForDriver(uid),
   ]);
 
-  // Fetch customer info for the current offer and claimed deliveries.
-  const customerIds = [
-    ...new Set([
-      ...claimedDeliveries.map((d) => d.customerId),
-      ...(nextOffer ? [nextOffer.request.customerId] : []),
-    ]),
+  // Fetch customer info for legacy requests only (those without a
+  // customer snapshot). Unregistered customers have no `users/{uid}`
+  // document and always carry a snapshot, so they never need this.
+  const requestsNeedingLookup = [
+    ...claimedDeliveries,
+    ...(nextOffer ? [nextOffer.request] : []),
+  ].filter((r) => !r.customer && r.customerId);
+  const legacyCustomerIds = [
+    ...new Set(requestsNeedingLookup.map((r) => r.customerId as string)),
   ];
   const customerInfoMap: Record<string, { displayName: string; phone: string | null }> = {};
   await Promise.all(
-    customerIds.map(async (customerId) => {
+    legacyCustomerIds.map(async (customerId) => {
       const profile = await getUserProfile(customerId);
       if (profile) {
         customerInfoMap[customerId] = {
@@ -151,7 +174,7 @@ export default async function DriverPortalPage() {
             <OfferCard
               offer={nextOffer.offer}
               request={nextOffer.request}
-              customer={customerInfoMap[nextOffer.request.customerId] ?? null}
+              customer={resolveCustomerInfo(nextOffer.request, customerInfoMap)}
               driverId={uid}
             />
           )}

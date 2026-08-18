@@ -88,6 +88,14 @@ service cloud.firestore {
     // through server-side domain functions so business rules and
     // concurrency guarantees (see TECHNICAL.md "Request Claiming") are
     // enforced consistently.
+    //
+    // Dispatcher-created requests for unregistered/manual customers store
+    // `customerId: null` (see TECHNICAL.md "Dispatcher-Created Requests").
+    // The `resource.data.customerId == request.auth.uid` comparison below
+    // is still safe for those documents: `request.auth.uid` is always a
+    // non-null string for a signed-in user, so it can never equal `null`
+    // — an unrelated resident cannot read another customer's unregistered
+    // request through this rule. Staff access is unaffected either way.
     match /waterRequests/{requestId} {
       allow read: if isSignedIn()
         && (resource.data.customerId == request.auth.uid

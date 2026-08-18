@@ -40,7 +40,13 @@ export function ClaimedDeliveries({ deliveries, customerInfo }: Props) {
           <DeliveryCard
             key={req.id}
             request={req}
-            customer={customerInfo[req.customerId]}
+            customer={
+              req.customer
+                ? { displayName: req.customer.displayName, phone: req.customer.phone }
+                : req.customerId
+                  ? customerInfo[req.customerId]
+                  : undefined
+            }
           />
         ))}
       </div>
