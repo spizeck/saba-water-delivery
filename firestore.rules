@@ -46,6 +46,20 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.resource.data.role == resource.data.role;
       allow delete: if false;
+
+      // Property photo metadata. The owning resident may manage their
+      // own photos. Staff may read for operational support. Driver read
+      // access requires a verified delivery relationship — until that
+      // check is implemented, driver reads are denied here and photo
+      // access should be mediated through server-side signed URLs.
+      match /propertyPhotos/{photoId} {
+        allow read: if isSignedIn()
+          && (request.auth.uid == userId || isStaff());
+        allow create, update: if isSignedIn()
+          && request.auth.uid == userId;
+        allow delete: if isSignedIn()
+          && request.auth.uid == userId;
+      }
     }
 
     // Driver eligibility state is staff-managed. Drivers may
@@ -74,6 +88,20 @@ service cloud.firestore {
             || get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid
             || isStaff());
         allow write: if false;
+      }
+
+      // Request photo metadata (proof of delivery, issue documentation).
+      // The assigned driver, the customer, and staff may read. Only the
+      // assigned driver may create. Updates and deletes are denied until
+      // a retention policy is defined.
+      match /photos/{photoId} {
+        allow read: if isSignedIn()
+          && (get(/databases/$(database)/documents/waterRequests/$(requestId)).data.customerId == request.auth.uid
+            || get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid
+            || isStaff());
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid;
+        allow update, delete: if false;
       }
     }
 

@@ -50,6 +50,7 @@ Use:
 - TypeScript
 - Firebase Authentication
 - Cloud Firestore
+- Firebase Storage (for property and delivery photos)
 - Firebase Admin SDK where trusted server operations are required
 - Vercel
 
@@ -230,6 +231,37 @@ Government staff only need the ability to manually restrict/restore driver deliv
 
 ---
 
+# Photos
+
+The system will support two categories of photos:
+
+1. **Property photos** — uploaded by residents to help drivers locate the delivery point.
+2. **Request photos** — uploaded by drivers as proof of delivery or to document issues.
+
+## Key constraints
+
+- Store image files in **Firebase Storage**, not Firestore. Firestore holds only metadata and a `storagePath` reference.
+- Never expose permanent public download URLs for photos.
+- Use short-lived signed URLs generated server-side when Storage Rules alone cannot enforce the required access check.
+- Do not place personally descriptive data (names, addresses) in storage filenames. Use opaque identifiers.
+- Enforce photo access at the storage layer. Hidden UI is not authorization.
+
+## Access rules
+
+- Residents: upload/view/update/delete their own property photos. May view request photos for their own deliveries.
+- Drivers: view property photos only for residents whose delivery they hold. Upload request photos only for deliveries assigned to them.
+- Dispatchers/admins: view photos as needed for operational support.
+
+## Implementation notes
+
+- Photo types and metadata interfaces are defined in `src/lib/domain/types.ts`.
+- Firebase Storage rules are in `storage.rules` (deny-by-default scaffold).
+- Firestore subcollection rules for photo metadata are in `firestore.rules`.
+- The photo upload UI is **not required for V1**. Build it when explicitly requested.
+- When implementing uploads, prefer server-side validation of file type and size before writing to Storage.
+
+---
+
 # Do Not Overbuild
 
 Before introducing any of the following, verify that it is explicitly required:
@@ -268,8 +300,10 @@ Unless the existing repository creates a strong reason otherwise, work approxima
 11. Delivery confirmation
 12. Dispatcher dashboard
 13. Driver delivery access management
-14. Statistics dashboard
-15. UI refinement and testing
+14. Property photo uploads (resident)
+15. Proof-of-delivery photo uploads (driver)
+16. Statistics dashboard
+17. UI refinement and testing
 
 Do not jump ahead into WhatsApp or payments.
 

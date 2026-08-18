@@ -88,6 +88,52 @@ export interface WaterRequest {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Photos
+// ---------------------------------------------------------------------------
+
+/**
+ * Property photos help drivers locate the delivery point.
+ * Metadata is stored in Firestore at users/{uid}/propertyPhotos/{photoId}.
+ * Actual image files are stored in Firebase Storage at the referenced
+ * storagePath. See TECHNICAL.md "Firebase Storage".
+ */
+export type PropertyPhotoType = "house" | "cistern" | "access" | "other";
+
+export interface PropertyPhoto {
+  id: string;
+  type: PropertyPhotoType;
+  /** Firebase Storage path — not a public URL. */
+  storagePath: string;
+  uploadedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Request photos document a delivery (proof of delivery, issues, etc.).
+ * Metadata is stored in Firestore at waterRequests/{requestId}/photos/{photoId}.
+ * Only the assigned driver may upload photos for a request.
+ */
+export type WaterRequestPhotoType =
+  | "proof_of_delivery"
+  | "delivery_issue"
+  | "access_issue"
+  | "other";
+
+export interface WaterRequestPhoto {
+  id: string;
+  type: WaterRequestPhotoType;
+  /** Firebase Storage path — not a public URL. */
+  storagePath: string;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Water request events
+// ---------------------------------------------------------------------------
+
 export type WaterRequestEventType =
   | "request_created"
   | "preferred_driver_selected"

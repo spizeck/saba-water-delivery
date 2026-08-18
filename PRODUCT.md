@@ -50,6 +50,7 @@ Residents can:
 - View previous requests and deliveries.
 - Confirm that a delivery was received.
 - Report that a delivery marked delivered was not received.
+- Upload property photos to help drivers locate the delivery point (planned).
 
 Authentication should initially support:
 
@@ -68,6 +69,7 @@ Drivers can:
 - View their claimed deliveries.
 - Access customer delivery information.
 - Mark a delivery as delivered.
+- Upload proof-of-delivery photos (planned).
 - View their delivery history.
 
 Government staff may restrict a driver's delivery access.
@@ -242,6 +244,68 @@ The data model should support:
 Do not make conventional street addresses mandatory if they do not match local addressing practices.
 
 Residents should be able to save their normal delivery location for future requests.
+
+---
+
+# Property Photos
+
+Residents should be able to upload photos of their property to help drivers locate the delivery point.
+
+Supported photo types:
+
+- **House/exterior** — helps drivers identify the property.
+- **Cistern/fill-point** — shows where to connect for delivery.
+- **Access/location** — documents gate access, road conditions, or other navigation details.
+- **Other** — additional context as needed.
+
+Residents should be able to update or remove their own photos at any time.
+
+Property photos are private. Drivers should only see a resident's photos when they have a legitimate operational need — specifically, when they hold a claimed or assigned delivery for that resident.
+
+Drivers must not be able to browse unrelated customer property photos.
+
+Dispatchers and administrators may view property photos for operational support.
+
+Photo data must not be stored as publicly accessible assets. See the Privacy section for additional requirements.
+
+---
+
+# Proof of Delivery
+
+After completing a delivery, the assigned driver should be able to upload a delivery confirmation photo documenting the completed delivery.
+
+This is similar to proof-of-delivery workflows used by package delivery services.
+
+Each photo should be tied to:
+
+- The water request
+- The assigned driver
+- An upload timestamp
+
+The system should support multiple photos per request. Potential photo types include:
+
+- **Proof of delivery** — confirms water was delivered.
+- **Delivery issue** — documents a problem encountered during delivery.
+- **Access issue** — documents difficulty accessing the delivery point.
+- **Other** — additional context.
+
+Only the driver assigned to a request may upload photos for that request.
+
+The resident who owns the request, the assigned driver, and dispatchers/administrators may view request photos.
+
+---
+
+# Photo Privacy
+
+Property photos may reveal details of private residences. The system must treat them accordingly:
+
+- **Least-privilege access** — only users with a legitimate operational need may view photos.
+- **No public URLs** — photos must not be served through permanent unrestricted download links.
+- **No personal data in filenames** — storage paths should use opaque identifiers rather than names or addresses.
+- **Audit trail** — preserve who uploaded each photo and when.
+- **Retention** — a future retention/deletion policy for proof-of-delivery images should be anticipated in the architecture, but is not required for V1.
+
+Do not design photo storage as publicly accessible. Authorization must be enforced at the storage layer, not only through hidden UI elements.
 
 ---
 

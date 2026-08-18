@@ -8,6 +8,7 @@ Initial application stack:
 - TypeScript
 - Firebase Authentication
 - Cloud Firestore
+- Firebase Storage (for property and delivery photos)
 - Firebase Admin SDK for trusted server-side operations
 - Vercel deployment
 - Responsive web interface
@@ -129,6 +130,36 @@ This is a starting model, not an instruction to blindly reproduce every field.
   updatedAt: Timestamp
 }
 ```
+
+## users/{uid}/propertyPhotos/{photoId}
+
+```ts
+{
+  type: "house" | "cistern" | "access" | "other"
+  storagePath: string       // Firebase Storage path (not a public URL)
+  uploadedBy: string        // uid of uploader (should match parent uid)
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+```
+
+Property photos help drivers locate the delivery point. Metadata lives in
+Firestore; actual image bytes live in Firebase Storage at the referenced
+`storagePath`. See "Firebase Storage" below.
+
+## waterRequests/{requestId}/photos/{photoId}
+
+```ts
+{
+  type: "proof_of_delivery" | "delivery_issue" | "access_issue" | "other"
+  storagePath: string       // Firebase Storage path (not a public URL)
+  uploadedBy: string        // uid of uploader (assigned driver)
+  createdAt: Timestamp
+}
+```
+
+Request photos document the delivery. Only the assigned driver may upload
+photos for a request. Multiple photos per request are supported.
 
 ## waterRequests/{requestId}/events/{eventId}
 
@@ -263,6 +294,46 @@ Do not assume Security Rules will filter unauthorized documents out of an overly
 
 ---
 
+# Firebase Storage
+
+Image binary data must not be stored in Firestore. Use Firebase Storage for actual image files and Firestore only for photo metadata and storage paths.
+
+## Storage Layout
+
+```text
+property-photos/{uid}/{photoId}
+request-photos/{requestId}/{photoId}
+```
+
+Use opaque identifiers (document IDs) for filenames rather than names, addresses, or other personally descriptive data.
+
+## Storage Security Rules
+
+Firebase Storage Security Rules must enforce access independently of the UI. The starting posture is deny-by-default.
+
+At minimum:
+
+**Property photos (`property-photos/{uid}/`):**
+
+- The owning resident may upload, read, update, and delete their own photos.
+- Drivers may read a resident's property photos only when they hold a claimed/assigned delivery for that resident. This requires cross-referencing Firestore to verify the delivery relationship; if cross-referencing is impractical in Storage Rules alone, generate short-lived signed URLs server-side instead of granting broad read access.
+- Dispatchers/admins may read property photos for operational support.
+- No public access.
+
+**Request photos (`request-photos/{requestId}/`):**
+
+- Only the driver assigned to the request may upload photos for that request.
+- The assigned driver, the customer who owns the request, and dispatchers/admins may read request photos.
+- No public access.
+
+**General principles:**
+
+- Never expose permanent unrestricted download URLs.
+- Prefer short-lived signed URLs generated server-side when the Storage Rules alone cannot express the required access check (e.g. verifying an active delivery relationship).
+- Storage Rules are defined in `storage.rules` and referenced from `firebase.json`.
+
+---
+
 # Server vs Client
 
 Prefer server-side data access and mutations where practical.
@@ -293,6 +364,8 @@ At minimum audit:
 - Cancellation
 - Driver delivery access restricted
 - Driver delivery access restored
+- Property photo uploaded/updated/removed
+- Request photo uploaded
 
 For administrative actions, record the responsible user.
 

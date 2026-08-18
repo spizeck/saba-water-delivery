@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules.
+//
+// Deny-by-default scaffold. Photo upload/download capabilities are
+// planned but not yet implemented. These rules ensure that Storage is
+// locked down until the access-control logic described in TECHNICAL.md
+// "Firebase Storage" is built out.
+//
+// When implementing photo uploads, replace specific match blocks below
+// with rules that enforce:
+//
+//   Property photos  — resident owns the path; drivers read only when
+//                      they hold an assigned delivery for that resident
+//                      (may require server-side signed URLs instead of
+//                      direct Storage Rules if cross-referencing
+//                      Firestore is impractical).
+//
+//   Request photos   — only the assigned driver may write; the assigned
+//                      driver, the customer, and staff may read.
+//
+// General principles:
+//   - Never expose permanent unrestricted download URLs.
+//   - Use opaque identifiers in paths, not personal data.
+//   - Prefer short-lived signed URLs generated server-side when Storage
+//     Rules alone cannot express the required access check.
+//
+// See also: firestore.rules for Firestore-side photo metadata rules.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Property photos: users/{uid}/property-photos/{photoId}
+    // Locked down until implementation. Will require:
+    //   - Owner (uid) may read/write/delete.
+    //   - Drivers may read only with a verified delivery relationship.
+    //   - Staff may read for operational support.
+    match /property-photos/{uid}/{photoId} {
+      allow read, write: if false;
+    }
+
+    // Request photos: request-photos/{requestId}/{photoId}
+    // Locked down until implementation. Will require:
+    //   - Assigned driver may write.
+    //   - Assigned driver, customer, and staff may read.
+    match /request-photos/{requestId}/{photoId} {
+      allow read, write: if false;
+    }
+
+    // Deny everything else by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
