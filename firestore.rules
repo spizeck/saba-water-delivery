@@ -118,6 +118,29 @@ service cloud.firestore {
       }
     }
 
+    // Driver dispatch offers (one-request-at-a-time offer workflow). All
+    // creation and response recording happens through server-side domain
+    // logic (see src/lib/domain/dispatch.ts, driverOffers.ts). A driver may
+    // read their own offer history; staff may read for operational support.
+    match /driverOffers/{offerId} {
+      allow read: if isSignedIn()
+        && (resource.data.driverId == request.auth.uid || isStaff());
+      allow write: if false;
+    }
+
+    // Application configuration (e.g. dispatch settings). All writes go
+    // through trusted server-side admin actions. Staff may read current
+    // values; admin-only mutation is enforced at the application layer.
+    match /config/{configId} {
+      allow read: if isStaff();
+      allow write: if false;
+
+      match /events/{eventId} {
+        allow read: if isStaff();
+        allow write: if false;
+      }
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;

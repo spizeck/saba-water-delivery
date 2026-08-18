@@ -75,8 +75,8 @@ Drivers can:
 
 - Log in.
 - Set themselves online or offline.
-- View requests they are eligible to claim.
-- Claim an available delivery.
+- Receive one delivery offer at a time and accept or decline it.
+- Claim (by accepting) an offered delivery.
 - View their claimed deliveries.
 - Access customer delivery information.
 - Mark a delivery as delivered.
@@ -86,6 +86,10 @@ Drivers can:
 Government staff may restrict a driver's delivery access.
 
 An ineligible driver cannot claim new deliveries regardless of their online/offline preference.
+
+Drivers do **not** browse a list of open requests. To reduce cherry-picking
+and support equal access to water, the driver portal shows at most one
+claimable offer at a time — see "Dispatch Offers" below.
 
 **Important:** Having the `driver` role does NOT make someone eligible to deliver
 water. Role membership (`roles` includes `"driver"`) grants access to driver
@@ -111,7 +115,8 @@ Administrators have dispatcher capabilities plus system-management capabilities:
 - Viewing all users with their roles and driver status.
 - Adding/removing operational roles (driver, dispatcher, admin).
 - Restricting/restoring driver delivery access.
-- Managing application settings (planned).
+- Managing application settings, including the driver decline limit and
+  cooldown hours used by the dispatch offer workflow.
 
 Role management safeguards:
 
@@ -167,6 +172,11 @@ This value should be easy for administrators to change later.
 
 A resident choosing a preferred driver must not cause their water request to become permanently dependent on that driver.
 
+If the preferred driver actively declines their offer, the hold ends
+immediately (rather than waiting for the window to expire) and the
+request opens to the general queue at its original request time. See
+"Dispatch Offers" below.
+
 ---
 
 # Driver Availability
@@ -197,15 +207,54 @@ Restricting and restoring delivery access should be manually controlled by autho
 
 ---
 
-# Open Request Queue
+# Dispatch Offers (One Request at a Time)
 
-Drivers should be able to view available water requests through the web interface.
+Rather than browsing a list of open requests, an eligible, online driver is
+offered exactly **one** claimable request at a time — similar to
+delivery-driver platforms. This reduces cherry-picking and supports equal
+access to water.
 
-Open requests should default to oldest-first ordering.
+The driver sees:
 
-The system should avoid designs that encourage drivers to select customers based on personal relationships.
+- Customer name
+- Village
+- 1,000 gallons
+- Request age
+- Delivery directions
 
-When a driver claims a request, the claim must be atomic so two drivers cannot successfully claim the same delivery.
+The driver may:
+
+- **Accept** — claims the delivery. Claiming remains atomic: it is
+  impossible for two drivers to successfully claim the same request, even
+  if both were offered it (see "Request Claiming" in TECHNICAL.md).
+- **Decline** — the request is not claimed and remains available, at its
+  original request time, for another eligible driver. Declining does not
+  move the customer to the back of the queue.
+
+## Selection order
+
+For normal open requests, the oldest eligible request is offered first
+(fairness by age). A preferred-driver hold is only ever offered to the
+preferred driver during the hold window; other drivers do not see it. If
+that driver declines, the hold ends immediately and the request opens to
+the general queue.
+
+A driver is not immediately re-offered a request they just declined.
+
+## Decline limit and cooldown
+
+To discourage indiscriminate declining, a driver may decline only a
+limited number of offers per local day before new offers are paused for
+them for a cooldown period. Both values are configurable by an
+administrator (see "Administrator" above):
+
+- Maximum declines per day — default **3**
+- Decline cooldown — default **1 hour**
+
+Reaching the cooldown does **not** change the driver's government
+eligibility and does not affect their existing claimed deliveries — it
+only pauses new offers until the cooldown expires. A driver cannot bypass
+the cooldown by toggling online/offline; it is enforced using server time.
 
 ---
 
@@ -360,6 +409,7 @@ The underlying data must support at minimum:
 - Disputed deliveries
 - Delivered but unconfirmed requests
 - Driver online/offline activity where useful
+- Dispatch offers sent, accepted, and declined, and acceptance rate
 
 Because every completed request represents 1,000 gallons:
 

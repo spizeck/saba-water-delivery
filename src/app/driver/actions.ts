@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
+import { acceptDriverOffer, declineDriverOffer } from "@/lib/domain/dispatch";
 import { setDriverAvailability } from "@/lib/domain/drivers";
-import { claimWaterRequest, markWaterDelivered } from "@/lib/domain/waterRequests";
+import { markWaterDelivered } from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,11 @@ export async function toggleAvailability(
       switch (err.message) {
         case "DRIVER_INELIGIBLE":
           return { status: "error", message: "You are not currently eligible to go online." };
+        case "DRIVER_IN_COOLDOWN":
+          return {
+            status: "error",
+            message: "You are in a decline cooldown. Try again once it expires.",
+          };
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver profile not found. Contact the water office." };
         default:
@@ -51,30 +57,27 @@ export async function toggleAvailability(
 }
 
 // ---------------------------------------------------------------------------
-// Claim request
+// Dispatch offer: accept / decline
 // ---------------------------------------------------------------------------
 
-export interface ClaimActionState {
+export interface OfferActionState {
   status: "idle" | "success" | "error";
   message?: string;
 }
 
-export async function claimRequest(
-  _prevState: ClaimActionState,
+export async function acceptOffer(
+  _prevState: OfferActionState,
   formData: FormData,
-): Promise<ClaimActionState> {
+): Promise<OfferActionState> {
   const session = await requireRole("driver");
-  const requestId = String(formData.get("requestId") ?? "").trim();
+  const offerId = String(formData.get("offerId") ?? "").trim();
 
-  if (!requestId) {
-    return { status: "error", message: "Missing request ID." };
+  if (!offerId) {
+    return { status: "error", message: "Missing offer ID." };
   }
 
   try {
-    await claimWaterRequest({
-      requestId,
-      driverId: session.uid,
-    });
+    await acceptDriverOffer({ offerId, driverId: session.uid });
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
@@ -85,7 +88,7 @@ export async function claimRequest(
         case "HOLD_EXPIRED":
           return { status: "error", message: "The preferred-driver hold has expired. Please refresh." };
         case "REQUEST_NOT_CLAIMABLE":
-          return { status: "error", message: "This request is no longer available." };
+          return { status: "error", message: "This request is no longer available. Refresh for a new offer." };
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "DRIVER_INELIGIBLE":
@@ -94,6 +97,10 @@ export async function claimRequest(
           return { status: "error", message: "You must be online to claim requests." };
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver profile not found." };
+        case "OFFER_NOT_FOUND":
+          return { status: "error", message: "This offer is no longer valid. Refresh for a new offer." };
+        case "OFFER_ALREADY_RESOLVED":
+          return { status: "error", message: "This offer was already responded to." };
         default:
           throw err;
       }
@@ -102,7 +109,47 @@ export async function claimRequest(
   }
 
   revalidatePath("/driver");
-  return { status: "success", message: "Delivery claimed!" };
+  return { status: "success", message: "Delivery accepted!" };
+}
+
+export async function declineOffer(
+  _prevState: OfferActionState,
+  formData: FormData,
+): Promise<OfferActionState> {
+  const session = await requireRole("driver");
+  const offerId = String(formData.get("offerId") ?? "").trim();
+
+  if (!offerId) {
+    return { status: "error", message: "Missing offer ID." };
+  }
+
+  try {
+    const result = await declineDriverOffer({ offerId, driverId: session.uid });
+    revalidatePath("/driver");
+    if (result.enteredCooldown && result.cooldownUntil) {
+      const until = new Date(result.cooldownUntil).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      return {
+        status: "success",
+        message: `You've reached today's decline limit. New offers paused until ${until}.`,
+      };
+    }
+    return { status: "success", message: "Offer declined." };
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "OFFER_NOT_FOUND":
+          return { status: "error", message: "This offer is no longer valid. Refresh for a new offer." };
+        case "OFFER_ALREADY_RESOLVED":
+          return { status: "error", message: "This offer was already responded to." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

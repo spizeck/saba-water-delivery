@@ -50,6 +50,24 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "claimedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "driverOffers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "driverId", "order": "ASCENDING" },
+        { "fieldPath": "response", "order": "ASCENDING" },
+        { "fieldPath": "offeredAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "driverOffers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "driverId", "order": "ASCENDING" },
+        { "fieldPath": "response", "order": "ASCENDING" },
+        { "fieldPath": "respondedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -6,7 +6,9 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getAllUsers } from "@/lib/domain/admin";
+import { getDispatchSettings } from "@/lib/domain/dispatchSettings";
 
+import { DispatchSettingsForm } from "./DispatchSettingsForm";
 import { UserList } from "./UserList";
 
 export const metadata: Metadata = {
@@ -15,7 +17,10 @@ export const metadata: Metadata = {
 
 export default async function AdminPortalPage() {
   const { profile } = await requireRole("admin");
-  const users = await getAllUsers();
+  const [users, dispatchSettings] = await Promise.all([
+    getAllUsers(),
+    getDispatchSettings(),
+  ]);
 
   return (
     <>
@@ -40,6 +45,7 @@ export default async function AdminPortalPage() {
               </Link>
             </div>
           </Card>
+          <DispatchSettingsForm settings={dispatchSettings} />
           <UserList users={users} />
         </Container>
       </main>

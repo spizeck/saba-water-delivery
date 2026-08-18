@@ -123,6 +123,9 @@ cancelWaterRequest
 setDriverAvailability
 restrictDriverAccess
 restoreDriverAccess
+getNextOfferForDriver
+acceptDriverOffer
+declineDriverOffer
 ```
 
 These functions should be reusable later by non-web interfaces such as WhatsApp.
@@ -162,11 +165,18 @@ Optimize for phone use.
 Primary driver workflow:
 
 1. Go online.
-2. View eligible requests.
-3. Claim request.
-4. View customer/location details.
+2. Receive one delivery offer at a time (customer name, village, gallons,
+   age, directions).
+3. Accept or decline the offer.
+4. View customer/location details for an accepted delivery.
 5. Deliver water.
 6. Mark delivered.
+
+Drivers never browse a full list of open requests — see PRODUCT.md /
+TECHNICAL.md "Dispatch Offers". Declining too many offers in a day
+(admin-configurable, default 3) pauses new offers for a cooldown period
+(admin-configurable, default 1 hour) without affecting government
+eligibility.
 
 Do not build a complex driver dashboard.
 
@@ -218,6 +228,20 @@ Initial preferred-driver window:
 ```text
 24 hours
 ```
+
+Dispatch-offer decline policy is centralized similarly, but is admin-
+editable at runtime (Firestore `config/dispatchSettings`) rather than a
+code constant, since staff need to tune it without a deploy:
+
+```text
+maxDeclinesPerDay = 3
+declineCooldownHours = 1
+```
+
+Code-level defaults live in `appConfig.defaultMaxDeclinesPerDay` /
+`defaultDeclineCooldownHours` and are only used as a fallback until an
+admin saves settings for the first time. See
+`src/lib/domain/dispatchSettings.ts` and TECHNICAL.md "Dispatch Offers".
 
 ---
 
@@ -340,6 +364,8 @@ The `/admin` portal provides user and role management. Only users with the
 - User detail view with profile info, role management, and history
 - Add/remove operational roles (driver, dispatcher, admin)
 - Driver eligibility management (restrict/restore delivery access)
+- Dispatch offer settings: maximum driver declines per day and decline
+  cooldown hours (`config/dispatchSettings`, admin-only, audited)
 - Role-change audit trail (`users/{uid}/roleEvents` subcollection)
 
 ## Key behaviors
@@ -384,6 +410,8 @@ staff. Accessible via "View Statistics" links in both portals.
 - **Village demand:** Table sorted by highest demand, uses request village snapshot.
 - **Driver operations:** Table with loads/deliveries/times/status per driver.
 - **Preferred driver:** Usage rate, claimed by preferred, expired to queue, comparative timing.
+- **Dispatch offers:** Offers sent, accepted, declined, acceptance rate
+  (from `driverOffers`).
 - **Disputes:** Total, unresolved, resolved breakdown, dispute rate.
 
 ## Key methodology

@@ -25,6 +25,7 @@ function toDriverProfile(data: DocumentData): DriverProfile {
     ineligibilityReason: data.ineligibilityReason ?? null,
     restrictedAt: data.restrictedAt?.toDate?.().toISOString() ?? null,
     restrictedBy: data.restrictedBy ?? null,
+    cooldownUntil: data.cooldownUntil?.toDate?.().toISOString() ?? null,
     createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
   };
@@ -127,6 +128,7 @@ export async function ensureDriverProfile(driverId: string): Promise<DriverProfi
     ineligibilityReason: "Pending government approval",
     restrictedAt: null,
     restrictedBy: null,
+    cooldownUntil: null,
     createdAt: now,
     updatedAt: now,
   });
@@ -139,7 +141,10 @@ export async function ensureDriverProfile(driverId: string): Promise<DriverProfi
  * Sets a driver's availability status (online/offline).
  *
  * The driver document must already exist and the driver must be eligible.
- * Going online while ineligible is rejected with DRIVER_INELIGIBLE.
+ * Going online while ineligible is rejected with DRIVER_INELIGIBLE. Going
+ * online while in an active decline cooldown is rejected with
+ * DRIVER_IN_COOLDOWN — a driver cannot bypass the cooldown by toggling
+ * offline and back online (see TECHNICAL.md "Dispatch Offers").
  */
 export async function setDriverAvailability(
   input: SetDriverAvailabilityInput,
@@ -162,6 +167,15 @@ export async function setDriverAvailability(
     throw new Error("DRIVER_INELIGIBLE");
   }
 
+  // Drivers in an active cooldown cannot go online, even if they toggle
+  // offline and back — enforcement is server-side time, not client state.
+  if (availabilityStatus === "online") {
+    const cooldownUntil = data.cooldownUntil?.toDate?.();
+    if (cooldownUntil && cooldownUntil > new Date()) {
+      throw new Error("DRIVER_IN_COOLDOWN");
+    }
+  }
+
   await ref.update({
     availabilityStatus,
     updatedAt: now,
@@ -175,6 +189,56 @@ export async function setDriverAvailability(
     actorRole: "driver",
     createdAt: now,
     metadata: null,
+  });
+
+  const updated = await ref.get();
+  return toDriverProfile(updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Decline cooldown
+// ---------------------------------------------------------------------------
+
+export interface StartDriverCooldownInput {
+  driverId: string;
+  cooldownUntil: Date;
+  declineCount: number;
+  maxDeclinesPerDay: number;
+}
+
+/**
+ * Places a driver into a temporary dispatch cooldown after they reach the
+ * configured daily decline limit. This does NOT change eligibilityStatus
+ * or availabilityStatus — it is purely a dispatch-offer control (see
+ * TECHNICAL.md "Dispatch Offers"). Existing claimed deliveries remain
+ * fully accessible during a cooldown.
+ */
+export async function startDriverCooldown(
+  input: StartDriverCooldownInput,
+): Promise<DriverProfile> {
+  const { driverId, cooldownUntil, declineCount, maxDeclinesPerDay } = input;
+  const db = getAdminDb();
+  const ref = db.collection(DRIVERS_COLLECTION).doc(driverId);
+  const now = FieldValue.serverTimestamp();
+
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+
+  await ref.update({
+    cooldownUntil,
+    updatedAt: now,
+  });
+
+  await ref.collection("events").add({
+    type: "driver_cooldown_started",
+    actorId: driverId,
+    actorRole: "driver",
+    createdAt: now,
+    metadata: {
+      declineCount,
+      maxDeclinesPerDay,
+      cooldownUntil: cooldownUntil.toISOString(),
+    },
   });
 
   const updated = await ref.get();

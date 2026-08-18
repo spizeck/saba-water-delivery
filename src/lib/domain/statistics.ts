@@ -4,6 +4,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 
 import type { WaterRequestStatus } from "./types";
 import { appConfig } from "./config";
+import { getOfferAggregate } from "./driverOffers";
 
 /**
  * Statistics domain module.
@@ -104,6 +105,14 @@ export interface DisputeMetrics {
   disputeRate: number | null; // percentage
 }
 
+export interface DispatchOfferMetrics {
+  offersSent: number;
+  accepted: number;
+  declined: number;
+  expired: number;
+  acceptanceRate: number | null; // percentage of responded offers accepted
+}
+
 export interface StatsData {
   period: StatsPeriod;
   summary: SummaryMetrics;
@@ -114,6 +123,7 @@ export interface StatsData {
   drivers: DriverMetrics[];
   preferredDriver: PreferredDriverMetrics;
   disputes: DisputeMetrics;
+  dispatchOffers: DispatchOfferMetrics;
 }
 
 // ---------------------------------------------------------------------------
@@ -550,6 +560,20 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     disputeRate,
   };
 
+  // ---------------------------------------------------------------------------
+  // Dispatch offer metrics (single-offer driver dispatch workflow)
+  // ---------------------------------------------------------------------------
+  const offerAggregate = await getOfferAggregate(periodStart);
+  const responded = offerAggregate.accepted + offerAggregate.declined;
+  const dispatchOffers: DispatchOfferMetrics = {
+    offersSent: offerAggregate.offered,
+    accepted: offerAggregate.accepted,
+    declined: offerAggregate.declined,
+    expired: offerAggregate.expired,
+    acceptanceRate:
+      responded > 0 ? Math.round((offerAggregate.accepted / responded) * 1000) / 10 : null,
+  };
+
   return {
     period,
     summary,
@@ -560,5 +584,6 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     drivers,
     preferredDriver,
     disputes,
+    dispatchOffers,
   };
 }

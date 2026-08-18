@@ -125,6 +125,27 @@ export function StatsContent({ stats }: StatsContentProps) {
       {/* Preferred driver */}
       <PreferredDriverSection metrics={stats.preferredDriver} />
 
+      {/* Dispatch offers */}
+      <Card>
+        <h2 className="text-lg font-bold text-slate-900">Dispatch Offers</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          One-request-at-a-time driver offers, accept/decline outcomes
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatItem label="Offers Sent" value={stats.dispatchOffers.offersSent} />
+          <StatItem label="Accepted" value={stats.dispatchOffers.accepted} />
+          <StatItem label="Declined" value={stats.dispatchOffers.declined} />
+          <StatItem
+            label="Acceptance Rate"
+            value={
+              stats.dispatchOffers.acceptanceRate === null
+                ? "—"
+                : `${stats.dispatchOffers.acceptanceRate}%`
+            }
+          />
+        </div>
+      </Card>
+
       {/* Disputes */}
       <DisputeSection metrics={stats.disputes} />
     </>
@@ -178,6 +199,15 @@ function TimingItem({ label, hours }: { label: string; hours: number | null }) {
       <p className="mt-0.5 text-lg font-bold text-slate-900">
         {formatDuration(hours)}
       </p>
+    </div>
+  );
+}
+
+function StatItem({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-0.5 text-lg font-bold text-slate-900">{value}</p>
     </div>
   );
 }

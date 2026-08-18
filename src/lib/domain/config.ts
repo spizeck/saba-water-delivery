@@ -26,6 +26,26 @@ export const appConfig = {
    * `delivered_unconfirmed` if the resident has not responded.
    */
   deliveryConfirmationWindowHours: 48,
+
+  /**
+   * Default dispatch (single-offer) settings. These are the seed values
+   * used the first time an administrator opens dispatch settings, and the
+   * fallback used if the `config/dispatchSettings` Firestore document has
+   * not been created yet. Once an admin saves settings, the Firestore
+   * document (see src/lib/domain/dispatchSettings.ts) becomes the live
+   * source of truth — these constants are not read again after that.
+   */
+  defaultMaxDeclinesPerDay: 3,
+  defaultDeclineCooldownHours: 1,
+
+  /**
+   * IANA timezone used to define the "local day" boundary for counting a
+   * driver's daily declines (see TECHNICAL.md "Dispatch Offers"). Saba is
+   * part of the Caribbean Netherlands; America/Kralendijk observes a fixed
+   * UTC-4 offset year-round (no daylight saving), so decline counts reset
+   * at a consistent, intuitive local time regardless of server timezone.
+   */
+  operationalTimezone: "America/Kralendijk",
 } as const;
 
 export type AppConfig = typeof appConfig;

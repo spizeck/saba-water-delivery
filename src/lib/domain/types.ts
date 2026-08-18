@@ -36,6 +36,16 @@ export interface DriverProfile {
   restrictedAt: string | null;
   restrictedBy: string | null;
 
+  /**
+   * When set to a future timestamp, the driver has exceeded the daily
+   * decline limit and is temporarily paused from receiving new dispatch
+   * offers. This is a dispatch/availability control, separate from
+   * `eligibilityStatus` (government authorization) and `availabilityStatus`
+   * (the driver's own online/offline preference). See TECHNICAL.md
+   * "Dispatch Offers".
+   */
+  cooldownUntil: string | null;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -138,6 +148,7 @@ export type WaterRequestEventType =
   | "request_created"
   | "preferred_driver_selected"
   | "preferred_driver_expired"
+  | "preferred_driver_declined"
   | "request_opened"
   | "driver_claimed"
   | "marked_delivered"
@@ -167,7 +178,8 @@ export type DriverEventType =
   | "driver_online"
   | "driver_offline"
   | "driver_access_restricted"
-  | "driver_access_restored";
+  | "driver_access_restored"
+  | "driver_cooldown_started";
 
 export interface DriverEvent {
   id: string;
@@ -176,4 +188,36 @@ export interface DriverEvent {
   actorRole: UserRole | null;
   createdAt: string;
   metadata: Record<string, unknown> | null;
+}
+
+// ---------------------------------------------------------------------------
+// Driver dispatch offers (one-request-at-a-time offer workflow)
+// ---------------------------------------------------------------------------
+
+/**
+ * `null` means the offer is still pending — the driver has not yet
+ * responded. "expired" means the offer was superseded (e.g. another driver
+ * claimed the request first, or the request was cancelled/reassigned)
+ * before this driver responded.
+ */
+export type DriverOfferResponse = "accepted" | "declined" | "expired" | null;
+
+export interface DriverOffer {
+  id: string;
+  requestId: string;
+  driverId: string;
+  offeredAt: string;
+  response: DriverOfferResponse;
+  respondedAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch settings (admin-configurable)
+// ---------------------------------------------------------------------------
+
+export interface DispatchSettings {
+  maxDeclinesPerDay: number;
+  declineCooldownHours: number;
+  updatedAt: string | null;
+  updatedBy: string | null;
 }

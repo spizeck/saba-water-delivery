@@ -4,38 +4,52 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
+import { getNextOfferForDriver } from "@/lib/domain/dispatch";
 import { ensureDriverProfile } from "@/lib/domain/drivers";
 import { getUserProfile } from "@/lib/domain/users";
-import {
-  getClaimableRequestsForDriver,
-  getClaimedRequestsForDriver,
-} from "@/lib/domain/waterRequests";
+import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
 
 import { AvailabilityToggle } from "./AvailabilityToggle";
 import { ClaimedDeliveries } from "./ClaimedDeliveries";
-import { RequestQueue } from "./RequestQueue";
+import { OfferCard } from "./OfferCard";
 
 export const metadata: Metadata = {
   title: "Driver — Saba Water Delivery",
 };
+
+/** Whether `cooldownUntil` (ISO string) represents an active cooldown as of `now`. */
+function isCooldownActive(cooldownUntil: string | null, now: Date): boolean {
+  return cooldownUntil !== null && new Date(cooldownUntil).getTime() > now.getTime();
+}
 
 export default async function DriverPortalPage() {
   const { uid, profile } = await requireRole("driver");
 
   // Ensure driver document exists (new drivers are ineligible by default).
   const driverProfile = await ensureDriverProfile(uid);
+  const now = new Date();
 
   const isOnline = driverProfile.availabilityStatus === "online";
   const isEligible = driverProfile.eligibilityStatus === "eligible";
+  const inCooldown = isCooldownActive(driverProfile.cooldownUntil, now);
+  const cooldownUntil = driverProfile.cooldownUntil
+    ? new Date(driverProfile.cooldownUntil)
+    : null;
+  const canReceiveOffers = isOnline && isEligible && !inCooldown;
 
-  // Fetch queue and active deliveries (only if online and eligible).
-  const [claimableRequests, claimedDeliveries] = await Promise.all([
-    isOnline && isEligible ? getClaimableRequestsForDriver(uid) : [],
+  // Fetch the current offer (if any) and active deliveries.
+  const [nextOffer, claimedDeliveries] = await Promise.all([
+    canReceiveOffers ? getNextOfferForDriver(uid) : null,
     getClaimedRequestsForDriver(uid),
   ]);
 
-  // Fetch customer info for claimed deliveries.
-  const customerIds = [...new Set(claimedDeliveries.map((d) => d.customerId))];
+  // Fetch customer info for the current offer and claimed deliveries.
+  const customerIds = [
+    ...new Set([
+      ...claimedDeliveries.map((d) => d.customerId),
+      ...(nextOffer ? [nextOffer.request.customerId] : []),
+    ]),
+  ];
   const customerInfoMap: Record<string, { displayName: string; phone: string | null }> = {};
   await Promise.all(
     customerIds.map(async (customerId) => {
@@ -61,20 +75,26 @@ export default async function DriverPortalPage() {
                 <h1 className="text-2xl font-bold text-slate-900">Driver</h1>
                 <p className="mt-1 text-sm text-slate-600">
                   {!isEligible && "Your delivery access is pending approval."}
-                  {isEligible && isOnline && "You are online and receiving requests."}
-                  {isEligible && !isOnline && "You are offline."}
+                  {isEligible && inCooldown && "Delivery offers are temporarily paused."}
+                  {isEligible && !inCooldown && isOnline && "You are online and receiving offers."}
+                  {isEligible && !inCooldown && !isOnline && "You are offline."}
                 </p>
               </div>
-              {isOnline && (
+              {isOnline && !inCooldown && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-700">
                   <span className="h-2 w-2 rounded-full bg-green-500" />
                   Online
                 </span>
               )}
-              {!isOnline && isEligible && (
+              {!isOnline && isEligible && !inCooldown && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">
                   <span className="h-2 w-2 rounded-full bg-slate-400" />
                   Offline
+                </span>
+              )}
+              {isEligible && inCooldown && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">
+                  Paused
                 </span>
               )}
               {!isEligible && (
@@ -100,6 +120,24 @@ export default async function DriverPortalPage() {
                 </p>
               </div>
             )}
+
+            {/* Cooldown notice */}
+            {isEligible && inCooldown && cooldownUntil && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm font-medium text-amber-800">
+                  Delivery offers paused
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  You reached today&apos;s decline limit. You can receive new
+                  offers again at{" "}
+                  {cooldownUntil.toLocaleTimeString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                  .
+                </p>
+              </div>
+            )}
           </Card>
 
           {/* Claimed deliveries (always shown if any exist) */}
@@ -108,9 +146,31 @@ export default async function DriverPortalPage() {
             customerInfo={customerInfoMap}
           />
 
-          {/* Request queue (only when online and eligible) */}
-          {isOnline && isEligible && (
-            <RequestQueue requests={claimableRequests} driverId={uid} />
+          {/* Current dispatch offer (only when eligible, online, and not in cooldown) */}
+          {canReceiveOffers && nextOffer && (
+            <OfferCard
+              offer={nextOffer.offer}
+              request={nextOffer.request}
+              customer={customerInfoMap[nextOffer.request.customerId] ?? null}
+              driverId={uid}
+            />
+          )}
+
+          {canReceiveOffers && !nextOffer && (
+            <Card>
+              <h2 className="text-lg font-bold text-slate-900">Next Delivery</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                No deliveries available right now.
+              </p>
+            </Card>
+          )}
+
+          {isEligible && !isOnline && !inCooldown && (
+            <Card>
+              <p className="text-sm text-slate-600">
+                You are offline. Go online to receive delivery offers.
+              </p>
+            </Card>
           )}
         </Container>
       </main>

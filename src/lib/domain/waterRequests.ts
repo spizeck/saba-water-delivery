@@ -34,7 +34,7 @@ const ACTIVE_STATUSES: WaterRequestStatus[] = [
   "disputed",
 ];
 
-function toWaterRequest(id: string, data: DocumentData): WaterRequest {
+export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
   return {
     id,
     customerId: data.customerId,
@@ -98,93 +98,24 @@ export async function getRequestsForCustomer(
 }
 
 // ---------------------------------------------------------------------------
-// Queries — Driver queue
+// Queries — Driver dispatch
 // ---------------------------------------------------------------------------
+//
+// NOTE: Drivers no longer browse a list of open requests. The driver
+// portal shows at most one claimable offer at a time — see
+// src/lib/domain/dispatch.ts (`getNextOfferForDriver`), which selects a
+// single candidate request and records it as a `driverOffers` document.
+// This module only exposes the low-level request lookup/claim primitives
+// that the dispatch layer builds on.
 
 /**
- * Returns requests that the given driver is eligible to claim, oldest first.
- *
- * A request is claimable by this driver if:
- *   1. status === "available" (open to any eligible driver), OR
- *   2. status === "preferred_driver_hold" AND preferredDriverId matches this
- *      driver AND the hold has not expired.
- *
- * Preferred-driver holds whose expiration has passed are lazily transitioned
- * to "available" during this read (see `expirePreferredDriverHold`).
+ * Fetches a single water request by ID, or null if it does not exist.
  */
-export async function getClaimableRequestsForDriver(
-  driverId: string,
-): Promise<WaterRequest[]> {
+export async function getWaterRequestById(requestId: string): Promise<WaterRequest | null> {
   const db = getAdminDb();
-
-  // Fetch "available" requests (open to all).
-  const availableSnapshot = await db
-    .collection(REQUESTS_COLLECTION)
-    .where("status", "==", "available")
-    .orderBy("requestedAt", "asc")
-    .get();
-
-  // Fetch preferred-driver holds addressed to this specific driver.
-  const holdSnapshot = await db
-    .collection(REQUESTS_COLLECTION)
-    .where("status", "==", "preferred_driver_hold")
-    .where("preferredDriverId", "==", driverId)
-    .orderBy("requestedAt", "asc")
-    .get();
-
-  const results: WaterRequest[] = [];
-
-  // Process available requests.
-  for (const doc of availableSnapshot.docs) {
-    results.push(toWaterRequest(doc.id, doc.data()));
-  }
-
-  // Process preferred-driver holds — check expiration lazily.
-  for (const doc of holdSnapshot.docs) {
-    const data = doc.data();
-    const expiresAt = data.preferredDriverExpiresAt?.toDate?.();
-
-    if (expiresAt && expiresAt <= new Date()) {
-      // Hold has expired — transition to "available" lazily.
-      await expirePreferredDriverHold({ requestId: doc.id });
-      // After expiration it's now "available" and visible to all drivers.
-      // Refetch the updated doc.
-      const updated = await doc.ref.get();
-      if (updated.exists) {
-        results.push(toWaterRequest(updated.id, updated.data()!));
-      }
-    } else {
-      // Hold is still active — show to this preferred driver.
-      results.push(toWaterRequest(doc.id, data));
-    }
-  }
-
-  // Also check for expired holds addressed to OTHER drivers (lazy expiration).
-  // These would be "preferred_driver_hold" requests whose expiration passed
-  // but haven't been transitioned yet — expire them so they become "available".
-  const expiredHoldsSnapshot = await db
-    .collection(REQUESTS_COLLECTION)
-    .where("status", "==", "preferred_driver_hold")
-    .where("preferredDriverExpiresAt", "<=", new Date())
-    .get();
-
-  for (const doc of expiredHoldsSnapshot.docs) {
-    // Only expire if not already processed above.
-    if (holdSnapshot.docs.some((d) => d.id === doc.id)) continue;
-    await expirePreferredDriverHold({ requestId: doc.id });
-    // After expiration, refetch and add to results.
-    const updated = await doc.ref.get();
-    if (updated.exists && updated.data()!.status === "available") {
-      results.push(toWaterRequest(updated.id, updated.data()!));
-    }
-  }
-
-  // Sort all results oldest-first by requestedAt.
-  results.sort(
-    (a, b) => new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime(),
-  );
-
-  return results;
+  const doc = await db.collection(REQUESTS_COLLECTION).doc(requestId).get();
+  if (!doc.exists) return null;
+  return toWaterRequest(doc.id, doc.data()!);
 }
 
 /**

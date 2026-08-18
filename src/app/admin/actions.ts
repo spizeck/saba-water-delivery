@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { addRole, removeRole, getActiveDeliveryCount } from "@/lib/domain/admin";
+import { updateDispatchSettings } from "@/lib/domain/dispatchSettings";
 import { restrictDriverAccess, restoreDriverAccess } from "@/lib/domain/drivers";
 import { isUserRole } from "@/lib/auth/roles";
 import type { UserRole } from "@/lib/domain/types";
@@ -156,4 +157,51 @@ export async function adminRestoreDriver(
 
   revalidatePath("/admin");
   return { status: "success", message: "Delivery access restored." };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch settings
+// ---------------------------------------------------------------------------
+
+export interface DispatchSettingsActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+export async function saveDispatchSettings(
+  _prevState: DispatchSettingsActionState,
+  formData: FormData,
+): Promise<DispatchSettingsActionState> {
+  const session = await requireAdmin();
+  const maxDeclinesPerDay = Number(formData.get("maxDeclinesPerDay"));
+  const declineCooldownHours = Number(formData.get("declineCooldownHours"));
+
+  try {
+    await updateDispatchSettings({
+      maxDeclinesPerDay,
+      declineCooldownHours,
+      actorId: session.uid,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "INVALID_MAX_DECLINES":
+          return {
+            status: "error",
+            message: "Maximum declines per day must be a whole number of at least 1.",
+          };
+        case "INVALID_COOLDOWN_HOURS":
+          return {
+            status: "error",
+            message: "Cooldown hours must be a positive number.",
+          };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/admin");
+  return { status: "success", message: "Dispatch settings saved." };
 }

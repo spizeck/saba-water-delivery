@@ -127,6 +127,12 @@ Role changes are recorded here for audit. These are admin-only operations.
   restrictedAt: Timestamp | null
   restrictedBy: string | null
 
+  // Dispatch-offer decline cooldown. Set when a driver reaches the
+  // configured daily decline limit; cleared naturally once it passes.
+  // This is independent of eligibilityStatus and availabilityStatus —
+  // see "Dispatch Offers" below.
+  cooldownUntil: Timestamp | null
+
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -200,6 +206,58 @@ Firestore; actual image bytes live in Firebase Storage at the referenced
 Request photos document the delivery. Only the assigned driver may upload
 photos for a request. Multiple photos per request are supported.
 
+## driverOffers/{offerId}
+
+```ts
+{
+  requestId: string
+  driverId: string
+
+  offeredAt: Timestamp
+  response: "accepted" | "declined" | "expired" | null
+  respondedAt: Timestamp | null
+}
+```
+
+Records one instance of a single request being offered to a single
+driver as part of the one-request-at-a-time dispatch workflow (see
+"Dispatch Offers" below). Documents are append-only — a decline or
+expiration is never overwritten, so full offer history is preserved for
+auditing and statistics.
+
+`response: null` means the offer is still pending. `"expired"` means the
+offer was superseded before the driver responded (e.g. another driver
+claimed the request first, or it was cancelled/reassigned).
+
+## config/dispatchSettings
+
+```ts
+{
+  maxDeclinesPerDay: number
+  declineCooldownHours: number
+  updatedAt: Timestamp
+  updatedBy: string   // uid of the admin who last saved these values
+}
+```
+
+Admin-editable dispatch settings (see "Dispatch Offers" below). If this
+document does not exist yet, the application falls back to
+`appConfig.defaultMaxDeclinesPerDay` / `defaultDeclineCooldownHours`
+(`src/lib/domain/config.ts`) without writing anything — the document is
+only created the first time an admin saves settings.
+
+## config/dispatchSettings/events/{eventId}
+
+```ts
+{
+  type: "dispatch_settings_updated"
+  actorId: string
+  createdAt: Timestamp
+  oldValues: { maxDeclinesPerDay: number; declineCooldownHours: number }
+  newValues: { maxDeclinesPerDay: number; declineCooldownHours: number }
+}
+```
+
 ## waterRequests/{requestId}/events/{eventId}
 
 ```ts
@@ -218,6 +276,7 @@ Examples:
 request_created
 preferred_driver_selected
 preferred_driver_expired
+preferred_driver_declined
 request_opened
 driver_claimed
 driver_reassigned
@@ -226,6 +285,10 @@ customer_confirmed
 customer_disputed
 request_cancelled
 ```
+
+Driver events (`drivers/{uid}/events/{eventId}`) additionally include
+`driver_cooldown_started`, recorded when a driver reaches the daily
+decline limit (see "Dispatch Offers" below).
 
 Preserve events for auditing and statistics.
 
@@ -259,6 +322,95 @@ Then atomically:
 - Record necessary assignment information.
 
 Only one concurrent driver may succeed.
+
+`claimWaterRequest()` remains the single source of atomic-claim
+correctness. The dispatch offer workflow below is a UI/bookkeeping layer
+built on top of it, not a replacement for it — an offer never reserves a
+request, so `claimWaterRequest()` must still validate live request state
+at accept time.
+
+---
+
+# Dispatch Offers
+
+Drivers do not browse a list of open requests. Instead, an eligible,
+online driver is shown at most one claimable offer at a time
+(`src/lib/domain/dispatch.ts`, `getNextOfferForDriver()`). This reduces
+cherry-picking (see PRODUCT.md "Dispatch Offers").
+
+## Selection algorithm
+
+1. If the driver has a pending (unanswered) offer whose underlying
+   request is still valid to offer to them, reuse it — reloading the
+   driver portal must not manufacture a new offer while one is pending.
+   Otherwise mark the stale offer `"expired"`.
+2. Otherwise, opportunistically expire any preferred-driver holds whose
+   window has passed (mirrors the previous lazy-expiration behavior, so
+   the general queue stays healthy without a scheduled job).
+3. Select a candidate:
+   - A `preferred_driver_hold` addressed to this driver, if not expired.
+   - Otherwise, the oldest `available` request this driver has not
+     already declined (`getDeclinedRequestIdsForDriver()`), preserving
+     fairness by request age.
+4. Create a `driverOffers` document for the candidate and return it.
+
+## Accept / decline
+
+- **Accept** (`acceptDriverOffer()`) delegates to `claimWaterRequest()`.
+  On success the offer is recorded `"accepted"`. On failure (someone else
+  claimed it first, hold expired, etc.) the offer is recorded `"expired"`
+  — not `"declined"` — since this was not the driver's choice, and the
+  original error propagates to the caller.
+- **Decline** (`declineDriverOffer()`) records `"declined"` and does
+  **not** claim the request; it remains available at its original
+  `requestedAt` for another driver. If the declined offer was a
+  preferred-driver hold addressed to this driver, the hold ends
+  immediately (transitions to `available`, preserving `requestedAt`) and
+  a `preferred_driver_declined` event is recorded, rather than waiting
+  for the hold window to expire.
+
+## Decline limit and cooldown
+
+After recording a decline, `declineDriverOffer()` checks the driver's
+decline count for the current local day
+(`countDeclinesToday()`) against the admin-configurable
+`config/dispatchSettings.maxDeclinesPerDay` (default 3). If the driver has
+reached the limit, `startDriverCooldown()` sets
+`drivers/{uid}.cooldownUntil` to `now + declineCooldownHours` (default 1
+hour) and records a `driver_cooldown_started` driver event.
+
+`cooldownUntil` is intentionally separate from `eligibilityStatus`
+(government authorization) and `availabilityStatus` (the driver's own
+online/offline preference) — see PRODUCT.md "Driver Availability" and
+"Dispatch Offers". While in cooldown:
+
+- The driver receives no new offers (`getNextOfferForDriver()` prerequisite,
+  enforced by the caller in `src/app/driver/page.tsx`).
+- `setDriverAvailability()` rejects a transition to `"online"` with
+  `DRIVER_IN_COOLDOWN` — a driver cannot bypass the cooldown by toggling
+  offline and back online, because enforcement compares `cooldownUntil`
+  against server time, not client state.
+- Existing claimed deliveries and `markWaterDelivered()` remain fully
+  available.
+
+### Local-day decline counting and timezone
+
+"Per day" is defined using the local operational day for Saba, configured
+as `appConfig.operationalTimezone` (`America/Kralendijk` — Caribbean
+Netherlands, fixed UTC-4 with no daylight saving). `countDeclinesToday()`
+bounds its Firestore query with a generous 26-hour lookback and then
+filters precisely by comparing each decline's formatted local calendar
+date (`Intl.DateTimeFormat` with `timeZone`) against today's local date.
+This avoids having to compute an exact UTC instant for local midnight and
+remains correct even if the timezone ever changes to one that observes
+DST.
+
+## Avoiding re-offer loops
+
+`getDeclinedRequestIdsForDriver()` excludes requests a driver has already
+declined from being selected as their next offer again, bounded to a
+recent window of their own decline history — enough to prevent obvious
+loops without an unbounded read.
 
 ---
 
@@ -299,6 +451,12 @@ setDriverAvailability()
 restrictDriverAccess()
 restoreDriverAccess()
 expirePreferredDriverHold()
+getNextOfferForDriver()
+acceptDriverOffer()
+declineDriverOffer()
+startDriverCooldown()
+getDispatchSettings()
+updateDispatchSettings()
 ```
 
 Future WhatsApp actions should call the same domain operations.
@@ -317,9 +475,10 @@ Residents should only access appropriate customer-facing data, primarily their o
 
 Drivers should only access data necessary for:
 
-- Eligible available requests
+- Their currently offered request (dispatch offer), not a browsable list
+  of all open requests
 - Their claimed deliveries
-- Their own driver profile/history
+- Their own driver profile/history and offer history
 
 Dispatchers should have operational access.
 
