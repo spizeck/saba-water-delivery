@@ -100,8 +100,8 @@ confirmWaterDelivery
 disputeWaterDelivery
 cancelWaterRequest
 setDriverAvailability
-suspendDriver
-reactivateDriver
+restrictDriverAccess
+restoreDriverAccess
 ```
 
 These functions should be reusable later by non-web interfaces such as WhatsApp.
@@ -161,7 +161,7 @@ A dispatcher should quickly see:
 - Aging requests
 - Delivered/unconfirmed requests
 - Disputes
-- Suspended drivers
+- Ineligible drivers
 
 ## Admin
 
@@ -226,7 +226,7 @@ Do not add:
 
 Drivers currently collect payment from customers and separately pay government for water.
 
-Government staff only need the ability to manually suspend/reactivate drivers in V1.
+Government staff only need the ability to manually restrict/restore driver delivery access in V1.
 
 ---
 
@@ -267,7 +267,7 @@ Unless the existing repository creates a strong reason otherwise, work approxima
 10. Driver active-delivery workflow
 11. Delivery confirmation
 12. Dispatcher dashboard
-13. Driver suspension/reactivation
+13. Driver delivery access management
 14. Statistics dashboard
 15. UI refinement and testing
 
@@ -300,7 +300,7 @@ The MVP is successful when:
 - A driver can mark the delivery complete.
 - A resident can confirm or dispute delivery.
 - Government staff can see and manage the complete queue.
-- Government staff can suspend/reactivate drivers.
+- Government staff can restrict/restore driver delivery access.
 - Important state changes are auditable.
 - Operational statistics are available.
 - Permissions are enforced beyond the UI.

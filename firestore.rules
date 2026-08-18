@@ -48,7 +48,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Driver authorization/suspension state is staff-managed. Drivers may
+    // Driver eligibility state is staff-managed. Drivers may
     // read their own profile; availability toggling should go through a
     // trusted server function once implemented rather than a raw write.
     match /drivers/{driverId} {

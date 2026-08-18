@@ -28,7 +28,7 @@ The government water system, not an individual driver, owns the request.
    - Future WhatsApp interfaces must use the same underlying request system.
 
 5. **Government oversight**
-   - Government staff can view all activity, intervene when necessary and suspend drivers.
+   - Government staff can view all activity, intervene when necessary and restrict driver delivery access.
 
 6. **Measure everything useful**
    - The system should preserve timestamps and events needed for operational statistics.
@@ -70,9 +70,9 @@ Drivers can:
 - Mark a delivery as delivered.
 - View their delivery history.
 
-Drivers may also be suspended by government staff.
+Government staff may restrict a driver's delivery access.
 
-A suspended driver cannot claim new deliveries regardless of their online/offline preference.
+An ineligible driver cannot claim new deliveries regardless of their online/offline preference.
 
 ## Dispatcher
 
@@ -90,7 +90,7 @@ Dispatchers can:
 Administrators have dispatcher capabilities plus system-management capabilities such as:
 
 - Managing drivers.
-- Suspending/reactivating drivers.
+- Restricting/restoring driver delivery access.
 - Managing application settings.
 - Managing user roles.
 
@@ -149,20 +149,20 @@ A driver can set:
 
 Government controls whether the driver is:
 
-- `active`
-- `suspended`
+- `eligible`
+- `ineligible`
 
-An active, online driver can claim eligible requests.
+An eligible, online driver can claim eligible requests.
 
-An active, offline driver receives no new work.
+An eligible, offline driver receives no new work.
 
-A suspended driver cannot claim new work.
+An ineligible driver cannot claim new work.
 
-Suspensions may occur for reasons including outstanding payment owed to government for water collected.
+Access may be restricted for reasons including outstanding water payment, administrative requirements, or other corrective actions.
 
 V1 does not calculate driver balances or integrate accounting.
 
-Suspension/reactivation should be manually controlled by authorized government staff and recorded in the audit history.
+Restricting and restoring delivery access should be manually controlled by authorized government staff and recorded in the audit history.
 
 ---
 
@@ -286,7 +286,7 @@ Current business process:
 - Driver pays government for the water.
 - Driver retains the delivery portion.
 
-Government may suspend a driver for non-payment.
+Government may restrict a driver's delivery access for non-payment.
 
 Do not build:
 

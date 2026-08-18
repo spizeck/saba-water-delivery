@@ -24,25 +24,25 @@ export async function setDriverAvailability(
   throw new Error("setDriverAvailability is not implemented yet.");
 }
 
-export interface SuspendDriverInput {
+export interface RestrictDriverAccessInput {
   driverId: string;
-  suspendedBy: string;
+  restrictedBy: string;
   reason: string;
 }
 
-export async function suspendDriver(
-  _input: SuspendDriverInput,
+export async function restrictDriverAccess(
+  _input: RestrictDriverAccessInput,
 ): Promise<DriverProfile> {
-  throw new Error("suspendDriver is not implemented yet.");
+  throw new Error("restrictDriverAccess is not implemented yet.");
 }
 
-export interface ReactivateDriverInput {
+export interface RestoreDriverAccessInput {
   driverId: string;
-  reactivatedBy: string;
+  restoredBy: string;
 }
 
-export async function reactivateDriver(
-  _input: ReactivateDriverInput,
+export async function restoreDriverAccess(
+  _input: RestoreDriverAccessInput,
 ): Promise<DriverProfile> {
-  throw new Error("reactivateDriver is not implemented yet.");
+  throw new Error("restoreDriverAccess is not implemented yet.");
 }

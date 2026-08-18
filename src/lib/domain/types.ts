@@ -23,18 +23,18 @@ export interface UserProfile {
   updatedAt: string;
 }
 
-export type DriverAuthorizationStatus = "active" | "suspended";
+export type DriverEligibilityStatus = "eligible" | "ineligible";
 export type DriverAvailabilityStatus = "online" | "offline";
 
 export interface DriverProfile {
   userId: string;
 
-  authorizationStatus: DriverAuthorizationStatus;
+  eligibilityStatus: DriverEligibilityStatus;
   availabilityStatus: DriverAvailabilityStatus;
 
-  suspensionReason: string | null;
-  suspendedAt: string | null;
-  suspendedBy: string | null;
+  ineligibilityReason: string | null;
+  restrictedAt: string | null;
+  restrictedBy: string | null;
 
   createdAt: string;
   updatedAt: string;

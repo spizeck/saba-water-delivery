@@ -19,7 +19,7 @@ export default async function AdminPortalPage() {
         <Container>
           <ComingSoon
             title="System administration"
-            description="Administrators will manage drivers, suspend/reactivate drivers, manage application settings, and manage user roles here."
+            description="Administrators will manage drivers, restrict/restore driver delivery access, manage application settings, and manage user roles here."
           />
         </Container>
       </main>

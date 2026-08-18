@@ -80,12 +80,12 @@ This is a starting model, not an instruction to blindly reproduce every field.
 {
   userId: string
 
-  authorizationStatus: "active" | "suspended"
+  eligibilityStatus: "eligible" | "ineligible"
   availabilityStatus: "online" | "offline"
 
-  suspensionReason: string | null
-  suspendedAt: Timestamp | null
-  suspendedBy: string | null
+  ineligibilityReason: string | null
+  restrictedAt: Timestamp | null
+  restrictedBy: string | null
 
   createdAt: Timestamp
   updatedAt: Timestamp
@@ -226,8 +226,8 @@ confirmWaterDelivery()
 disputeWaterDelivery()
 cancelWaterRequest()
 setDriverAvailability()
-suspendDriver()
-reactivateDriver()
+restrictDriverAccess()
+restoreDriverAccess()
 expirePreferredDriverHold()
 ```
 
@@ -255,7 +255,7 @@ Dispatchers should have operational access.
 
 Admins should have administrative access.
 
-Privileged operations such as role changes, suspensions and forced reassignments should happen through trusted server-side code.
+Privileged operations such as role changes, delivery access restrictions and forced reassignments should happen through trusted server-side code.
 
 Design Firestore queries together with Security Rules.
 
@@ -291,8 +291,8 @@ At minimum audit:
 - Customer confirmation
 - Customer dispute
 - Cancellation
-- Driver suspension
-- Driver reactivation
+- Driver delivery access restricted
+- Driver delivery access restored
 
 For administrative actions, record the responsible user.
 
@@ -363,6 +363,6 @@ Do not implement:
 - Multiple water quantities
 - Native mobile apps
 - WhatsApp integration
-- Automated billing-based driver suspension
+- Automated billing-based driver access restriction
 
 Build the underlying architecture so reasonable future additions remain possible without prematurely implementing them.
