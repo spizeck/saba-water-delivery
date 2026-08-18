@@ -101,6 +101,19 @@ This is a starting model, not an instruction to blindly reproduce every field.
 > of `roles`. The application reads both formats safely. New documents and
 > profile updates always write `roles`.
 
+## users/{uid}/roleEvents/{eventId}
+
+```ts
+{
+  type: "role_added" | "role_removed"
+  role: "driver" | "dispatcher" | "admin"
+  actorId: string        // uid of the admin who made the change
+  createdAt: Timestamp
+}
+```
+
+Role changes are recorded here for audit. These are admin-only operations.
+
 ## drivers/{uid}
 
 ```ts

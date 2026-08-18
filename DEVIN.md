@@ -329,6 +329,38 @@ Do not jump ahead into WhatsApp or payments.
 
 ---
 
+# Admin Portal
+
+The `/admin` portal provides user and role management. Only users with the
+`admin` role may access it.
+
+## Features
+
+- User list with search/filter by name, email, or role
+- User detail view with profile info, role management, and history
+- Add/remove operational roles (driver, dispatcher, admin)
+- Driver eligibility management (restrict/restore delivery access)
+- Role-change audit trail (`users/{uid}/roleEvents` subcollection)
+
+## Key behaviors
+
+- `resident` is the baseline role and cannot be removed.
+- Adding `driver` role creates a `drivers/{uid}` document (ineligible/offline).
+- Removing `driver` role forces driver offline but preserves history.
+- Admin cannot remove their own `admin` role (self-lockout protection).
+- The last system admin cannot be removed (system lockout protection).
+- All role mutations happen server-side via Admin SDK.
+- Active delivery assignments are NOT silently reassigned when driver role
+  is removed — admin receives a warning.
+
+## Domain logic
+
+- `src/lib/domain/admin.ts` — user listing, role add/remove, audit queries
+- `src/app/admin/actions.ts` — server actions with admin authorization
+- `src/app/admin/users/[uid]/` — user detail page and role management UI
+
+---
+
 # Before Major Changes
 
 Before making a significant architectural decision:

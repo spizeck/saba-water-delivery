@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 
-import { ComingSoon } from "@/components/layout/ComingSoon";
 import { PortalHeader } from "@/components/layout/PortalHeader";
+import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
+import { getAllUsers } from "@/lib/domain/admin";
+
+import { UserList } from "./UserList";
 
 export const metadata: Metadata = {
   title: "Admin — Saba Water Delivery",
@@ -11,16 +14,22 @@ export const metadata: Metadata = {
 
 export default async function AdminPortalPage() {
   const { profile } = await requireRole("admin");
+  const users = await getAllUsers();
 
   return (
     <>
       <PortalHeader portalName="Admin" roles={profile.roles} />
       <main className="flex-1 py-8">
-        <Container>
-          <ComingSoon
-            title="System administration"
-            description="Administrators will manage drivers, restrict/restore driver delivery access, manage application settings, and manage user roles here."
-          />
+        <Container className="flex flex-col gap-6 max-w-5xl">
+          <Card>
+            <h1 className="text-2xl font-bold text-slate-900">
+              System Administration
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Manage users, roles, and driver access.
+            </p>
+          </Card>
+          <UserList users={users} />
         </Container>
       </main>
     </>

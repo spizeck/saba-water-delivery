@@ -106,12 +106,20 @@ Dispatchers can:
 
 ## Administrator
 
-Administrators have dispatcher capabilities plus system-management capabilities such as:
+Administrators have dispatcher capabilities plus system-management capabilities:
 
-- Managing drivers.
+- Viewing all users with their roles and driver status.
+- Adding/removing operational roles (driver, dispatcher, admin).
 - Restricting/restoring driver delivery access.
-- Managing application settings.
-- Managing user roles.
+- Managing application settings (planned).
+
+Role management safeguards:
+
+- Admins cannot remove their own admin role (self-lockout protection).
+- The last system admin cannot be removed (system lockout protection).
+- Adding the driver role creates a driver profile (ineligible by default).
+- Removing the driver role forces offline but preserves delivery history.
+- Role changes are audited with actor and timestamp.
 
 Dispatcher and administrator should be separate roles even if their permissions overlap initially.
 
