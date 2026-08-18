@@ -1,20 +1,49 @@
 import type { Metadata } from "next";
 
 import { PortalHeader } from "@/components/layout/PortalHeader";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
+import { getEligibleDriverOptions } from "@/lib/domain/drivers";
+import { getUserProfile } from "@/lib/domain/users";
+import {
+  getActiveRequestForCustomer,
+  getRequestsForCustomer,
+} from "@/lib/domain/waterRequests";
 
+import { ActiveRequest } from "./ActiveRequest";
 import { ProfileForm } from "./ProfileForm";
+import { RequestHistory } from "./RequestHistory";
+import { WaterRequestForm } from "./WaterRequestForm";
 
 export const metadata: Metadata = {
   title: "Resident — Saba Water Delivery",
 };
 
 export default async function ResidentPortalPage() {
-  const { profile } = await requireRole("resident");
-  const profileComplete = Boolean(profile.village?.trim() && profile.deliveryDirections?.trim());
+  const { uid, profile } = await requireRole("resident");
+  const profileComplete = Boolean(
+    profile.village?.trim() && profile.deliveryDirections?.trim(),
+  );
+
+  // Fetch active request and eligible drivers in parallel.
+  const [activeRequest, eligibleDrivers, allRequests] = await Promise.all([
+    profileComplete ? getActiveRequestForCustomer(uid) : null,
+    profileComplete ? getEligibleDriverOptions() : [],
+    profileComplete ? getRequestsForCustomer(uid) : [],
+  ]);
+
+  // Resolve preferred driver name for the active request display.
+  let preferredDriverName: string | null = null;
+  if (activeRequest?.preferredDriverId) {
+    const driverProfile = await getUserProfile(activeRequest.preferredDriverId);
+    preferredDriverName = driverProfile?.displayName ?? null;
+  }
+
+  // History excludes the currently active request.
+  const historyRequests = activeRequest
+    ? allRequests.filter((r) => r.id !== activeRequest.id)
+    : allRequests;
 
   return (
     <>
@@ -32,17 +61,33 @@ export default async function ResidentPortalPage() {
             </p>
           </Card>
 
-          <Card>
-            <h2 className="text-lg font-bold text-slate-900">Request water</h2>
-            <p className="mt-2 text-slate-600">
-              {profileComplete
-                ? "Water requests aren't open yet in this version of the app \u2014 check back soon."
-                : "Complete your profile below to unlock water requests."}
-            </p>
-            <Button size="lg" disabled className="mt-4">
-              Request 1,000 Gallons
-            </Button>
-          </Card>
+          {/* Water request section */}
+          {profileComplete ? (
+            activeRequest ? (
+              <ActiveRequest
+                request={activeRequest}
+                preferredDriverName={preferredDriverName}
+              />
+            ) : (
+              <WaterRequestForm
+                village={profile.village!}
+                deliveryDirections={profile.deliveryDirections!}
+                eligibleDrivers={eligibleDrivers}
+              />
+            )
+          ) : (
+            <Card>
+              <h2 className="text-lg font-bold text-slate-900">Request water</h2>
+              <p className="mt-2 text-slate-600">
+                Complete your profile below to unlock water requests.
+              </p>
+            </Card>
+          )}
+
+          {/* Request history */}
+          {profileComplete && historyRequests.length > 0 && (
+            <RequestHistory requests={historyRequests} />
+          )}
 
           <ProfileForm profile={profile} />
         </Container>
