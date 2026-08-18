@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
@@ -22,12 +23,22 @@ export default async function AdminPortalPage() {
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6 max-w-5xl">
           <Card>
-            <h1 className="text-2xl font-bold text-slate-900">
-              System Administration
-            </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Manage users, roles, and driver access.
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  System Administration
+                </h1>
+                <p className="mt-1 text-sm text-slate-600">
+                  Manage users, roles, and driver access.
+                </p>
+              </div>
+              <Link
+                href="/statistics"
+                className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                View Statistics
+              </Link>
+            </div>
           </Card>
           <UserList users={users} />
         </Container>

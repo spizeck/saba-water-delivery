@@ -118,8 +118,12 @@ Role management safeguards:
 - Admins cannot remove their own admin role (self-lockout protection).
 - The last system admin cannot be removed (system lockout protection).
 - Adding the driver role creates a driver profile (ineligible by default).
-- Removing the driver role forces offline but preserves delivery history.
+- Removing the driver role is blocked when active deliveries exist.
 - Role changes are audited with actor and timestamp.
+
+Both dispatchers and administrators can view operational statistics including
+demand trends, delivery metrics, driver activity, preferred-driver usage,
+and dispute rates.
 
 Dispatcher and administrator should be separate roles even if their permissions overlap initially.
 

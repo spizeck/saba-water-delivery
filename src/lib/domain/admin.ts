@@ -264,6 +264,14 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
     }
   }
 
+  // Driver removal: block if the driver has active claimed deliveries.
+  if (role === "driver") {
+    const activeCount = await getActiveDeliveryCount(targetUid);
+    if (activeCount > 0) {
+      throw new Error("DRIVER_HAS_ACTIVE_DELIVERIES");
+    }
+  }
+
   const newRoles = currentRoles.filter((r) => r !== role);
 
   // Write canonical roles array, remove legacy role field.

@@ -8,7 +8,6 @@ import { requireRole } from "@/lib/auth/session";
 import { getDriverEvents, getRoleEvents } from "@/lib/domain/admin";
 import { getDriverProfile } from "@/lib/domain/drivers";
 import { getUserProfile } from "@/lib/domain/users";
-import { getActiveDeliveryCount } from "@/lib/domain/admin";
 
 import { DriverEligibilitySection } from "./DriverEligibilitySection";
 import { RoleManagement } from "./RoleManagement";
@@ -52,13 +51,11 @@ export default async function UserDetailPage({ params }: PageProps) {
   const isDriver = targetUser.roles.includes("driver");
 
   // Fetch driver profile and events in parallel if user is a driver.
-  const [driverProfile, roleEvents, driverEvents, activeDeliveries] =
-    await Promise.all([
-      isDriver ? getDriverProfile(uid) : null,
-      getRoleEvents(uid),
-      isDriver ? getDriverEvents(uid) : [],
-      isDriver ? getActiveDeliveryCount(uid) : 0,
-    ]);
+  const [driverProfile, roleEvents, driverEvents] = await Promise.all([
+    isDriver ? getDriverProfile(uid) : null,
+    getRoleEvents(uid),
+    isDriver ? getDriverEvents(uid) : [],
+  ]);
 
   // Resolve actor names for events.
   const actorIds = [
@@ -127,7 +124,6 @@ export default async function UserDetailPage({ params }: PageProps) {
             targetUid={uid}
             currentRoles={targetUser.roles}
             isOwnAccount={uid === adminUid}
-            activeDeliveries={activeDeliveries}
           />
 
           {/* Driver eligibility section (only for users with driver role) */}

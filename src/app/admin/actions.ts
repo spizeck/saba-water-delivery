@@ -65,22 +65,9 @@ export async function removeUserRole(
   const session = await requireAdmin();
   const targetUid = String(formData.get("targetUid") ?? "").trim();
   const role = String(formData.get("role") ?? "").trim();
-  const confirmed = formData.get("confirmed") === "true";
 
   if (!targetUid) return { status: "error", message: "Missing user ID." };
   if (!isUserRole(role)) return { status: "error", message: "Invalid role." };
-
-  // If removing driver role, check for active deliveries and warn if not confirmed.
-  if (role === "driver" && !confirmed) {
-    const activeCount = await getActiveDeliveryCount(targetUid);
-    if (activeCount > 0) {
-      return {
-        status: "error",
-        message: `This driver has ${activeCount} active delivery assignment(s). Removing the driver role will NOT cancel or reassign them. Confirm to proceed.`,
-        activeDeliveries: activeCount,
-      };
-    }
-  }
 
   try {
     await removeRole({ targetUid, role: role as UserRole, actorId: session.uid });
@@ -97,6 +84,14 @@ export async function removeUserRole(
           return { status: "error", message: "You cannot remove your own admin role." };
         case "LAST_ADMIN":
           return { status: "error", message: "Cannot remove the last admin from the system." };
+        case "DRIVER_HAS_ACTIVE_DELIVERIES": {
+          const count = await getActiveDeliveryCount(targetUid);
+          return {
+            status: "error",
+            message: `Cannot remove driver role: this driver has ${count} active claimed delivery assignment(s). Resolve or reassign them through the dispatcher workflow first.`,
+            activeDeliveries: count,
+          };
+        }
         default:
           throw err;
       }

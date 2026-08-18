@@ -214,6 +214,30 @@ export default async function RequestDetailPage({ params }: PageProps) {
             </dl>
           </Card>
 
+          {/* Dispute reason — prominently displayed for disputed requests */}
+          {status === "disputed" && (() => {
+            const disputeEvent = events.find((e) => e.type === "customer_disputed");
+            const reason = disputeEvent?.metadata?.reason as string | undefined;
+            return (
+              <Card className="!border-red-200 !bg-red-50">
+                <h2 className="text-sm font-bold text-red-900">
+                  Dispute Reason
+                </h2>
+                <p className="mt-1 text-sm text-red-800">
+                  {reason || "No reason provided by resident."}
+                </p>
+                {disputeEvent && (
+                  <p className="mt-2 text-xs text-red-600">
+                    Disputed on {formatDate(disputeEvent.createdAt)}
+                    {disputeEvent.actorId && (
+                      <> by {actorNames[disputeEvent.actorId] ?? "Customer"}</>
+                    )}
+                  </p>
+                )}
+              </Card>
+            );
+          })()}
+
           {/* Actions */}
           <RequestActions
             requestId={requestId}

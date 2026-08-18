@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
@@ -80,6 +81,14 @@ export default async function DispatcherPortalPage() {
       <PortalHeader portalName="Dispatcher" roles={profile.roles} />
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-8 max-w-5xl">
+          <div className="flex justify-end">
+            <Link
+              href="/statistics"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              View Statistics
+            </Link>
+          </div>
           <RequestList
             requests={sortedRequests}
             customerNames={customerNames}

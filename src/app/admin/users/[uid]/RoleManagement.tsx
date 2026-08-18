@@ -18,14 +18,12 @@ interface RoleManagementProps {
   targetUid: string;
   currentRoles: UserRole[];
   isOwnAccount: boolean;
-  activeDeliveries: number;
 }
 
 export function RoleManagement({
   targetUid,
   currentRoles,
   isOwnAccount,
-  activeDeliveries,
 }: RoleManagementProps) {
   const [confirmingRemove, setConfirmingRemove] = useState<UserRole | null>(null);
 
@@ -60,7 +58,6 @@ export function RoleManagement({
               description={description}
               hasRole={hasRole}
               isOwnAccount={isOwnAccount}
-              activeDeliveries={activeDeliveries}
               isConfirming={confirmingRemove === role}
               onConfirmStart={() => setConfirmingRemove(role)}
               onConfirmCancel={() => setConfirmingRemove(null)}
@@ -79,7 +76,6 @@ interface RoleRowProps {
   description: string;
   hasRole: boolean;
   isOwnAccount: boolean;
-  activeDeliveries: number;
   isConfirming: boolean;
   onConfirmStart: () => void;
   onConfirmCancel: () => void;
@@ -92,7 +88,6 @@ function RoleRow({
   description,
   hasRole,
   isOwnAccount,
-  activeDeliveries,
   isConfirming,
   onConfirmStart,
   onConfirmCancel,
@@ -100,13 +95,6 @@ function RoleRow({
   const initialState: RoleActionState = { status: "idle" };
   const [addState, addAction, addPending] = useActionState(addUserRole, initialState);
   const [removeState, removeAction, removePending] = useActionState(removeUserRole, initialState);
-
-  const canRemoveAdmin = !(isOwnAccount && role === "admin");
-  const showDriverWarning = role === "driver" && hasRole && activeDeliveries > 0;
-
-  // If we got a warning about active deliveries from the server, show the confirm UI.
-  const needsConfirmation =
-    isConfirming || (removeState.status === "error" && removeState.activeDeliveries);
 
   return (
     <div className="rounded-lg border border-slate-100 p-3">
@@ -162,23 +150,20 @@ function RoleRow({
       {removeState.status === "success" && (
         <p className="mt-2 text-xs font-medium text-green-700">{removeState.message}</p>
       )}
-      {removeState.status === "error" && !needsConfirmation && (
+      {removeState.status === "error" && (
         <p className="mt-2 text-xs font-medium text-red-700">{removeState.message}</p>
       )}
 
       {/* Confirmation dialog for removal */}
-      {hasRole && needsConfirmation && canRemoveAdmin && (
+      {hasRole && isConfirming && !(role === "admin" && isOwnAccount) && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-medium text-amber-800">
-            {showDriverWarning || removeState.activeDeliveries
-              ? `This driver has ${removeState.activeDeliveries ?? activeDeliveries} active delivery assignment(s). Removing the role will NOT cancel or reassign them.`
-              : `Remove the ${label} role from this user?`}
+            Remove the {label} role from this user?
           </p>
           <div className="mt-2 flex gap-2">
             <form action={removeAction}>
               <input type="hidden" name="targetUid" value={targetUid} />
               <input type="hidden" name="role" value={role} />
-              <input type="hidden" name="confirmed" value="true" />
               <Button
                 type="submit"
                 variant="primary"

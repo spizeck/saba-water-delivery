@@ -350,14 +350,57 @@ The `/admin` portal provides user and role management. Only users with the
 - Admin cannot remove their own `admin` role (self-lockout protection).
 - The last system admin cannot be removed (system lockout protection).
 - All role mutations happen server-side via Admin SDK.
-- Active delivery assignments are NOT silently reassigned when driver role
-  is removed — admin receives a warning.
+- Driver role removal is BLOCKED when active claimed deliveries exist.
+  The admin must resolve/reassign deliveries through the dispatcher workflow first.
 
 ## Domain logic
 
 - `src/lib/domain/admin.ts` — user listing, role add/remove, audit queries
 - `src/app/admin/actions.ts` — server actions with admin authorization
 - `src/app/admin/users/[uid]/` — user detail page and role management UI
+
+---
+
+# Statistics Dashboard
+
+The `/statistics` page provides operational metrics for dispatcher and admin
+staff. Accessible via "View Statistics" links in both portals.
+
+## Access
+
+- `dispatcher` and `admin` roles only (enforced server-side).
+
+## Period filters
+
+- Last 7 days, Last 30 days, This month, This year, All time.
+- Default: Last 30 days.
+
+## Metric sections
+
+- **Summary cards:** Total requests, confirmed, unconfirmed, disputed, cancelled, gallons.
+- **Current operations:** Open requests, aging (>24h, >48h), unresolved disputes, oldest.
+- **Average times:** Request→Claim, Request→Delivery, Claim→Delivery, Delivery→Confirm.
+- **Request volume:** Bar chart (daily for short periods, monthly for year/all).
+- **Village demand:** Table sorted by highest demand, uses request village snapshot.
+- **Driver operations:** Table with loads/deliveries/times/status per driver.
+- **Preferred driver:** Usage rate, claimed by preferred, expired to queue, comparative timing.
+- **Disputes:** Total, unresolved, resolved breakdown, dispute rate.
+
+## Key methodology
+
+- Gallons delivered = count of requests reaching delivered status × 1,000.
+- Driver attribution uses current `assignedDriverId` (reflects final delivering driver).
+- Dispute rate = disputes created / requests reaching delivered status.
+- Preferred-driver expiration detected from `preferred_driver_expired` events.
+- A single request counts as ONE customer request even if reopened after dispute.
+- Missing timestamps are excluded from averages (not treated as zero).
+- All calculations happen server-side from Firestore source collections.
+- No parallel analytics database or ETL.
+
+## Domain logic
+
+- `src/lib/domain/statistics.ts` — all aggregation logic
+- `src/app/statistics/` — page and UI components
 
 ---
 
