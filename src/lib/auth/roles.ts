@@ -15,12 +15,20 @@ export function isUserRole(value: unknown): value is UserRole {
 }
 
 /**
+ * Returns true if the user possesses at least one of the specified roles.
+ */
+export function hasRole(userRoles: UserRole[], required: UserRole | UserRole[]): boolean {
+  const allowed = Array.isArray(required) ? required : [required];
+  return allowed.some((r) => userRoles.includes(r));
+}
+
+/**
  * Dispatchers and admins share operational access; admins additionally
  * manage drivers, roles, and application settings. This helper centralizes
  * that relationship so it isn't re-derived ad hoc across the app.
  */
-export function hasStaffAccess(role: UserRole | null | undefined): boolean {
-  return role === "dispatcher" || role === "admin";
+export function hasStaffAccess(roles: UserRole[]): boolean {
+  return roles.includes("dispatcher") || roles.includes("admin");
 }
 
 /**

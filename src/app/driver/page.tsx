@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DriverPortalPage() {
-  const { uid } = await requireRole("driver");
+  const { uid, profile } = await requireRole("driver");
 
   // Ensure driver document exists (new drivers are ineligible by default).
   const driverProfile = await ensureDriverProfile(uid);
@@ -51,7 +51,7 @@ export default async function DriverPortalPage() {
 
   return (
     <>
-      <PortalHeader portalName="Driver" />
+      <PortalHeader portalName="Driver" roles={profile.roles} />
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6">
           {/* Status card */}

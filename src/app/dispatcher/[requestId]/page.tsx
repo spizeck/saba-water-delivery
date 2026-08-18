@@ -73,7 +73,7 @@ interface PageProps {
 }
 
 export default async function RequestDetailPage({ params }: PageProps) {
-  await requireRole(["dispatcher", "admin"]);
+  const { profile } = await requireRole(["dispatcher", "admin"]);
   const { requestId } = await params;
 
   const db = getAdminDb();
@@ -82,7 +82,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
   if (!requestDoc.exists) {
     return (
       <>
-        <PortalHeader portalName="Dispatcher" />
+        <PortalHeader portalName="Dispatcher" roles={profile.roles} />
         <main className="flex-1 py-8">
           <Container>
             <Card>
@@ -136,7 +136,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
 
   return (
     <>
-      <PortalHeader portalName="Dispatcher" />
+      <PortalHeader portalName="Dispatcher" roles={profile.roles} />
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6 max-w-5xl">
           <div>

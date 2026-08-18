@@ -48,9 +48,31 @@ dispatcher
 admin
 ```
 
+A single user may hold **multiple roles** simultaneously. The canonical field is:
+
+```ts
+roles: Array<"resident" | "driver" | "dispatcher" | "admin">
+```
+
+New users default to `roles: ["resident"]`. Roles are only granted through
+trusted server-side (Admin SDK) operations — never by client writes.
+
+**Backward compatibility:** Existing Firestore user documents may still contain
+a singular `role` field. The server-side `toUserProfile()` function handles both
+formats transparently (reading `roles` if present, otherwise wrapping the
+singular `role` into an array). New documents are always written with the
+`roles` array.
+
 Role checks must be enforced server-side and/or through Firestore Security Rules as appropriate.
 
 Do not trust role values submitted by clients.
+
+## Role vs Eligibility (Drivers)
+
+Having the `driver` role grants access to driver portal functionality. Whether a
+driver may actually claim deliveries is controlled separately by
+`drivers/{uid}.eligibilityStatus`. These are independent concepts and must not
+be conflated.
 
 ---
 
@@ -65,7 +87,7 @@ This is a starting model, not an instruction to blindly reproduce every field.
   displayName: string
   email: string | null
   phone: string | null
-  role: "resident" | "driver" | "dispatcher" | "admin"
+  roles: Array<"resident" | "driver" | "dispatcher" | "admin">
 
   village: string | null
   deliveryDirections: string | null
@@ -74,6 +96,10 @@ This is a starting model, not an instruction to blindly reproduce every field.
   updatedAt: Timestamp
 }
 ```
+
+> **Migration note:** Legacy documents may have a singular `role` field instead
+> of `roles`. The application reads both formats safely. New documents and
+> profile updates always write `roles`.
 
 ## drivers/{uid}
 

@@ -5,16 +5,38 @@ import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 
 import type { UserProfile, UserRole } from "./types";
+import { isUserRole } from "@/lib/auth/roles";
 
 const USERS_COLLECTION = "users";
 
+/**
+ * Normalizes a Firestore user document into a UserProfile.
+ *
+ * Handles backward compatibility: existing documents may have a singular
+ * `role` field instead of the canonical `roles` array. This function
+ * reads both and produces a valid `roles` array regardless of which
+ * field(s) are present in the stored document.
+ */
 function toUserProfile(uid: string, data: DocumentData): UserProfile {
+  let roles: UserRole[];
+
+  if (Array.isArray(data.roles) && data.roles.length > 0) {
+    // New canonical format
+    roles = data.roles.filter((r: unknown) => isUserRole(r));
+  } else if (isUserRole(data.role)) {
+    // Legacy singular-role format — treat as single-element array
+    roles = [data.role];
+  } else {
+    // Fallback: no valid role info, default to resident
+    roles = ["resident"];
+  }
+
   return {
     uid,
     displayName: data.displayName ?? "",
     email: data.email ?? null,
     phone: data.phone ?? null,
-    role: data.role,
+    roles,
     village: data.village ?? null,
     deliveryDirections: data.deliveryDirections ?? null,
     createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
@@ -38,11 +60,11 @@ export interface EnsureUserProfileInput {
 /**
  * Ensures a Firestore profile exists for a newly authenticated user.
  *
- * New users always default to the "resident" role — this is the only
- * place a role is ever assigned to a brand-new account, and it is not
+ * New users always default to roles: ["resident"] — this is the only
+ * place roles are ever assigned to a brand-new account, and it is not
  * influenced by anything the client submits. If a profile already
  * exists, it is returned unchanged: re-authenticating must never reset
- * an existing user's role or overwrite their saved profile information.
+ * an existing user's roles or overwrite their saved profile information.
  */
 export async function ensureUserProfile(input: EnsureUserProfileInput): Promise<UserProfile> {
   const ref = getAdminDb().collection(USERS_COLLECTION).doc(input.uid);
@@ -51,13 +73,13 @@ export async function ensureUserProfile(input: EnsureUserProfileInput): Promise<
     return toUserProfile(input.uid, existing.data()!);
   }
 
-  const defaultRole: UserRole = "resident";
+  const defaultRoles: UserRole[] = ["resident"];
   const now = FieldValue.serverTimestamp();
   await ref.set({
     displayName: input.displayName,
     email: input.email,
     phone: input.phone,
-    role: defaultRole,
+    roles: defaultRoles,
     village: null,
     deliveryDirections: null,
     createdAt: now,

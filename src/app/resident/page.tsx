@@ -23,6 +23,7 @@ export const metadata: Metadata = {
 
 export default async function ResidentPortalPage() {
   const { uid, profile } = await requireRole("resident");
+  const { roles } = profile;
   const profileComplete = Boolean(
     profile.village?.trim() && profile.deliveryDirections?.trim(),
   );
@@ -55,7 +56,7 @@ export default async function ResidentPortalPage() {
 
   return (
     <>
-      <PortalHeader portalName="Resident" />
+      <PortalHeader portalName="Resident" roles={roles} />
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6">
           <Card>

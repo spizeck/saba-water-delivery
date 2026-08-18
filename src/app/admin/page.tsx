@@ -10,11 +10,11 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminPortalPage() {
-  await requireRole("admin");
+  const { profile } = await requireRole("admin");
 
   return (
     <>
-      <PortalHeader portalName="Admin" />
+      <PortalHeader portalName="Admin" roles={profile.roles} />
       <main className="flex-1 py-8">
         <Container>
           <ComingSoon

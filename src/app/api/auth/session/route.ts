@@ -2,15 +2,23 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getAdminAuth, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { ensureUserProfile } from "@/lib/domain/users";
-import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "@/lib/auth/session";
+import {
+  PORTAL_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS,
+} from "@/lib/auth/session";
+import type { UserRole } from "@/lib/domain/types";
+import { hasRole } from "@/lib/auth/roles";
 
 /**
  * Exchanges a Firebase client ID token for an httpOnly session cookie.
  *
  * Also ensures the signed-in user has a Firestore profile, defaulting a
- * brand-new user's role to "resident" (see ensureUserProfile). This is
+ * brand-new user's roles to ["resident"] (see ensureUserProfile). This is
  * the only server endpoint involved in establishing a session; it never
  * trusts a role or uid supplied directly by the request body.
+ *
+ * Returns the user's roles array and a recommended portal to navigate to.
  */
 export async function POST(request: NextRequest) {
   if (!isFirebaseAdminConfigured) {
@@ -46,9 +54,30 @@ export async function POST(request: NextRequest) {
       expiresIn: SESSION_MAX_AGE_SECONDS * 1000,
     });
 
-    const response = NextResponse.json({ role: profile.role });
+    // Determine which portal to redirect to:
+    // 1. If a remembered portal cookie exists and the user still has that role, use it.
+    // 2. Otherwise default to "resident" if they have it, then first available role.
+    const rememberedPortal = request.cookies.get(PORTAL_COOKIE_NAME)?.value as UserRole | undefined;
+    let portal: string;
+    if (rememberedPortal && hasRole(profile.roles, rememberedPortal)) {
+      portal = rememberedPortal;
+    } else if (profile.roles.includes("resident")) {
+      portal = "resident";
+    } else {
+      portal = profile.roles[0] ?? "resident";
+    }
+
+    const response = NextResponse.json({ roles: profile.roles, portal });
     response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
       httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
+    });
+    // Set/refresh the portal cookie
+    response.cookies.set(PORTAL_COOKIE_NAME, portal, {
+      httpOnly: false,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
@@ -65,5 +94,6 @@ export async function POST(request: NextRequest) {
 export async function DELETE() {
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, "", { path: "/", maxAge: 0 });
+  response.cookies.set(PORTAL_COOKIE_NAME, "", { path: "/", maxAge: 0 });
   return response;
 }

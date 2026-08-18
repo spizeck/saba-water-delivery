@@ -37,6 +37,17 @@ The government water system, not an individual driver, owns the request.
 
 # User Roles
 
+A single user may hold **multiple roles simultaneously**. For example, a user
+may be both a resident and a driver, or a resident, driver, and admin. Users do
+not need separate accounts for different functions.
+
+New users default to `roles: ["resident"]`. Additional roles are granted only
+through trusted server-side operations (Admin SDK / Firestore console).
+
+When a user has multiple roles, a portal switcher in the application header
+allows them to navigate between their authorized portals. The switcher is a
+navigation preference only — it does not modify the user's stored roles.
+
 ## Resident
 
 Residents can:
@@ -75,6 +86,12 @@ Drivers can:
 Government staff may restrict a driver's delivery access.
 
 An ineligible driver cannot claim new deliveries regardless of their online/offline preference.
+
+**Important:** Having the `driver` role does NOT make someone eligible to deliver
+water. Role membership (`roles` includes `"driver"`) grants access to driver
+functionality. Eligibility (`drivers/{uid}.eligibilityStatus == "eligible"`)
+determines whether a driver may actually claim deliveries. These are separate
+concepts.
 
 ## Dispatcher
 

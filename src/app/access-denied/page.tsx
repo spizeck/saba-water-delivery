@@ -22,11 +22,11 @@ export default async function AccessDeniedPage() {
             <h1 className="text-xl font-bold text-slate-900">Access denied</h1>
             <p className="mt-2 text-slate-600">
               {session
-                ? `Your account (${session.profile.role}) doesn't have access to that page.`
+                ? `Your account (${session.profile.roles.join(", ")}) doesn't have access to that page.`
                 : "You need to log in to view that page."}
             </p>
             <div className="mt-4">
-              <LinkButton href={session ? `/${session.profile.role}` : "/login"}>
+              <LinkButton href={session ? `/${session.profile.roles[0] ?? "resident"}` : "/login"}>
                 {session ? "Go to my portal" : "Log in"}
               </LinkButton>
             </div>

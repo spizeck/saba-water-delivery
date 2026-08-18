@@ -2,8 +2,16 @@ import Link from "next/link";
 
 import { Container } from "@/components/ui/Container";
 import { LogoutButton } from "@/components/layout/LogoutButton";
+import { RoleSwitcher } from "@/components/layout/RoleSwitcher";
+import type { UserRole } from "@/lib/domain/types";
 
-export function PortalHeader({ portalName }: { portalName: string }) {
+interface PortalHeaderProps {
+  portalName: string;
+  /** User's roles — when multiple, the role switcher is shown. */
+  roles?: UserRole[];
+}
+
+export function PortalHeader({ portalName, roles }: PortalHeaderProps) {
   return (
     <header className="border-b border-slate-200 bg-white">
       <Container className="flex h-16 items-center justify-between">
@@ -16,6 +24,9 @@ export function PortalHeader({ portalName }: { portalName: string }) {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {roles && roles.length > 1 && (
+            <RoleSwitcher roles={roles} currentPortal={portalName.toLowerCase()} />
+          )}
           <Link
             href="/"
             className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"

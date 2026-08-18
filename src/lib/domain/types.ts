@@ -14,7 +14,7 @@ export interface UserProfile {
   displayName: string;
   email: string | null;
   phone: string | null;
-  role: UserRole;
+  roles: UserRole[];
 
   village: string | null;
   deliveryDirections: string | null;

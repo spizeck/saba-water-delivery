@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { getAdminAuth } from "@/lib/firebase/admin";
 import { getUserProfile } from "@/lib/domain/users";
+import { hasRole } from "@/lib/auth/roles";
 import type { UserProfile, UserRole } from "@/lib/domain/types";
 
 /**
@@ -15,10 +16,11 @@ import type { UserProfile, UserRole } from "@/lib/domain/types";
  * signs in with Firebase Authentication, it exchanges its ID token for an
  * httpOnly session cookie via POST /api/auth/session (see that route).
  * From then on, every server-rendered request re-verifies the cookie
- * with the Firebase Admin SDK and re-reads the user's role from
- * Firestore — the browser never gets to assert its own role.
+ * with the Firebase Admin SDK and re-reads the user's roles from
+ * Firestore — the browser never gets to assert its own roles.
  */
 export const SESSION_COOKIE_NAME = "session";
+export const PORTAL_COOKIE_NAME = "portal";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 5; // 5 days
 
 export interface SessionUser {
@@ -47,15 +49,15 @@ export async function getSessionUser(): Promise<SessionUser | null> {
  * Authorization boundary for portal routes/actions.
  *
  * Redirects to /login when there is no valid session, or to
- * /access-denied when the session's role is not one of `allowed`. Never
- * relies on the client to report its own role.
+ * /access-denied when the user's roles array does not contain at least
+ * one of the `allowed` roles. Never relies on the client to report its
+ * own roles.
  */
 export async function requireRole(allowed: UserRole | UserRole[]): Promise<SessionUser> {
   const session = await getSessionUser();
   if (!session) redirect("/login");
 
-  const roles = Array.isArray(allowed) ? allowed : [allowed];
-  if (!roles.includes(session.profile.role)) redirect("/access-denied");
+  if (!hasRole(session.profile.roles, allowed)) redirect("/access-denied");
 
   return session;
 }

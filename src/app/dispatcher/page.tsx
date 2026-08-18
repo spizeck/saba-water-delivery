@@ -29,7 +29,7 @@ const STATUS_PRIORITY: Record<WaterRequestStatus, number> = {
 };
 
 export default async function DispatcherPortalPage() {
-  await requireRole(["dispatcher", "admin"]);
+  const { profile } = await requireRole(["dispatcher", "admin"]);
 
   const [allRequests, allDrivers] = await Promise.all([
     getAllRequests(),
@@ -77,7 +77,7 @@ export default async function DispatcherPortalPage() {
 
   return (
     <>
-      <PortalHeader portalName="Dispatcher" />
+      <PortalHeader portalName="Dispatcher" roles={profile.roles} />
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-8 max-w-5xl">
           <RequestList

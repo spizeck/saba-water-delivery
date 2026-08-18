@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Starter Firestore Security Rules.
+// Firestore Security Rules.
 //
 // This is a foundation, not a complete rule set. It establishes the
 // deny-by-default posture and role model described in TECHNICAL.md so
@@ -8,6 +8,10 @@ rules_version = '2';
 // built out. Rules should be revisited and tightened per-collection as
 // each workflow (requests, claiming, driver management, etc.) is
 // implemented — see TECHNICAL.md "Firestore Security".
+//
+// The user model supports multiple roles per user via a `roles` array.
+// Legacy documents may still use a singular `role` field; the helper
+// functions below handle both formats.
 //
 // Do not assume these rules alone are sufficient; queries and rules must
 // be designed together (Security Rules cannot filter an overly broad
@@ -18,14 +22,21 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function role() {
-      return isSignedIn()
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
-        : null;
+    // Returns the user's roles array. Handles both the new `roles` array
+    // format and the legacy singular `role` field for backward compat.
+    function userRoles() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return ('roles' in userData && userData.roles is list)
+        ? userData.roles
+        : [userData.role];
+    }
+
+    function hasRole(r) {
+      return isSignedIn() && r in userRoles();
     }
 
     function isStaff() {
-      return role() == 'dispatcher' || role() == 'admin';
+      return hasRole('dispatcher') || hasRole('admin');
     }
 
     // Users can read/update their own profile. Role changes must go
@@ -34,17 +45,19 @@ service cloud.firestore {
     // In practice the app provisions and updates user documents through
     // the Admin SDK (see src/lib/domain/users.ts), which bypasses these
     // rules entirely. These rules exist as defense in depth in case a
-    // client ever writes to Firestore directly: a resident can create
-    // only their own document and only with the default "resident" role,
-    // and no client write can ever change an existing role.
+    // client ever writes to Firestore directly: a new user can create
+    // only their own document and only with roles: ["resident"], and no
+    // client write can ever modify the roles field on an existing doc.
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isStaff());
       allow create: if isSignedIn()
         && request.auth.uid == userId
-        && request.resource.data.role == 'resident';
+        && request.resource.data.roles is list
+        && request.resource.data.roles.size() == 1
+        && request.resource.data.roles[0] == 'resident';
       allow update: if isSignedIn()
         && request.auth.uid == userId
-        && request.resource.data.role == resource.data.role;
+        && request.resource.data.roles == resource.data.roles;
       allow delete: if false;
 
       // Property photo metadata. The owning resident may manage their

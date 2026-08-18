@@ -46,7 +46,7 @@ export function LoginForm() {
           setError(result.error);
           return;
         }
-        router.replace(`/${result.role}`);
+        router.replace(`/${result.portal}`);
       } finally {
         establishing.current = false;
       }

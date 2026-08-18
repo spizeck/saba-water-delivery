@@ -77,11 +77,31 @@ dispatcher
 admin
 ```
 
+A single user may hold **multiple roles** (`roles: UserRole[]`). New users
+default to `["resident"]`. Roles are granted only via Admin SDK.
+
+The application handles backward-compatible reads from documents that still have
+a singular `role` field (wraps into an array). New writes always use `roles`.
+
+A **role/portal switcher** appears in the header for multi-role users. It
+navigates to the selected portal and stores the preference in a `portal` cookie.
+The cookie is a UI convenience — authorization always checks the actual stored
+`roles` array server-side.
+
 Authentication and authorization are separate concerns.
 
 Never trust a client-provided role.
 
 Never rely on UI visibility for access control.
+
+## Driver Role vs Eligibility
+
+`roles` includes `"driver"` = user may access driver portal functionality.
+
+`drivers/{uid}.eligibilityStatus == "eligible"` = government has authorized
+that driver to claim deliveries.
+
+These are independent. Do not combine them.
 
 ---
 
