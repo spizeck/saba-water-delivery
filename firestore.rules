@@ -30,9 +30,18 @@ service cloud.firestore {
 
     // Users can read/update their own profile. Role changes must go
     // through trusted server-side (Admin SDK) code, not direct writes.
+    //
+    // In practice the app provisions and updates user documents through
+    // the Admin SDK (see src/lib/domain/users.ts), which bypasses these
+    // rules entirely. These rules exist as defense in depth in case a
+    // client ever writes to Firestore directly: a resident can create
+    // only their own document and only with the default "resident" role,
+    // and no client write can ever change an existing role.
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isStaff());
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'resident';
       allow update: if isSignedIn()
         && request.auth.uid == userId
         && request.resource.data.role == resource.data.role;

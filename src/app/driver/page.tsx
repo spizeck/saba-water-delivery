@@ -3,12 +3,15 @@ import type { Metadata } from "next";
 import { ComingSoon } from "@/components/layout/ComingSoon";
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
+import { requireRole } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
   title: "Driver — Saba Water Delivery",
 };
 
-export default function DriverPortalPage() {
+export default async function DriverPortalPage() {
+  await requireRole("driver");
+
   return (
     <>
       <PortalHeader portalName="Driver" />

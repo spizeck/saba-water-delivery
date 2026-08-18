@@ -3,12 +3,15 @@ import type { Metadata } from "next";
 import { ComingSoon } from "@/components/layout/ComingSoon";
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
+import { requireRole } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
   title: "Admin — Saba Water Delivery",
 };
 
-export default function AdminPortalPage() {
+export default async function AdminPortalPage() {
+  await requireRole("admin");
+
   return (
     <>
       <PortalHeader portalName="Admin" />

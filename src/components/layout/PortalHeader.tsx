@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Container } from "@/components/ui/Container";
+import { LogoutButton } from "@/components/layout/LogoutButton";
 
 export function PortalHeader({ portalName }: { portalName: string }) {
   return (
@@ -14,12 +15,15 @@ export function PortalHeader({ portalName }: { portalName: string }) {
             {portalName}
           </span>
         </div>
-        <Link
-          href="/"
-          className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-        >
-          Home
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link
+            href="/"
+            className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+          >
+            Home
+          </Link>
+          <LogoutButton />
+        </div>
       </Container>
     </header>
   );

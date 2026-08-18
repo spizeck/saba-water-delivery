@@ -15,30 +15,47 @@ See the source-of-truth project documents:
 
 ## Implementation status
 
-This repository currently contains the **initial application foundation**
-only — not the full V1 workflow. What exists today:
+This repository currently contains the **application foundation plus the
+authenticated user and resident profile foundation** — not the full V1
+workflow. What exists today:
 
 - Next.js App Router project (TypeScript, Tailwind CSS v4), Vercel-ready.
-- Application shell: public home page, `/login`, and placeholder portal
-  pages for `/resident`, `/driver`, `/dispatcher`, and `/admin`.
-- Firebase client SDK configuration (`src/lib/firebase/client.ts`) and a
-  working `/login` page wired to Google, Facebook, and email/password
-  sign-in via Firebase Authentication (degrades to a clear "not
-  configured" message if Firebase env vars are absent).
-- Firebase Admin SDK configuration (`src/lib/firebase/admin.ts`) for
-  future trusted server-side operations.
+- Application shell: public home page, `/login`, and portal pages for
+  `/resident`, `/driver`, `/dispatcher`, and `/admin`.
+- Working sign-in at `/login` via Firebase Authentication (Google,
+  Facebook, email/password), backed by an httpOnly session cookie
+  (`/api/auth/session`) verified server-side on every request with the
+  Firebase Admin SDK — the browser is never trusted to assert its own
+  identity or role.
+- On first sign-in, a Firestore `users/{uid}` document is created with
+  role defaulted to `resident` (`src/lib/domain/users.ts`); existing
+  users' roles and saved profile data are never overwritten on
+  re-authentication.
+- Server-side route protection (`src/lib/auth/session.ts`'s
+  `requireRole`): `/resident`, `/driver`, `/dispatcher`, and `/admin` each
+  redirect unauthenticated visitors to `/login` and wrong-role visitors to
+  `/access-denied`. This is enforced on the server, not just by hiding
+  navigation.
+- Resident profile workflow at `/resident`: view/edit display name, phone,
+  village/area, and delivery directions (email shown read-only) via a
+  Server Action, plus a first-login prompt to complete the profile before
+  water requests are available.
+- Firebase client SDK (`src/lib/firebase/client.ts`) and Admin SDK
+  (`src/lib/firebase/admin.ts`) configuration, both degrading gracefully
+  (clear "not configured" states) when env vars are absent.
 - Domain types (`src/lib/domain/types.ts`) mirroring the Firestore schema
   in `TECHNICAL.md`, centralized business configuration
-  (`src/lib/domain/config.ts`), and signature-level stubs for the core
-  domain operations (`createWaterRequest`, `claimWaterRequest`, etc.) that
-  will be implemented next.
-- A starter `firestore.rules` (deny-by-default, role-aware) and
-  `firebase.json` for when a Firebase project is connected.
+  (`src/lib/domain/config.ts`), and signature-level stubs for the water
+  request domain operations (`createWaterRequest`, `claimWaterRequest`,
+  etc.) that will be implemented next.
+- `firestore.rules` (deny-by-default, role-aware, prevents self-elevation
+  of role) and `firebase.json`.
 
-**Not yet implemented:** the resident request workflow, driver queue and
-claiming, delivery confirmation, dispatcher/admin dashboards, statistics,
-and user role storage/enforcement. See `DEVIN.md` for the intended build
-order.
+**Not yet implemented:** the water request workflow (create/claim/deliver/
+confirm), driver/dispatcher/admin dashboards beyond placeholders,
+statistics, and any staff-facing role management UI (role changes
+currently require editing Firestore directly). See `DEVIN.md` for the
+intended build order.
 
 ## Local development
 

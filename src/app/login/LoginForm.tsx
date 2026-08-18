@@ -6,10 +6,13 @@ import {
   GoogleAuthProvider,
   signInWithEmailAndPassword,
   signInWithPopup,
+  type User,
 } from "firebase/auth";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { establishSession } from "@/lib/auth/client-session";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { getFirebaseAuth } from "@/lib/firebase/client";
@@ -17,12 +20,38 @@ import { getFirebaseAuth } from "@/lib/firebase/client";
 type Mode = "sign-in" | "create-account";
 
 export function LoginForm() {
+  const router = useRouter();
   const { user, loading, isConfigured } = useAuth();
   const [mode, setMode] = useState<Mode>("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const establishing = useRef(false);
+
+  // Once Firebase reports a signed-in user (fresh sign-in or a persisted
+  // session from a previous visit), exchange it for a server session
+  // cookie and route to the correct portal based on the user's role.
+  useEffect(() => {
+    if (loading || !user || establishing.current) return;
+    establishing.current = true;
+    setError(null);
+    void redirectAfterSignIn(user);
+
+    async function redirectAfterSignIn(signedInUser: User) {
+      try {
+        const idToken = await signedInUser.getIdToken();
+        const result = await establishSession(idToken);
+        if ("error" in result) {
+          setError(result.error);
+          return;
+        }
+        router.replace(`/${result.role}`);
+      } finally {
+        establishing.current = false;
+      }
+    }
+  }, [loading, user, router]);
 
   if (!isConfigured) {
     return (
@@ -45,11 +74,11 @@ export function LoginForm() {
   if (user) {
     return (
       <Card>
-        <h1 className="text-xl font-bold text-slate-900">You&apos;re signed in</h1>
+        <h1 className="text-xl font-bold text-slate-900">
+          {error ? "Couldn't finish signing in" : "Signing you in\u2026"}
+        </h1>
         <p className="mt-2 text-slate-600">
-          Signed in as {user.email ?? user.uid}. Role-based routing to the
-          resident, driver, and dispatcher/admin portals will be added once
-          user profiles and roles are implemented.
+          {error ?? `Setting up your account for ${user.email ?? user.uid}.`}
         </p>
       </Card>
     );
