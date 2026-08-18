@@ -1,0 +1,76 @@
+rules_version = '2';
+
+// Starter Firestore Security Rules.
+//
+// This is a foundation, not a complete rule set. It establishes the
+// deny-by-default posture and role model described in TECHNICAL.md so
+// that collections are not accidentally left open while the schema is
+// built out. Rules should be revisited and tightened per-collection as
+// each workflow (requests, claiming, driver management, etc.) is
+// implemented — see TECHNICAL.md "Firestore Security".
+//
+// Do not assume these rules alone are sufficient; queries and rules must
+// be designed together (Security Rules cannot filter an overly broad
+// query, only reject it).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return isSignedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : null;
+    }
+
+    function isStaff() {
+      return role() == 'dispatcher' || role() == 'admin';
+    }
+
+    // Users can read/update their own profile. Role changes must go
+    // through trusted server-side (Admin SDK) code, not direct writes.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isStaff());
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+    }
+
+    // Driver authorization/suspension state is staff-managed. Drivers may
+    // read their own profile; availability toggling should go through a
+    // trusted server function once implemented rather than a raw write.
+    match /drivers/{driverId} {
+      allow read: if isSignedIn() && (request.auth.uid == driverId || isStaff());
+      allow write: if false;
+    }
+
+    // Water requests: default-deny direct writes. Creation and every
+    // state transition (claim, deliver, confirm, dispute, cancel) must go
+    // through server-side domain functions so business rules and
+    // concurrency guarantees (see TECHNICAL.md "Request Claiming") are
+    // enforced consistently.
+    match /waterRequests/{requestId} {
+      allow read: if isSignedIn()
+        && (resource.data.customerId == request.auth.uid
+          || resource.data.assignedDriverId == request.auth.uid
+          || isStaff());
+      allow write: if false;
+
+      match /events/{eventId} {
+        allow read: if isSignedIn()
+          && (get(/databases/$(database)/documents/waterRequests/$(requestId)).data.customerId == request.auth.uid
+            || get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid
+            || isStaff());
+        allow write: if false;
+      }
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
