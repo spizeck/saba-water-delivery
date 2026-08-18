@@ -1,10 +1,10 @@
 import "server-only";
 
-import { type DocumentData } from "firebase-admin/firestore";
+import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 
-import type { DriverProfile } from "./types";
+import type { DriverAvailabilityStatus, DriverProfile } from "./types";
 
 /**
  * Domain/service layer for driver availability and authorization.
@@ -17,7 +17,7 @@ import type { DriverProfile } from "./types";
 const DRIVERS_COLLECTION = "drivers";
 const USERS_COLLECTION = "users";
 
-function _toDriverProfile(data: DocumentData): DriverProfile {
+function toDriverProfile(data: DocumentData): DriverProfile {
   return {
     userId: data.userId,
     eligibilityStatus: data.eligibilityStatus ?? "eligible",
@@ -33,6 +33,18 @@ function _toDriverProfile(data: DocumentData): DriverProfile {
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
+
+/**
+ * Returns the driver profile for the given uid, or null if not found.
+ */
+export async function getDriverProfile(
+  driverId: string,
+): Promise<DriverProfile | null> {
+  const db = getAdminDb();
+  const doc = await db.collection(DRIVERS_COLLECTION).doc(driverId).get();
+  if (!doc.exists) return null;
+  return toDriverProfile(doc.data()!);
+}
 
 /** Lightweight driver info for the preferred-driver picker. */
 export interface EligibleDriverOption {
@@ -85,19 +97,66 @@ export async function getEligibleDriverOptions(): Promise<EligibleDriverOption[]
 }
 
 // ---------------------------------------------------------------------------
-// Mutations (stubs)
+// Availability
 // ---------------------------------------------------------------------------
 
 export interface SetDriverAvailabilityInput {
   driverId: string;
-  availabilityStatus: DriverProfile["availabilityStatus"];
+  availabilityStatus: DriverAvailabilityStatus;
 }
 
+/**
+ * Sets a driver's availability status (online/offline).
+ *
+ * Creates/ensures the driver document exists (upsert pattern) and records
+ * an audit event for the availability change.
+ */
 export async function setDriverAvailability(
-  _input: SetDriverAvailabilityInput,
+  input: SetDriverAvailabilityInput,
 ): Promise<DriverProfile> {
-  throw new Error("setDriverAvailability is not implemented yet.");
+  const { driverId, availabilityStatus } = input;
+  const db = getAdminDb();
+  const ref = db.collection(DRIVERS_COLLECTION).doc(driverId);
+  const now = FieldValue.serverTimestamp();
+
+  const doc = await ref.get();
+
+  if (!doc.exists) {
+    // First time a driver goes online — create the driver document.
+    await ref.set({
+      userId: driverId,
+      eligibilityStatus: "eligible",
+      availabilityStatus,
+      ineligibilityReason: null,
+      restrictedAt: null,
+      restrictedBy: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } else {
+    await ref.update({
+      availabilityStatus,
+      updatedAt: now,
+    });
+  }
+
+  // Record audit event.
+  const eventType = availabilityStatus === "online" ? "driver_online" : "driver_offline";
+  await ref.collection("events").add({
+    type: eventType,
+    actorId: driverId,
+    actorRole: "driver",
+    createdAt: now,
+    metadata: null,
+  });
+
+  const updated = await ref.get();
+  return toDriverProfile(updated.data()!);
 }
+
+// ---------------------------------------------------------------------------
+// Access restriction (stubs — not implemented this phase)
+// ---------------------------------------------------------------------------
 
 export interface RestrictDriverAccessInput {
   driverId: string;
