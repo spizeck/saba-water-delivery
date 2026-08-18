@@ -182,7 +182,7 @@ export async function setDriverAvailability(
 }
 
 // ---------------------------------------------------------------------------
-// Access restriction (stubs — not implemented this phase)
+// Access restriction
 // ---------------------------------------------------------------------------
 
 export interface RestrictDriverAccessInput {
@@ -191,10 +191,41 @@ export interface RestrictDriverAccessInput {
   reason: string;
 }
 
+/**
+ * Restricts a driver's delivery access. Sets eligibility to "ineligible"
+ * and forces availability to "offline". Does NOT cancel or reassign
+ * existing claimed deliveries.
+ */
 export async function restrictDriverAccess(
-  _input: RestrictDriverAccessInput,
+  input: RestrictDriverAccessInput,
 ): Promise<DriverProfile> {
-  throw new Error("restrictDriverAccess is not implemented yet.");
+  const { driverId, restrictedBy, reason } = input;
+  const db = getAdminDb();
+  const ref = db.collection(DRIVERS_COLLECTION).doc(driverId);
+  const now = FieldValue.serverTimestamp();
+
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+
+  await ref.update({
+    eligibilityStatus: "ineligible",
+    availabilityStatus: "offline",
+    ineligibilityReason: reason,
+    restrictedAt: now,
+    restrictedBy,
+    updatedAt: now,
+  });
+
+  await ref.collection("events").add({
+    type: "driver_access_restricted",
+    actorId: restrictedBy,
+    actorRole: "dispatcher",
+    createdAt: now,
+    metadata: { reason },
+  });
+
+  const updated = await ref.get();
+  return toDriverProfile(updated.data()!);
 }
 
 export interface RestoreDriverAccessInput {
@@ -202,8 +233,89 @@ export interface RestoreDriverAccessInput {
   restoredBy: string;
 }
 
+/**
+ * Restores a driver's delivery access. Sets eligibility to "eligible"
+ * and clears restriction metadata. Does not automatically set them online.
+ */
 export async function restoreDriverAccess(
-  _input: RestoreDriverAccessInput,
+  input: RestoreDriverAccessInput,
 ): Promise<DriverProfile> {
-  throw new Error("restoreDriverAccess is not implemented yet.");
+  const { driverId, restoredBy } = input;
+  const db = getAdminDb();
+  const ref = db.collection(DRIVERS_COLLECTION).doc(driverId);
+  const now = FieldValue.serverTimestamp();
+
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+
+  await ref.update({
+    eligibilityStatus: "eligible",
+    ineligibilityReason: null,
+    restrictedAt: null,
+    restrictedBy: null,
+    updatedAt: now,
+  });
+
+  await ref.collection("events").add({
+    type: "driver_access_restored",
+    actorId: restoredBy,
+    actorRole: "dispatcher",
+    createdAt: now,
+    metadata: null,
+  });
+
+  const updated = await ref.get();
+  return toDriverProfile(updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Query: all drivers for dispatcher management
+// ---------------------------------------------------------------------------
+
+export interface DriverListItem {
+  uid: string;
+  displayName: string;
+  eligibilityStatus: DriverProfile["eligibilityStatus"];
+  availabilityStatus: DriverProfile["availabilityStatus"];
+  ineligibilityReason: string | null;
+  restrictedAt: string | null;
+}
+
+/**
+ * Returns all registered drivers with their profile info for the
+ * dispatcher management view.
+ */
+export async function getAllDrivers(): Promise<DriverListItem[]> {
+  const db = getAdminDb();
+  const driversSnapshot = await db.collection(DRIVERS_COLLECTION).get();
+
+  if (driversSnapshot.empty) return [];
+
+  const driverUids = driversSnapshot.docs.map((doc) => doc.id);
+
+  // Fetch display names from users collection.
+  const displayNames: Record<string, string> = {};
+  const batchSize = 30;
+  for (let i = 0; i < driverUids.length; i += batchSize) {
+    const batch = driverUids.slice(i, i + batchSize);
+    const usersSnapshot = await db
+      .collection(USERS_COLLECTION)
+      .where("__name__", "in", batch)
+      .get();
+    for (const userDoc of usersSnapshot.docs) {
+      displayNames[userDoc.id] = userDoc.data().displayName ?? "Driver";
+    }
+  }
+
+  return driversSnapshot.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      uid: doc.id,
+      displayName: displayNames[doc.id] ?? "Driver",
+      eligibilityStatus: data.eligibilityStatus ?? "ineligible",
+      availabilityStatus: data.availabilityStatus ?? "offline",
+      ineligibilityReason: data.ineligibilityReason ?? null,
+      restrictedAt: data.restrictedAt?.toDate?.().toISOString() ?? null,
+    };
+  });
 }

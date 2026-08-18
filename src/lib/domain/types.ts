@@ -140,15 +140,38 @@ export type WaterRequestEventType =
   | "preferred_driver_expired"
   | "request_opened"
   | "driver_claimed"
-  | "driver_reassigned"
   | "marked_delivered"
   | "customer_confirmed"
   | "customer_disputed"
-  | "request_cancelled";
+  | "delivery_confirmation_expired"
+  | "dispute_resolved_completed"
+  | "dispute_resolved_reopened"
+  | "request_cancelled"
+  | "dispatcher_assigned"
+  | "dispatcher_reassigned";
 
 export interface WaterRequestEvent {
   id: string;
   type: WaterRequestEventType;
+  actorId: string | null;
+  actorRole: UserRole | null;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+// ---------------------------------------------------------------------------
+// Driver events
+// ---------------------------------------------------------------------------
+
+export type DriverEventType =
+  | "driver_online"
+  | "driver_offline"
+  | "driver_access_restricted"
+  | "driver_access_restored";
+
+export interface DriverEvent {
+  id: string;
+  type: DriverEventType;
   actorId: string | null;
   actorRole: UserRole | null;
   createdAt: string;

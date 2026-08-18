@@ -714,17 +714,333 @@ export async function checkDeliveryConfirmationTimeout(
 }
 
 // ---------------------------------------------------------------------------
-// Remaining stubs (not yet implemented)
+// Dispatcher operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns all water requests for the dispatcher operational view.
+ * Orders by requestedAt descending (most recent first).
+ */
+export async function getAllRequests(): Promise<WaterRequest[]> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .orderBy("requestedAt", "desc")
+    .get();
+
+  return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+}
+
+/**
+ * Returns the event history for a specific request, ordered chronologically.
+ */
+export async function getRequestEvents(
+  requestId: string,
+): Promise<Array<{ id: string; type: string; actorId: string | null; actorRole: string | null; createdAt: string; metadata: Record<string, unknown> | null }>> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .doc(requestId)
+    .collection("events")
+    .orderBy("createdAt", "asc")
+    .get();
+
+  return snapshot.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      type: data.type,
+      actorId: data.actorId ?? null,
+      actorRole: data.actorRole ?? null,
+      createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+      metadata: data.metadata ?? null,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cancel request
 // ---------------------------------------------------------------------------
 
 export interface CancelWaterRequestInput {
   requestId: string;
   actorId: string;
-  reason?: string;
+  reason: string;
 }
 
+/**
+ * Cancels an unresolved request. Staff only.
+ */
 export async function cancelWaterRequest(
-  _input: CancelWaterRequestInput,
+  input: CancelWaterRequestInput,
 ): Promise<WaterRequest> {
-  throw new Error("cancelWaterRequest is not implemented yet.");
+  const { requestId, actorId, reason } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+    const resolved: WaterRequestStatus[] = ["confirmed", "cancelled"];
+    if (resolved.includes(data.status)) {
+      throw new Error("REQUEST_ALREADY_RESOLVED");
+    }
+
+    txn.update(requestRef, {
+      status: "cancelled",
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "request_cancelled",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: { reason },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Dispute resolution
+// ---------------------------------------------------------------------------
+
+export interface ResolveDisputeCompletedInput {
+  requestId: string;
+  actorId: string;
+  note: string;
+}
+
+/**
+ * Government resolves a dispute by accepting the delivery as complete.
+ * Transitions from "disputed" to "confirmed".
+ */
+export async function resolveDisputeCompleted(
+  input: ResolveDisputeCompletedInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId, note } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+    if (data.status !== "disputed") {
+      throw new Error("REQUEST_NOT_DISPUTED");
+    }
+
+    txn.update(requestRef, {
+      status: "confirmed",
+      confirmedAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "dispute_resolved_completed",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: { note },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+export interface ResolveDisputeReopenedInput {
+  requestId: string;
+  actorId: string;
+  note: string;
+}
+
+/**
+ * Government resolves a dispute by reopening for another delivery attempt.
+ * Resets the request to "available" with no assigned driver.
+ * Preserves all historical events.
+ */
+export async function resolveDisputeReopened(
+  input: ResolveDisputeReopenedInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId, note } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+    if (data.status !== "disputed") {
+      throw new Error("REQUEST_NOT_DISPUTED");
+    }
+
+    txn.update(requestRef, {
+      status: "available",
+      assignedDriverId: null,
+      claimedAt: null,
+      deliveredAt: null,
+      confirmedAt: null,
+      availableAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "dispute_resolved_reopened",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: { note },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher assignment
+// ---------------------------------------------------------------------------
+
+export interface DispatcherAssignInput {
+  requestId: string;
+  driverId: string;
+  actorId: string;
+}
+
+/**
+ * Dispatcher manually assigns a request to an eligible driver.
+ * Does not require the driver to be online.
+ */
+export async function dispatcherAssign(
+  input: DispatcherAssignInput,
+): Promise<WaterRequest> {
+  const { requestId, driverId, actorId } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const driverRef = db.collection("drivers").doc(driverId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const [requestSnap, driverSnap] = await Promise.all([
+      txn.get(requestRef),
+      txn.get(driverRef),
+    ]);
+
+    if (!requestSnap.exists) throw new Error("REQUEST_NOT_FOUND");
+    const reqData = requestSnap.data()!;
+
+    // Only assign requests that are in an assignable state.
+    const assignable: WaterRequestStatus[] = ["available", "preferred_driver_hold"];
+    if (!assignable.includes(reqData.status)) {
+      throw new Error("REQUEST_NOT_ASSIGNABLE");
+    }
+
+    if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
+    const drvData = driverSnap.data()!;
+    if (drvData.eligibilityStatus !== "eligible") {
+      throw new Error("DRIVER_INELIGIBLE");
+    }
+
+    txn.update(requestRef, {
+      assignedDriverId: driverId,
+      status: "claimed",
+      claimedAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "dispatcher_assigned",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: { driverId },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher reassignment
+// ---------------------------------------------------------------------------
+
+export interface DispatcherReassignInput {
+  requestId: string;
+  newDriverId: string;
+  actorId: string;
+  reason: string;
+}
+
+/**
+ * Dispatcher reassigns a currently claimed request to a different driver.
+ * Preserves assignment history via the audit event.
+ */
+export async function dispatcherReassign(
+  input: DispatcherReassignInput,
+): Promise<WaterRequest> {
+  const { requestId, newDriverId, actorId, reason } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const newDriverRef = db.collection("drivers").doc(newDriverId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const [requestSnap, driverSnap] = await Promise.all([
+      txn.get(requestRef),
+      txn.get(newDriverRef),
+    ]);
+
+    if (!requestSnap.exists) throw new Error("REQUEST_NOT_FOUND");
+    const reqData = requestSnap.data()!;
+
+    if (reqData.status !== "claimed") {
+      throw new Error("REQUEST_NOT_CLAIMED");
+    }
+
+    if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
+    const drvData = driverSnap.data()!;
+    if (drvData.eligibilityStatus !== "eligible") {
+      throw new Error("DRIVER_INELIGIBLE");
+    }
+
+    const previousDriverId = reqData.assignedDriverId;
+
+    txn.update(requestRef, {
+      assignedDriverId: newDriverId,
+      claimedAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "dispatcher_reassigned",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: {
+        previousDriverId,
+        newDriverId,
+        reason,
+      },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
 }
