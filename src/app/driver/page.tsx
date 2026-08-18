@@ -4,7 +4,7 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getDriverProfile } from "@/lib/domain/drivers";
+import { ensureDriverProfile } from "@/lib/domain/drivers";
 import { getUserProfile } from "@/lib/domain/users";
 import {
   getClaimableRequestsForDriver,
@@ -22,17 +22,16 @@ export const metadata: Metadata = {
 export default async function DriverPortalPage() {
   const { uid } = await requireRole("driver");
 
-  // Get or initialize driver profile.
-  const driverProfile = await getDriverProfile(uid);
+  // Ensure driver document exists (new drivers are ineligible by default).
+  const driverProfile = await ensureDriverProfile(uid);
 
-  // If no driver profile exists yet, show a prompt to go online (which creates it).
-  const isOnline = driverProfile?.availabilityStatus === "online";
-  const isEligible = driverProfile?.eligibilityStatus !== "ineligible";
+  const isOnline = driverProfile.availabilityStatus === "online";
+  const isEligible = driverProfile.eligibilityStatus === "eligible";
 
   // Fetch queue and active deliveries (only if online and eligible).
   const [claimableRequests, claimedDeliveries] = await Promise.all([
     isOnline && isEligible ? getClaimableRequestsForDriver(uid) : [],
-    driverProfile ? getClaimedRequestsForDriver(uid) : [],
+    getClaimedRequestsForDriver(uid),
   ]);
 
   // Fetch customer info for claimed deliveries.
@@ -61,10 +60,9 @@ export default async function DriverPortalPage() {
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">Driver</h1>
                 <p className="mt-1 text-sm text-slate-600">
-                  {!driverProfile && "Go online to start receiving delivery requests."}
-                  {driverProfile && !isEligible && "Your delivery access is currently restricted."}
-                  {driverProfile && isEligible && isOnline && "You are online and receiving requests."}
-                  {driverProfile && isEligible && !isOnline && "You are offline."}
+                  {!isEligible && "Your delivery access is pending approval."}
+                  {isEligible && isOnline && "You are online and receiving requests."}
+                  {isEligible && !isOnline && "You are offline."}
                 </p>
               </div>
               {isOnline && (
@@ -73,13 +71,13 @@ export default async function DriverPortalPage() {
                   Online
                 </span>
               )}
-              {driverProfile && !isOnline && isEligible && (
+              {!isOnline && isEligible && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">
                   <span className="h-2 w-2 rounded-full bg-slate-400" />
                   Offline
                 </span>
               )}
-              {driverProfile && !isEligible && (
+              {!isEligible && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">
                   Restricted
                 </span>

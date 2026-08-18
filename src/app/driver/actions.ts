@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { setDriverAvailability } from "@/lib/domain/drivers";
-import { claimWaterRequest } from "@/lib/domain/waterRequests";
+import { claimWaterRequest, markWaterDelivered } from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
 
 // ---------------------------------------------------------------------------
@@ -27,10 +27,24 @@ export async function toggleAvailability(
     return { status: "error", message: "Invalid availability status." };
   }
 
-  await setDriverAvailability({
-    driverId: session.uid,
-    availabilityStatus: newStatus,
-  });
+  try {
+    await setDriverAvailability({
+      driverId: session.uid,
+      availabilityStatus: newStatus,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "DRIVER_INELIGIBLE":
+          return { status: "error", message: "You are not currently eligible to go online." };
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver profile not found. Contact the water office." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
 
   revalidatePath("/driver");
   return { status: "success" };
@@ -89,4 +103,49 @@ export async function claimRequest(
 
   revalidatePath("/driver");
   return { status: "success", message: "Delivery claimed!" };
+}
+
+// ---------------------------------------------------------------------------
+// Mark delivered
+// ---------------------------------------------------------------------------
+
+export interface MarkDeliveredActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+export async function markDelivered(
+  _prevState: MarkDeliveredActionState,
+  formData: FormData,
+): Promise<MarkDeliveredActionState> {
+  const session = await requireRole("driver");
+  const requestId = String(formData.get("requestId") ?? "").trim();
+
+  if (!requestId) {
+    return { status: "error", message: "Missing request ID." };
+  }
+
+  try {
+    await markWaterDelivered({
+      requestId,
+      driverId: session.uid,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_CLAIMABLE":
+          return { status: "error", message: "This request is not in a deliverable state." };
+        case "NOT_ASSIGNED_DRIVER":
+          return { status: "error", message: "You are not assigned to this delivery." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/driver");
+  return { status: "success", message: "Delivery marked as complete." };
 }

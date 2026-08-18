@@ -20,7 +20,7 @@ const USERS_COLLECTION = "users";
 function toDriverProfile(data: DocumentData): DriverProfile {
   return {
     userId: data.userId,
-    eligibilityStatus: data.eligibilityStatus ?? "eligible",
+    eligibilityStatus: data.eligibilityStatus ?? "ineligible",
     availabilityStatus: data.availabilityStatus ?? "offline",
     ineligibilityReason: data.ineligibilityReason ?? null,
     restrictedAt: data.restrictedAt?.toDate?.().toISOString() ?? null,
@@ -106,10 +106,40 @@ export interface SetDriverAvailabilityInput {
 }
 
 /**
+ * Ensures a driver document exists. New drivers are created as ineligible
+ * and offline — government staff must explicitly grant eligibility before
+ * the driver can go online or claim requests.
+ */
+export async function ensureDriverProfile(driverId: string): Promise<DriverProfile> {
+  const db = getAdminDb();
+  const ref = db.collection(DRIVERS_COLLECTION).doc(driverId);
+  const doc = await ref.get();
+
+  if (doc.exists) {
+    return toDriverProfile(doc.data()!);
+  }
+
+  const now = FieldValue.serverTimestamp();
+  await ref.set({
+    userId: driverId,
+    eligibilityStatus: "ineligible",
+    availabilityStatus: "offline",
+    ineligibilityReason: "Pending government approval",
+    restrictedAt: null,
+    restrictedBy: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  const created = await ref.get();
+  return toDriverProfile(created.data()!);
+}
+
+/**
  * Sets a driver's availability status (online/offline).
  *
- * Creates/ensures the driver document exists (upsert pattern) and records
- * an audit event for the availability change.
+ * The driver document must already exist and the driver must be eligible.
+ * Going online while ineligible is rejected with DRIVER_INELIGIBLE.
  */
 export async function setDriverAvailability(
   input: SetDriverAvailabilityInput,
@@ -122,23 +152,20 @@ export async function setDriverAvailability(
   const doc = await ref.get();
 
   if (!doc.exists) {
-    // First time a driver goes online — create the driver document.
-    await ref.set({
-      userId: driverId,
-      eligibilityStatus: "eligible",
-      availabilityStatus,
-      ineligibilityReason: null,
-      restrictedAt: null,
-      restrictedBy: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-  } else {
-    await ref.update({
-      availabilityStatus,
-      updatedAt: now,
-    });
+    throw new Error("DRIVER_NOT_FOUND");
   }
+
+  const data = doc.data()!;
+
+  // Ineligible drivers cannot go online.
+  if (availabilityStatus === "online" && data.eligibilityStatus !== "eligible") {
+    throw new Error("DRIVER_INELIGIBLE");
+  }
+
+  await ref.update({
+    availabilityStatus,
+    updatedAt: now,
+  });
 
   // Record audit event.
   const eventType = availabilityStatus === "online" ? "driver_online" : "driver_offline";

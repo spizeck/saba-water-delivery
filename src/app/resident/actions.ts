@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { updateUserProfile } from "@/lib/domain/users";
-import { createWaterRequest } from "@/lib/domain/waterRequests";
+import {
+  confirmWaterDelivery,
+  createWaterRequest,
+  disputeWaterDelivery,
+} from "@/lib/domain/waterRequests";
 
 // ---------------------------------------------------------------------------
 // Profile
@@ -97,4 +101,91 @@ export async function requestWater(
 
   revalidatePath("/resident");
   return { status: "success", message: "Water request submitted." };
+}
+
+// ---------------------------------------------------------------------------
+// Delivery confirmation
+// ---------------------------------------------------------------------------
+
+export interface DeliveryResponseState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+export async function confirmDelivery(
+  _prevState: DeliveryResponseState,
+  formData: FormData,
+): Promise<DeliveryResponseState> {
+  const session = await requireRole("resident");
+  const requestId = String(formData.get("requestId") ?? "").trim();
+
+  if (!requestId) {
+    return { status: "error", message: "Missing request ID." };
+  }
+
+  try {
+    await confirmWaterDelivery({
+      requestId,
+      customerId: session.uid,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "NOT_REQUEST_OWNER":
+          return { status: "error", message: "This is not your request." };
+        case "INVALID_STATUS_FOR_CONFIRM":
+          return { status: "error", message: "This delivery cannot be confirmed right now." };
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/resident");
+  return { status: "success", message: "Delivery confirmed. Thank you!" };
+}
+
+// ---------------------------------------------------------------------------
+// Delivery dispute
+// ---------------------------------------------------------------------------
+
+export async function disputeDelivery(
+  _prevState: DeliveryResponseState,
+  formData: FormData,
+): Promise<DeliveryResponseState> {
+  const session = await requireRole("resident");
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!requestId) {
+    return { status: "error", message: "Missing request ID." };
+  }
+
+  try {
+    await disputeWaterDelivery({
+      requestId,
+      customerId: session.uid,
+      reason: reason || undefined,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "NOT_REQUEST_OWNER":
+          return { status: "error", message: "This is not your request." };
+        case "INVALID_STATUS_FOR_DISPUTE":
+          return { status: "error", message: "This delivery cannot be disputed right now." };
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/resident");
+  return { status: "success", message: "Issue reported. The water office will review." };
 }

@@ -478,7 +478,7 @@ export async function expirePreferredDriverHold(
 }
 
 // ---------------------------------------------------------------------------
-// Remaining stubs (not yet implemented for this phase)
+// Mark delivered
 // ---------------------------------------------------------------------------
 
 export interface MarkWaterDeliveredInput {
@@ -486,22 +486,112 @@ export interface MarkWaterDeliveredInput {
   driverId: string;
 }
 
+/**
+ * Marks a claimed request as delivered.
+ *
+ * Only the assigned driver may do this. Uses a transaction to prevent
+ * race conditions.
+ */
 export async function markWaterDelivered(
-  _input: MarkWaterDeliveredInput,
+  input: MarkWaterDeliveredInput,
 ): Promise<WaterRequest> {
-  throw new Error("markWaterDelivered is not implemented yet.");
+  const { requestId, driverId } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+
+    if (data.status !== "claimed") {
+      throw new Error("REQUEST_NOT_CLAIMABLE");
+    }
+    if (data.assignedDriverId !== driverId) {
+      throw new Error("NOT_ASSIGNED_DRIVER");
+    }
+
+    txn.update(requestRef, {
+      status: "delivered",
+      deliveredAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "marked_delivered",
+      actorId: driverId,
+      actorRole: "driver",
+      createdAt: now,
+      metadata: null,
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
 }
+
+// ---------------------------------------------------------------------------
+// Customer confirmation
+// ---------------------------------------------------------------------------
 
 export interface ConfirmWaterDeliveryInput {
   requestId: string;
   customerId: string;
 }
 
+/**
+ * Customer confirms they received the delivery.
+ *
+ * Transitions status from "delivered" to "confirmed". This resolves the
+ * request, allowing the customer to create a new one.
+ */
 export async function confirmWaterDelivery(
-  _input: ConfirmWaterDeliveryInput,
+  input: ConfirmWaterDeliveryInput,
 ): Promise<WaterRequest> {
-  throw new Error("confirmWaterDelivery is not implemented yet.");
+  const { requestId, customerId } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+
+    if (data.customerId !== customerId) {
+      throw new Error("NOT_REQUEST_OWNER");
+    }
+    if (data.status !== "delivered" && data.status !== "delivered_unconfirmed") {
+      throw new Error("INVALID_STATUS_FOR_CONFIRM");
+    }
+
+    txn.update(requestRef, {
+      status: "confirmed",
+      confirmedAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "customer_confirmed",
+      actorId: customerId,
+      actorRole: "resident",
+      createdAt: now,
+      metadata: null,
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
 }
+
+// ---------------------------------------------------------------------------
+// Customer dispute
+// ---------------------------------------------------------------------------
 
 export interface DisputeWaterDeliveryInput {
   requestId: string;
@@ -509,11 +599,123 @@ export interface DisputeWaterDeliveryInput {
   reason?: string;
 }
 
+/**
+ * Customer disputes that the delivery was received correctly.
+ *
+ * Transitions status to "disputed". The request remains unresolved and
+ * blocks a new request until it is resolved by government staff.
+ */
 export async function disputeWaterDelivery(
-  _input: DisputeWaterDeliveryInput,
+  input: DisputeWaterDeliveryInput,
 ): Promise<WaterRequest> {
-  throw new Error("disputeWaterDelivery is not implemented yet.");
+  const { requestId, customerId, reason } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+
+    if (data.customerId !== customerId) {
+      throw new Error("NOT_REQUEST_OWNER");
+    }
+    if (data.status !== "delivered" && data.status !== "delivered_unconfirmed") {
+      throw new Error("INVALID_STATUS_FOR_DISPUTE");
+    }
+
+    txn.update(requestRef, {
+      status: "disputed",
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "customer_disputed",
+      actorId: customerId,
+      actorRole: "resident",
+      createdAt: now,
+      metadata: reason ? { reason } : null,
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
 }
+
+// ---------------------------------------------------------------------------
+// Delivered-unconfirmed timeout (lazy expiration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Checks if a "delivered" request has exceeded the confirmation window and
+ * lazily transitions it to "delivered_unconfirmed" if so.
+ *
+ * Call this when reading a request's status for display. Does nothing if
+ * the request is not in "delivered" status or if the window hasn't passed.
+ */
+export async function checkDeliveryConfirmationTimeout(
+  requestId: string,
+): Promise<WaterRequest | null> {
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+
+  const snap = await requestRef.get();
+  if (!snap.exists) return null;
+
+  const data = snap.data()!;
+  if (data.status !== "delivered") {
+    return toWaterRequest(requestId, data);
+  }
+
+  const deliveredAt = data.deliveredAt?.toDate?.();
+  if (!deliveredAt) return toWaterRequest(requestId, data);
+
+  const windowMs = appConfig.deliveryConfirmationWindowHours * 60 * 60 * 1000;
+  const expiresAt = new Date(deliveredAt.getTime() + windowMs);
+
+  if (new Date() < expiresAt) {
+    // Still within confirmation window.
+    return toWaterRequest(requestId, data);
+  }
+
+  // Expired — transition to delivered_unconfirmed.
+  const now = FieldValue.serverTimestamp();
+  await db.runTransaction(async (txn) => {
+    const freshSnap = await txn.get(requestRef);
+    if (!freshSnap.exists) return;
+    const freshData = freshSnap.data()!;
+
+    // Only transition if still in "delivered" (prevent double-transition race).
+    if (freshData.status !== "delivered") return;
+
+    txn.update(requestRef, {
+      status: "delivered_unconfirmed",
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "delivery_confirmation_expired",
+      actorId: null,
+      actorRole: null,
+      createdAt: now,
+      metadata: {
+        deliveredAt: deliveredAt.toISOString(),
+        windowHours: appConfig.deliveryConfirmationWindowHours,
+      },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Remaining stubs (not yet implemented)
+// ---------------------------------------------------------------------------
 
 export interface CancelWaterRequestInput {
   requestId: string;

@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getEligibleDriverOptions } from "@/lib/domain/drivers";
 import { getUserProfile } from "@/lib/domain/users";
 import {
+  checkDeliveryConfirmationTimeout,
   getActiveRequestForCustomer,
   getRequestsForCustomer,
 } from "@/lib/domain/waterRequests";
@@ -27,11 +28,18 @@ export default async function ResidentPortalPage() {
   );
 
   // Fetch active request and eligible drivers in parallel.
-  const [activeRequest, eligibleDrivers, allRequests] = await Promise.all([
+  const [rawActiveRequest, eligibleDrivers, allRequests] = await Promise.all([
     profileComplete ? getActiveRequestForCustomer(uid) : null,
     profileComplete ? getEligibleDriverOptions() : [],
     profileComplete ? getRequestsForCustomer(uid) : [],
   ]);
+
+  // Lazy check: if the active request is "delivered", see if the confirmation
+  // window has expired (transitions to "delivered_unconfirmed").
+  const activeRequest =
+    rawActiveRequest?.status === "delivered"
+      ? await checkDeliveryConfirmationTimeout(rawActiveRequest.id)
+      : rawActiveRequest;
 
   // Resolve preferred driver name for the active request display.
   let preferredDriverName: string | null = null;
