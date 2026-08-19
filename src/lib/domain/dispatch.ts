@@ -1,18 +1,17 @@
 import "server-only";
 
-import { FieldValue } from "firebase-admin/firestore";
+import { type DocumentReference, FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 
 import {
-  countDeclinesToday,
   createDriverOffer,
   getDeclinedRequestIdsForDriver,
   getPendingOfferForDriver,
   recordOfferResponse,
 } from "./driverOffers";
-import { getDispatchSettings } from "./dispatchSettings";
-import { startCooldownByLinkedUser } from "./driverRegistry";
+import { sabaCalendarDateKey } from "@/lib/utils/datetime";
+import { appConfig } from "./config";
 import type { DriverOffer, WaterRequest } from "./types";
 import {
   claimWaterRequest,
@@ -231,61 +230,143 @@ export async function declineDriverOffer(
   const { offerId, driverId } = input;
   const db = getAdminDb();
   const offerRef = db.collection("driverOffers").doc(offerId);
-  const offerSnap = await offerRef.get();
 
-  if (!offerSnap.exists) throw new Error("OFFER_NOT_FOUND");
-  const offerData = offerSnap.data()!;
-  if (offerData.driverId !== driverId) throw new Error("OFFER_NOT_FOUND");
-  if (offerData.response !== null) throw new Error("OFFER_ALREADY_RESOLVED");
+  /**
+   * Single Firestore transaction for the entire decline consequence:
+   *   - record offer as declined
+   *   - release a preferred-driver hold if applicable
+   *   - count today's declines (including this one)
+   *   - start a cooldown on the driver registry if threshold reached
+   *   - write all relevant audit events
+   *
+   * This guarantees the driver cannot receive further offers while a
+   * cooldown is due, and the request remains correctly dispatchable.
+   */
+  const result = await db.runTransaction<DeclineDriverOfferResult>(async (txn) => {
+    // ---- All reads first ----
+    const offerSnap = await txn.get(offerRef);
+    if (!offerSnap.exists) throw new Error("OFFER_NOT_FOUND");
+    const offerData = offerSnap.data()!;
+    if (offerData.driverId !== driverId) throw new Error("OFFER_NOT_FOUND");
+    if (offerData.response !== null) throw new Error("OFFER_ALREADY_RESOLVED");
 
-  const requestId = offerData.requestId as string;
+    const requestId = offerData.requestId as string;
+    const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+    const requestSnap = await txn.get(requestRef);
 
-  await recordOfferResponse(offerId, "declined");
+    const settingsRef = db.collection("config").doc("dispatchSettings");
+    const settingsSnap = await txn.get(settingsRef);
+    const settingsData = settingsSnap.data() ?? {};
+    const maxDeclinesPerDay =
+      typeof settingsData.maxDeclinesPerDay === "number" && settingsData.maxDeclinesPerDay >= 1
+        ? settingsData.maxDeclinesPerDay
+        : appConfig.defaultMaxDeclinesPerDay;
+    const declineCooldownHours =
+      typeof settingsData.declineCooldownHours === "number" && settingsData.declineCooldownHours > 0
+        ? settingsData.declineCooldownHours
+        : appConfig.defaultDeclineCooldownHours;
 
-  // Release a preferred-driver hold immediately on decline.
-  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  await db.runTransaction(async (txn) => {
-    const snap = await txn.get(requestRef);
-    if (!snap.exists) return;
-    const data = snap.data()!;
-    if (data.status !== "preferred_driver_hold" || data.preferredDriverId !== driverId) {
-      return;
+    // Count declines already recorded today (this offer is not yet declined).
+    const lookback = new Date(Date.now() - 26 * 60 * 60 * 1000);
+    const declinesSnap = await txn.get(
+      db
+        .collection("driverOffers")
+        .where("driverId", "==", driverId)
+        .where("response", "==", "declined")
+        .where("respondedAt", ">=", lookback),
+    );
+    const todayKey = sabaCalendarDateKey(new Date());
+    const declinesBeforeThis = declinesSnap.docs.filter((doc) => {
+      const respondedAt = doc.data().respondedAt?.toDate?.();
+      return respondedAt instanceof Date && sabaCalendarDateKey(respondedAt) === todayKey;
+    }).length;
+
+    const willEnterCooldown = declinesBeforeThis + 1 >= maxDeclinesPerDay;
+
+    // If cooldown is needed, locate the driver registry by linked user.
+    let registryRef = null as DocumentReference | null;
+    if (willEnterCooldown) {
+      const registrySnap = await txn.get(
+        db
+          .collection("driverRegistry")
+          .where("linkedUserId", "==", driverId)
+          .limit(1),
+      );
+      if (!registrySnap.empty) {
+        registryRef = registrySnap.docs[0].ref;
+      }
     }
 
+    // ---- All writes after reads ----
     const now = FieldValue.serverTimestamp();
-    txn.update(requestRef, {
-      status: "available",
-      availableAt: now,
-      updatedAt: now,
+
+    // 1. Record the offer as declined.
+    txn.update(offerRef, {
+      response: "declined",
+      respondedAt: now,
     });
 
-    const eventRef = requestRef.collection("events").doc();
-    txn.set(eventRef, {
-      type: "preferred_driver_declined",
-      actorId: driverId,
-      actorRole: "driver",
-      createdAt: now,
-      metadata: { preferredDriverId: driverId },
-    });
+    // 2. Release an active preferred-driver hold to the general queue.
+    if (requestSnap.exists) {
+      const requestData = requestSnap.data()!;
+      if (requestData.status === "preferred_driver_hold" && requestData.preferredDriverId === driverId) {
+        const requestUpdate: Record<string, unknown> = {
+          availableAt: now,
+          updatedAt: now,
+        };
+        // Preserve status if it is already being updated to available. Use a
+        // single update for both status and timestamps to keep writes minimal.
+        requestUpdate.status = "available";
+        txn.update(requestRef, requestUpdate);
+
+        const eventRef = requestRef.collection("events").doc();
+        txn.set(eventRef, {
+          type: "preferred_driver_declined",
+          actorId: driverId,
+          actorRole: "driver",
+          createdAt: now,
+          metadata: { preferredDriverId: driverId },
+        });
+      }
+    }
+
+    // 3. Start cooldown if threshold reached.
+    if (willEnterCooldown) {
+      if (!registryRef) {
+        // Cannot set a cooldown without a linked registry record. This should
+        // not happen for a driver receiving offers, so treat it as a data
+        // integrity error and abort the entire transaction.
+        throw new Error("DRIVER_NOT_LINKED_FOR_COOLDOWN");
+      }
+
+      const cooldownUntil = new Date(Date.now() + declineCooldownHours * 60 * 60 * 1000);
+      txn.update(registryRef, {
+        cooldownUntil,
+        updatedAt: now,
+        updatedBy: driverId,
+      });
+
+      const cooldownEventRef = registryRef.collection("events").doc();
+      txn.set(cooldownEventRef, {
+        type: "driver_cooldown_started",
+        actorId: driverId,
+        actorRole: "driver",
+        createdAt: now,
+        metadata: {
+          declineCount: declinesBeforeThis + 1,
+          maxDeclinesPerDay,
+          cooldownUntil: cooldownUntil.toISOString(),
+        },
+      });
+
+      return {
+        enteredCooldown: true,
+        cooldownUntil: cooldownUntil.toISOString(),
+      };
+    }
+
+    return { enteredCooldown: false, cooldownUntil: null };
   });
 
-  // Decline-limit / cooldown enforcement, using centrally configured,
-  // admin-editable settings.
-  const settings = await getDispatchSettings();
-  const declineCount = await countDeclinesToday(driverId);
-
-  if (declineCount >= settings.maxDeclinesPerDay) {
-    const cooldownUntil = new Date(
-      Date.now() + settings.declineCooldownHours * 60 * 60 * 1000,
-    );
-    await startCooldownByLinkedUser({
-      userId: driverId,
-      cooldownUntil,
-      declineCount,
-      maxDeclinesPerDay: settings.maxDeclinesPerDay,
-    });
-    return { enteredCooldown: true, cooldownUntil: cooldownUntil.toISOString() };
-  }
-
-  return { enteredCooldown: false, cooldownUntil: null };
+  return result;
 }

@@ -724,73 +724,6 @@ export async function expirePreferredDriverHold(
   return toWaterRequest(requestId, updated.data()!);
 }
 
-/**
- * Releases an active preferred-driver hold to the general queue WITHOUT
- * waiting for the window to expire, because the request's priority was
- * escalated (or the preferred driver became unavailable) and the
- * preference can no longer justify delaying dispatch. Preserves the
- * original `requestedAt` — see PRODUCT.md "Request Age Still Matters".
- * No-ops if the request is no longer in a hold (another reader may have
- * already resolved it), mirroring `expirePreferredDriverHold`.
- */
-async function releasePreferredDriverHoldForPriority(
-  requestId: string,
-  dispatchPriority: DispatchPriority,
-): Promise<void> {
-  const db = getAdminDb();
-  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  const now = FieldValue.serverTimestamp();
-
-  await db.runTransaction(async (txn) => {
-    const snap = await txn.get(requestRef);
-    if (!snap.exists) return;
-    const data = snap.data()!;
-    if (data.status !== "preferred_driver_hold") return;
-
-    txn.update(requestRef, {
-      status: "available",
-      availableAt: now,
-      updatedAt: now,
-    });
-
-    const eventRef = requestRef.collection("events").doc();
-    txn.set(eventRef, {
-      type: "preferred_driver_hold_released_for_priority",
-      actorId: null,
-      actorRole: null,
-      createdAt: now,
-      metadata: {
-        preferredDriverId: data.preferredDriverId,
-        dispatchPriority,
-      },
-    });
-  });
-}
-
-/**
- * Re-evaluates an existing preferred-driver hold after the request's
- * priority escalates to Urgent/Critical (see PRODUCT.md "Priority
- * Escalation During Preferred Hold"). If the preferred driver is
- * currently immediately available, the exclusive hold may continue
- * (no action needed — it isn't delaying anything). Otherwise the hold
- * is released to the general queue immediately, same as the offline/
- * ineligible/cooldown bypass applied at creation time.
- */
-export async function reevaluatePreferredDriverHoldForPriority(
-  requestId: string,
-): Promise<void> {
-  const request = await getWaterRequestById(requestId);
-  if (!request) return;
-  if (request.status !== "preferred_driver_hold") return;
-  if (request.dispatchPriority === "normal") return;
-  if (!request.preferredDriverId) return;
-
-  const available = await isDriverImmediatelyAvailable(request.preferredDriverId);
-  if (available) return;
-
-  await releasePreferredDriverHoldForPriority(requestId, request.dispatchPriority);
-}
-
 // ---------------------------------------------------------------------------
 // Dispatcher priority override
 // ---------------------------------------------------------------------------
@@ -811,9 +744,9 @@ export interface ChangeRequestPriorityInput {
  * `dispatchPriority` fields change.
  *
  * If this escalates a request that is currently held for a preferred
- * driver, the hold is immediately re-evaluated (see
- * `reevaluatePreferredDriverHoldForPriority`) rather than left to
- * expire on its original schedule.
+ * driver, the hold is immediately re-evaluated and released to the
+ * general queue if the preferred driver is not currently immediately
+ * available — all within the same Firestore transaction.
  */
 export async function changeRequestPriority(
   input: ChangeRequestPriorityInput,
@@ -823,15 +756,44 @@ export async function changeRequestPriority(
 
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (txn) => {
+    // ---- All reads first ----
     const snap = await txn.get(requestRef);
     if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
     const data = snap.data()!;
     const previousPriority = (data.dispatchPriority as DispatchPriority) ?? "normal";
 
-    txn.update(requestRef, {
+    // Determine whether an active preferred-driver hold must be released.
+    let releaseHold = false;
+    if (
+      newPriority !== "normal" &&
+      data.status === "preferred_driver_hold" &&
+      data.preferredDriverId
+    ) {
+      const registrySnap = await txn.get(
+        db
+          .collection("driverRegistry")
+          .where("linkedUserId", "==", data.preferredDriverId)
+          .limit(1),
+      );
+      if (registrySnap.empty) {
+        // No linked registry means no eligible driver can hold this request.
+        releaseHold = true;
+      } else {
+        const regData = registrySnap.docs[0].data();
+        const eligible = regData.eligibilityStatus === "eligible";
+        const online = regData.availabilityStatus === "online";
+        const inCooldown =
+          regData.cooldownUntil?.toDate?.() instanceof Date &&
+          regData.cooldownUntil.toDate() > new Date();
+        releaseHold = !eligible || !online || inCooldown;
+      }
+    }
+
+    // ---- All writes after reads ----
+    const now = FieldValue.serverTimestamp();
+    const updateData: Record<string, unknown> = {
       dispatchPriority: newPriority,
       priorityRank: priorityRankFor(newPriority),
       prioritySource: "dispatcher",
@@ -839,7 +801,14 @@ export async function changeRequestPriority(
       priorityUpdatedBy: actorId,
       priorityUpdatedAt: now,
       updatedAt: now,
-    });
+    };
+
+    if (releaseHold) {
+      updateData.status = "available";
+      updateData.availableAt = now;
+    }
+
+    txn.update(requestRef, updateData);
 
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
@@ -853,11 +822,21 @@ export async function changeRequestPriority(
         reason: reason.trim(),
       },
     });
-  });
 
-  if (newPriority !== "normal") {
-    await reevaluatePreferredDriverHoldForPriority(requestId);
-  }
+    if (releaseHold) {
+      const releaseRef = requestRef.collection("events").doc();
+      txn.set(releaseRef, {
+        type: "preferred_driver_hold_released_for_priority",
+        actorId: null,
+        actorRole: null,
+        createdAt: now,
+        metadata: {
+          preferredDriverId: data.preferredDriverId,
+          dispatchPriority: newPriority,
+        },
+      });
+    }
+  });
 
   const updated = await requestRef.get();
   return toWaterRequest(requestId, updated.data()!);

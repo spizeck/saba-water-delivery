@@ -54,61 +54,8 @@ function toDriverRegistryEntry(id: string, data: DocumentData): DriverRegistryEn
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers (role array + role audit, duplicated locally rather than
-// imported from admin.ts to avoid a circular dependency — admin.ts imports
-// this module for the removeRole("driver") -> unlink integration).
+// Internal helpers
 // ---------------------------------------------------------------------------
-
-async function currentUserRoles(userId: string): Promise<string[] | null> {
-  const db = getAdminDb();
-  const doc = await db.collection(USERS_COLLECTION).doc(userId).get();
-  if (!doc.exists) return null;
-  const data = doc.data()!;
-  if (Array.isArray(data.roles) && data.roles.length > 0) return data.roles;
-  if (typeof data.role === "string") return [data.role];
-  return ["resident"];
-}
-
-async function addDriverRoleToUser(userId: string, actorId: string): Promise<void> {
-  const db = getAdminDb();
-  const roles = await currentUserRoles(userId);
-  if (roles === null) throw new Error("USER_NOT_FOUND");
-  if (roles.includes("driver")) return;
-
-  const now = FieldValue.serverTimestamp();
-  const userRef = db.collection(USERS_COLLECTION).doc(userId);
-  await userRef.update({
-    roles: [...roles, "driver"],
-    role: FieldValue.delete(),
-    updatedAt: now,
-  });
-  await userRef.collection("roleEvents").add({
-    type: "role_added",
-    role: "driver",
-    actorId,
-    createdAt: now,
-  });
-}
-
-async function removeDriverRoleFromUser(userId: string, actorId: string): Promise<void> {
-  const db = getAdminDb();
-  const roles = await currentUserRoles(userId);
-  if (roles === null || !roles.includes("driver")) return;
-
-  const now = FieldValue.serverTimestamp();
-  const userRef = db.collection(USERS_COLLECTION).doc(userId);
-  await userRef.update({
-    roles: roles.filter((r) => r !== "driver"),
-    role: FieldValue.delete(),
-    updatedAt: now,
-  });
-  await userRef.collection("roleEvents").add({
-    type: "role_removed",
-    role: "driver",
-    actorId,
-    createdAt: now,
-  });
-}
 
 async function activeDeliveryCountForUser(userId: string): Promise<number> {
   const db = getAdminDb();
@@ -297,33 +244,69 @@ export async function linkDriverAccount(
   const { driverId, userId, actorId } = input;
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
+  const userRef = db.collection(USERS_COLLECTION).doc(userId);
 
-  const doc = await ref.get();
-  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
-  const data = doc.data()!;
-  if (data.linkedUserId) throw new Error("DRIVER_ALREADY_LINKED");
+  await db.runTransaction(async (txn) => {
+    // ---- All reads first ----
+    const doc = await txn.get(ref);
+    if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+    const data = doc.data()!;
+    if (data.linkedUserId) throw new Error("DRIVER_ALREADY_LINKED");
 
-  const userDoc = await db.collection(USERS_COLLECTION).doc(userId).get();
-  if (!userDoc.exists) throw new Error("USER_NOT_FOUND");
+    const userDoc = await txn.get(userRef);
+    if (!userDoc.exists) throw new Error("USER_NOT_FOUND");
 
-  const existingLink = await getDriverByLinkedUserId(userId);
-  if (existingLink) throw new Error("USER_ALREADY_LINKED");
+    const existingLinkSnap = await txn.get(
+      db
+        .collection(REGISTRY_COLLECTION)
+        .where("linkedUserId", "==", userId)
+        .limit(1),
+    );
+    if (!existingLinkSnap.empty) throw new Error("USER_ALREADY_LINKED");
 
-  const now = FieldValue.serverTimestamp();
-  await ref.update({
-    linkedUserId: userId,
-    updatedAt: now,
-    updatedBy: actorId,
-  });
+    const userData = userDoc.data()!;
+    const currentRoles = Array.isArray(userData.roles) && userData.roles.length > 0
+      ? userData.roles
+      : typeof userData.role === "string"
+        ? [userData.role]
+        : ["resident"];
+    const alreadyHasDriver = currentRoles.includes("driver");
 
-  await addDriverRoleToUser(userId, actorId);
+    // ---- All writes after reads ----
+    const now = FieldValue.serverTimestamp();
 
-  await ref.collection("events").add({
-    type: "driver_account_linked",
-    actorId,
-    actorRole: "admin",
-    createdAt: now,
-    metadata: { userId },
+    txn.update(ref, {
+      linkedUserId: userId,
+      updatedAt: now,
+      updatedBy: actorId,
+    });
+
+    const registryEventRef = ref.collection("events").doc();
+    txn.set(registryEventRef, {
+      type: "driver_account_linked",
+      actorId,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: { userId },
+    });
+
+    // Add the driver role and audit it, unless it is already present.
+    if (!alreadyHasDriver) {
+      const newRoles = [...currentRoles, "driver"];
+      txn.update(userRef, {
+        roles: newRoles,
+        role: FieldValue.delete(),
+        updatedAt: now,
+      });
+
+      const userEventRef = userRef.collection("roleEvents").doc();
+      txn.set(userEventRef, {
+        type: "role_added",
+        role: "driver",
+        actorId,
+        createdAt: now,
+      });
+    }
   });
 
   const updated = await ref.get();
@@ -358,22 +341,63 @@ export async function unlinkDriverAccount(
   const activeCount = await activeDeliveryCountForUser(linkedUserId);
   if (activeCount > 0) throw new Error("DRIVER_HAS_ACTIVE_DELIVERIES");
 
-  const now = FieldValue.serverTimestamp();
-  await ref.update({
-    linkedUserId: null,
-    availabilityStatus: "offline",
-    updatedAt: now,
-    updatedBy: actorId,
-  });
+  const userRef = db.collection(USERS_COLLECTION).doc(linkedUserId);
 
-  await removeDriverRoleFromUser(linkedUserId, actorId);
+  await db.runTransaction(async (txn) => {
+    // ---- All reads first ----
+    const driverSnap = await txn.get(ref);
+    if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
+    const driverData = driverSnap.data()!;
+    const currentLinkedUserId = driverData.linkedUserId as string | null;
+    if (!currentLinkedUserId) throw new Error("DRIVER_NOT_LINKED");
 
-  await ref.collection("events").add({
-    type: "driver_account_unlinked",
-    actorId,
-    actorRole: "admin",
-    createdAt: now,
-    metadata: { userId: linkedUserId },
+    const userSnap = await txn.get(userRef);
+    if (!userSnap.exists) throw new Error("USER_NOT_FOUND");
+
+    const userData = userSnap.data()!;
+    const currentRoles = Array.isArray(userData.roles) && userData.roles.length > 0
+      ? userData.roles
+      : typeof userData.role === "string"
+        ? [userData.role]
+        : ["resident"];
+    const hasDriver = currentRoles.includes("driver");
+
+    // ---- All writes after reads ----
+    const now = FieldValue.serverTimestamp();
+
+    txn.update(ref, {
+      linkedUserId: null,
+      availabilityStatus: "offline",
+      updatedAt: now,
+      updatedBy: actorId,
+    });
+
+    const registryEventRef = ref.collection("events").doc();
+    txn.set(registryEventRef, {
+      type: "driver_account_unlinked",
+      actorId,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: { userId: linkedUserId },
+    });
+
+    // Remove the driver role and audit it, if it is still present.
+    if (hasDriver) {
+      const newRoles = currentRoles.filter((r) => r !== "driver");
+      txn.update(userRef, {
+        roles: newRoles,
+        role: FieldValue.delete(),
+        updatedAt: now,
+      });
+
+      const userEventRef = userRef.collection("roleEvents").doc();
+      txn.set(userEventRef, {
+        type: "role_removed",
+        role: "driver",
+        actorId,
+        createdAt: now,
+      });
+    }
   });
 
   const updated = await ref.get();

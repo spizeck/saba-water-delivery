@@ -5,7 +5,6 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { isUserRole } from "@/lib/auth/roles";
 
-import { unlinkDriverAccountByUserId } from "./driverRegistry";
 import type { UserProfile, UserRole } from "./types";
 
 /**
@@ -161,40 +160,41 @@ export async function addRole(input: AddRoleInput): Promise<UserProfile> {
   const { targetUid, role, actorId } = input;
   const db = getAdminDb();
   const userRef = db.collection(USERS_COLLECTION).doc(targetUid);
-  const now = FieldValue.serverTimestamp();
 
-  const userDoc = await userRef.get();
-  if (!userDoc.exists) throw new Error("USER_NOT_FOUND");
+  await db.runTransaction(async (txn) => {
+    const userDoc = await txn.get(userRef);
+    if (!userDoc.exists) throw new Error("USER_NOT_FOUND");
 
-  const data = userDoc.data()!;
-  let currentRoles: UserRole[];
-  if (Array.isArray(data.roles) && data.roles.length > 0) {
-    currentRoles = data.roles.filter((r: unknown) => isUserRole(r));
-  } else if (isUserRole(data.role)) {
-    currentRoles = [data.role];
-  } else {
-    currentRoles = ["resident"];
-  }
+    const data = userDoc.data()!;
+    let currentRoles: UserRole[];
+    if (Array.isArray(data.roles) && data.roles.length > 0) {
+      currentRoles = data.roles.filter((r: unknown) => isUserRole(r));
+    } else if (isUserRole(data.role)) {
+      currentRoles = [data.role];
+    } else {
+      currentRoles = ["resident"];
+    }
 
-  if (currentRoles.includes(role)) {
-    throw new Error("ROLE_ALREADY_EXISTS");
-  }
+    if (currentRoles.includes(role)) {
+      throw new Error("ROLE_ALREADY_EXISTS");
+    }
 
-  const newRoles = [...currentRoles, role];
+    const newRoles = [...currentRoles, role];
+    const now = FieldValue.serverTimestamp();
 
-  // Write canonical roles array, remove legacy role field.
-  await userRef.update({
-    roles: newRoles,
-    role: FieldValue.delete(),
-    updatedAt: now,
-  });
+    txn.update(userRef, {
+      roles: newRoles,
+      role: FieldValue.delete(),
+      updatedAt: now,
+    });
 
-  // Record audit event.
-  await userRef.collection("roleEvents").add({
-    type: "role_added",
-    role,
-    actorId,
-    createdAt: now,
+    const eventRef = userRef.collection("roleEvents").doc();
+    txn.set(eventRef, {
+      type: "role_added",
+      role,
+      actorId,
+      createdAt: now,
+    });
   });
 
   const updated = await userRef.get();
@@ -224,7 +224,6 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
   const { targetUid, role, actorId } = input;
   const db = getAdminDb();
   const userRef = db.collection(USERS_COLLECTION).doc(targetUid);
-  const now = FieldValue.serverTimestamp();
 
   if (role === "resident") {
     throw new Error("CANNOT_REMOVE_RESIDENT");
@@ -268,29 +267,74 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
     }
   }
 
-  const newRoles = currentRoles.filter((r) => r !== role);
+  await db.runTransaction(async (txn) => {
+    const now = FieldValue.serverTimestamp();
 
-  // Write canonical roles array, remove legacy role field.
-  await userRef.update({
-    roles: newRoles,
-    role: FieldValue.delete(),
-    updatedAt: now,
+    // Re-read the user document inside the transaction so the write is based
+    // on the latest committed state. The pre-transaction guards above already
+    // validated the operation; this re-read protects against races.
+    const freshUserDoc = await txn.get(userRef);
+    if (!freshUserDoc.exists) throw new Error("USER_NOT_FOUND");
+    const freshData = freshUserDoc.data()!;
+    let freshRoles: UserRole[];
+    if (Array.isArray(freshData.roles) && freshData.roles.length > 0) {
+      freshRoles = freshData.roles.filter((r: unknown) => isUserRole(r));
+    } else if (isUserRole(freshData.role)) {
+      freshRoles = [freshData.role];
+    } else {
+      freshRoles = ["resident"];
+    }
+    if (!freshRoles.includes(role)) {
+      throw new Error("ROLE_NOT_FOUND");
+    }
+
+    const newRoles = freshRoles.filter((r) => r !== role);
+
+    // 1. User role removal and audit event (always in this transaction).
+    txn.update(userRef, {
+      roles: newRoles,
+      role: FieldValue.delete(),
+      updatedAt: now,
+    });
+
+    const userEventRef = userRef.collection("roleEvents").doc();
+    txn.set(userEventRef, {
+      type: "role_removed",
+      role,
+      actorId,
+      createdAt: now,
+    });
+
+    // 2. If removing the driver role, also unlink the Driver Registry entry
+    // in the SAME transaction so the registry never points at a user who no
+    // longer has the role.
+    if (role === "driver") {
+      const registrySnap = await txn.get(
+        db
+          .collection(DRIVER_REGISTRY_COLLECTION)
+          .where("linkedUserId", "==", targetUid)
+          .limit(1),
+      );
+      if (!registrySnap.empty) {
+        const registryRef = registrySnap.docs[0].ref;
+        txn.update(registryRef, {
+          linkedUserId: null,
+          availabilityStatus: "offline",
+          updatedAt: now,
+          updatedBy: actorId,
+        });
+
+        const registryEventRef = registryRef.collection("events").doc();
+        txn.set(registryEventRef, {
+          type: "driver_account_unlinked",
+          actorId,
+          actorRole: "admin",
+          createdAt: now,
+          metadata: { userId: targetUid },
+        });
+      }
+    }
   });
-
-  // Record audit event.
-  await userRef.collection("roleEvents").add({
-    type: "role_removed",
-    role,
-    actorId,
-    createdAt: now,
-  });
-
-  // If removing the driver role, unlink any linked Driver Registry entry
-  // so the registry never points at a user who no longer has the role.
-  // The active-deliveries check above already guarantees this is safe.
-  if (role === "driver") {
-    await unlinkDriverAccountByUserId(targetUid, actorId);
-  }
 
   const updated = await userRef.get();
   return toUserProfileFromDoc(targetUid, updated.data()!);
