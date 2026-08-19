@@ -11,7 +11,7 @@ import {
   getDriverEvents,
   getMeterAssignments,
 } from "@/lib/domain/driverRegistry";
-import { getResidentDirectory } from "@/lib/domain/users";
+import { getResidentDirectory, getUserProfile } from "@/lib/domain/users";
 
 import { AccountLinkPanel } from "./AccountLinkPanel";
 import { DriverEventHistory } from "./DriverEventHistory";
@@ -51,11 +51,12 @@ export default async function DriverDetailPage({ params }: PageProps) {
     );
   }
 
-  const [stations, meters, events, residents] = await Promise.all([
+  const [stations, meters, events, residents, linkedUser] = await Promise.all([
     getFillStations(),
     getMeterAssignments(driverId),
     getDriverEvents(driverId),
     driver.linkedUserId ? Promise.resolve([]) : getResidentDirectory(),
+    driver.linkedUserId ? getUserProfile(driver.linkedUserId) : Promise.resolve(null),
   ]);
 
   return (
@@ -74,7 +75,7 @@ export default async function DriverDetailPage({ params }: PageProps) {
           </div>
 
           <EditDriverForm driver={driver} />
-          <AccountLinkPanel driver={driver} residents={residents} />
+          <AccountLinkPanel driver={driver} residents={residents} linkedUser={linkedUser} />
           <EligibilityPanel driver={driver} />
           <MeterAssignmentsPanel driverId={driverId} stations={stations} meters={meters} />
           <DriverEventHistory events={events} />

@@ -4,7 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { DriverRegistryEntry } from "@/lib/domain/types";
+import type { DriverRegistryEntry, UserProfile } from "@/lib/domain/types";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
 
 import {
@@ -18,9 +18,10 @@ const initialState: DriverFormActionState = { status: "idle" };
 interface Props {
   driver: DriverRegistryEntry;
   residents: ResidentDirectoryEntry[];
+  linkedUser: UserProfile | null;
 }
 
-export function AccountLinkPanel({ driver, residents }: Props) {
+export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
   const [linkState, linkAction, linkPending] = useActionState(linkDriverAccountAction, initialState);
   const [unlinkState, unlinkAction, unlinkPending] = useActionState(unlinkDriverAccountAction, initialState);
   const [confirmingUnlink, setConfirmingUnlink] = useState(false);
@@ -46,12 +47,36 @@ export function AccountLinkPanel({ driver, residents }: Props) {
 
       {driver.linkedUserId ? (
         <div className="mt-3">
-          <p className="text-sm text-slate-700">
-            Linked to account <span className="font-mono text-xs">{driver.linkedUserId}</span>
-          </p>
+          <h3 className="text-sm font-medium text-slate-900">Linked Account</h3>
+
+          {linkedUser ? (
+            <div className="mt-2">
+              <p className="text-base font-semibold text-slate-900">
+                {linkedUser.displayName || "Unnamed"}
+              </p>
+              <p className="text-sm text-slate-600">
+                {linkedUser.email ?? "No email"}
+                {linkedUser.email && linkedUser.phone ? " \u00b7 " : ""}
+                {linkedUser.phone ?? ""}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-amber-700">Linked account unavailable</p>
+          )}
+
+          {driver.linkedUserId && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-700">
+                Technical details
+              </summary>
+              <p className="mt-1 break-all font-mono text-xs text-slate-500">
+                {driver.linkedUserId}
+              </p>
+            </details>
+          )}
 
           {unlinkState.status === "success" ? (
-            <p className="mt-2 text-sm font-medium text-green-700">{unlinkState.message}</p>
+            <p className="mt-3 text-sm font-medium text-green-700">{unlinkState.message}</p>
           ) : !confirmingUnlink ? (
             <Button
               variant="outline"
