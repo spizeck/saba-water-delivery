@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { acceptDriverOffer, declineDriverOffer } from "@/lib/domain/dispatch";
-import { setDriverAvailability } from "@/lib/domain/drivers";
+import { setAvailabilityByLinkedUser } from "@/lib/domain/driverRegistry";
 import { markWaterDelivered } from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
+import { formatSabaTime } from "@/lib/utils/datetime";
 
 // ---------------------------------------------------------------------------
 // Availability toggle
@@ -29,8 +30,8 @@ export async function toggleAvailability(
   }
 
   try {
-    await setDriverAvailability({
-      driverId: session.uid,
+    await setAvailabilityByLinkedUser({
+      userId: session.uid,
       availabilityStatus: newStatus,
     });
   } catch (err: unknown) {
@@ -127,10 +128,7 @@ export async function declineOffer(
     const result = await declineDriverOffer({ offerId, driverId: session.uid });
     revalidatePath("/driver");
     if (result.enteredCooldown && result.cooldownUntil) {
-      const until = new Date(result.cooldownUntil).toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      });
+      const until = formatSabaTime(result.cooldownUntil);
       return {
         status: "success",
         message: `You've reached today's decline limit. New offers paused until ${until}.`,

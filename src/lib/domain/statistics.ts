@@ -1,6 +1,9 @@
 import "server-only";
 
+import type { DocumentData } from "firebase-admin/firestore";
+
 import { getAdminDb } from "@/lib/firebase/admin";
+import { sabaCalendarDateKey, startOfSabaMonth, startOfSabaYear } from "@/lib/utils/datetime";
 
 import type { WaterRequestSource, WaterRequestStatus } from "./types";
 import { appConfig } from "./config";
@@ -32,7 +35,7 @@ import { getOfferAggregate } from "./driverOffers";
  */
 
 const REQUESTS_COLLECTION = "waterRequests";
-const DRIVERS_COLLECTION = "drivers";
+const DRIVER_REGISTRY_COLLECTION = "driverRegistry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,6 +135,13 @@ export interface StatsData {
 // Period helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * "This month" / "this year" are Saba-local calendar periods (see
+ * TECHNICAL.md "Saba Operational Timezone" / "Calendar-Day Logic") — a
+ * viewer in another timezone must see the same period boundaries a
+ * Saba-based user would. "Last 7/30 days" are plain elapsed-duration
+ * windows and are not timezone-sensitive.
+ */
 function getPeriodStart(period: StatsPeriod): Date | null {
   const now = new Date();
   switch (period) {
@@ -140,9 +150,9 @@ function getPeriodStart(period: StatsPeriod): Date | null {
     case "30d":
       return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     case "month":
-      return new Date(now.getFullYear(), now.getMonth(), 1);
+      return startOfSabaMonth(now);
     case "year":
-      return new Date(now.getFullYear(), 0, 1);
+      return startOfSabaYear(now);
     case "all":
       return null;
   }
@@ -157,11 +167,10 @@ function average(values: number[]): number | null {
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
+/** Buckets a timestamp into its Saba-local calendar day or month (see datetime.ts). */
 function formatDateKey(date: Date, monthly: boolean): string {
-  if (monthly) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const dayKey = sabaCalendarDateKey(date); // YYYY-MM-DD in Saba local time
+  return monthly ? dayKey.slice(0, 7) : dayKey;
 }
 
 // ---------------------------------------------------------------------------
@@ -408,38 +417,55 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     ]),
   ];
 
-  // Fetch driver profiles and user names.
+  // Fetch Driver Registry entries (eligibility/availability/display name
+  // now live there, keyed by `linkedUserId` — see TECHNICAL.md "Driver
+  // Registry"). Batched via `linkedUserId in [...]`, matching the
+  // previous by-uid batching pattern.
   const drivers: DriverMetrics[] = [];
   const batchSize = 30;
 
   for (let i = 0; i < allDriverIds.length; i += batchSize) {
     const batch = allDriverIds.slice(i, i + batchSize);
-    const [driverDocs, userDocs] = await Promise.all([
-      Promise.all(batch.map((id) => db.collection(DRIVERS_COLLECTION).doc(id).get())),
-      Promise.all(batch.map((id) => db.collection("users").doc(id).get())),
-    ]);
+    const registrySnapshot = await db
+      .collection(DRIVER_REGISTRY_COLLECTION)
+      .where("linkedUserId", "in", batch)
+      .get();
 
-    for (let j = 0; j < batch.length; j++) {
-      const dId = batch[j];
-      const driverDoc = driverDocs[j];
-      const userDoc = userDocs[j];
+    const registryByUid = new Map<string, DocumentData>();
+    for (const doc of registrySnapshot.docs) {
+      registryByUid.set(doc.data().linkedUserId, doc.data());
+    }
 
-      const driverData = driverDoc.exists ? driverDoc.data()! : {};
-      const userName = userDoc.exists
-        ? (userDoc.data()!.displayName ?? "Driver")
-        : "Driver";
+    // Fall back to a live profile lookup only for a uid with no
+    // (or not-yet-migrated) registry entry, so historical data still
+    // displays a name.
+    const missingUids = batch.filter((id) => !registryByUid.has(id));
+    const fallbackNames = new Map<string, string>();
+    if (missingUids.length > 0) {
+      const userDocs = await Promise.all(
+        missingUids.map((id) => db.collection("users").doc(id).get()),
+      );
+      for (let k = 0; k < missingUids.length; k++) {
+        const userDoc = userDocs[k];
+        if (userDoc.exists) {
+          fallbackNames.set(missingUids[k], userDoc.data()!.displayName ?? "Driver");
+        }
+      }
+    }
 
+    for (const dId of batch) {
+      const driverData = registryByUid.get(dId);
       const times = driverClaimToDeliveryTimes.get(dId) ?? [];
 
       drivers.push({
         driverId: dId,
-        displayName: userName,
+        displayName: driverData?.displayName ?? fallbackNames.get(dId) ?? "Driver",
         loadsClaimed: driverClaimedMap.get(dId) ?? 0,
         loadsDelivered: driverDeliveredMap.get(dId) ?? 0,
         confirmedDeliveries: driverConfirmedMap.get(dId) ?? 0,
         avgClaimToDeliveryHours: average(times),
-        eligibilityStatus: (driverData.eligibilityStatus as string) ?? "ineligible",
-        availabilityStatus: (driverData.availabilityStatus as string) ?? "offline",
+        eligibilityStatus: (driverData?.eligibilityStatus as string) ?? "ineligible",
+        availabilityStatus: (driverData?.availabilityStatus as string) ?? "offline",
       });
     }
   }

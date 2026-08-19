@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { addRole, removeRole, getActiveDeliveryCount } from "@/lib/domain/admin";
 import { updateDispatchSettings } from "@/lib/domain/dispatchSettings";
-import { restrictDriverAccess, restoreDriverAccess } from "@/lib/domain/drivers";
 import { isUserRole } from "@/lib/auth/roles";
 import type { UserRole } from "@/lib/domain/types";
 
@@ -105,60 +104,9 @@ export async function removeUserRole(
 }
 
 // ---------------------------------------------------------------------------
-// Driver eligibility management
-// ---------------------------------------------------------------------------
-
-export interface DriverActionState {
-  status: "idle" | "success" | "error";
-  message?: string;
-}
-
-export async function adminRestrictDriver(
-  _prevState: DriverActionState,
-  formData: FormData,
-): Promise<DriverActionState> {
-  const session = await requireAdmin();
-  const driverId = String(formData.get("driverId") ?? "").trim();
-  const reason = String(formData.get("reason") ?? "").trim();
-
-  if (!driverId) return { status: "error", message: "Missing driver ID." };
-  if (!reason) return { status: "error", message: "A reason is required." };
-
-  try {
-    await restrictDriverAccess({ driverId, restrictedBy: session.uid, reason });
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message === "DRIVER_NOT_FOUND") {
-      return { status: "error", message: "Driver profile not found." };
-    }
-    throw err;
-  }
-
-  revalidatePath("/admin");
-  return { status: "success", message: "Delivery access restricted." };
-}
-
-export async function adminRestoreDriver(
-  _prevState: DriverActionState,
-  formData: FormData,
-): Promise<DriverActionState> {
-  const session = await requireAdmin();
-  const driverId = String(formData.get("driverId") ?? "").trim();
-
-  if (!driverId) return { status: "error", message: "Missing driver ID." };
-
-  try {
-    await restoreDriverAccess({ driverId, restoredBy: session.uid });
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message === "DRIVER_NOT_FOUND") {
-      return { status: "error", message: "Driver profile not found." };
-    }
-    throw err;
-  }
-
-  revalidatePath("/admin");
-  return { status: "success", message: "Delivery access restored." };
-}
-
+// Note: driver eligibility, account linking, and meter assignments are
+// managed from the Driver Registry (/admin/drivers) — see
+// src/app/admin/drivers/actions.ts — not here.
 // ---------------------------------------------------------------------------
 // Dispatch settings
 // ---------------------------------------------------------------------------

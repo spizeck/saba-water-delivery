@@ -4,77 +4,56 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { DriverProfile } from "@/lib/domain/types";
+import type { DriverRegistryEntry } from "@/lib/domain/types";
 
-import { adminRestrictDriver, adminRestoreDriver, type DriverActionState } from "../../actions";
+import {
+  restoreDriverEntryAction,
+  restrictDriverEntryAction,
+  type DriverFormActionState,
+} from "../actions";
 
-interface DriverEligibilitySectionProps {
-  driverId: string;
-  driverProfile: DriverProfile;
-}
+const initialState: DriverFormActionState = { status: "idle" };
 
-export function DriverEligibilitySection({
-  driverId,
-  driverProfile,
-}: DriverEligibilitySectionProps) {
-  const isEligible = driverProfile.eligibilityStatus === "eligible";
-  const isOnline = driverProfile.availabilityStatus === "online";
+export function EligibilityPanel({ driver }: { driver: DriverRegistryEntry }) {
+  const isEligible = driver.eligibilityStatus === "eligible";
 
   return (
     <Card>
-      <h2 className="text-lg font-bold text-slate-900">Driver Access</h2>
-
-      <div className="mt-4 flex items-center gap-3">
+      <h2 className="text-lg font-bold text-slate-900">Delivery Eligibility</h2>
+      <div className="mt-3 flex items-center gap-3">
         <span
           className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-            isEligible
-              ? "bg-green-50 text-green-700"
-              : "bg-red-50 text-red-700"
+            isEligible ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
           }`}
         >
           {isEligible ? "Eligible" : "Ineligible"}
         </span>
-        <span
-          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-            isOnline
-              ? "bg-green-50 text-green-700"
-              : "bg-slate-100 text-slate-600"
-          }`}
-        >
-          {isOnline ? "Online" : "Offline"}
-        </span>
+        {!isEligible && driver.ineligibilityReason && (
+          <span className="text-xs text-slate-600">{driver.ineligibilityReason}</span>
+        )}
       </div>
 
-      {!isEligible && driverProfile.ineligibilityReason && (
-        <p className="mt-3 text-xs text-slate-600">
-          <span className="font-medium">Reason:</span>{" "}
-          {driverProfile.ineligibilityReason}
-        </p>
-      )}
-
       <div className="mt-4">
-        {isEligible ? (
-          <RestrictForm driverId={driverId} />
-        ) : (
-          <RestoreForm driverId={driverId} />
-        )}
+        {isEligible ? <RestrictForm driverId={driver.id} /> : <RestoreForm driverId={driver.id} />}
       </div>
     </Card>
   );
 }
 
 function RestrictForm({ driverId }: { driverId: string }) {
-  const initialState: DriverActionState = { status: "idle" };
-  const [state, action, pending] = useActionState(adminRestrictDriver, initialState);
+  const [state, formAction, pending] = useActionState(restrictDriverEntryAction, initialState);
   const [reason, setReason] = useState("");
 
+  if (state.status === "success") {
+    return <p className="text-sm font-medium text-green-700">{state.message}</p>;
+  }
+
   return (
-    <form action={action} className="flex flex-col gap-2">
+    <form action={formAction} className="flex flex-col gap-2">
       <input type="hidden" name="driverId" value={driverId} />
       <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
         Reason for restriction
         <input
-          type="text"
           name="reason"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
@@ -88,13 +67,10 @@ function RestrictForm({ driverId }: { driverId: string }) {
         variant="outline"
         size="md"
         disabled={pending || !reason.trim()}
-        className="!h-8 !text-xs !border-red-200 !text-red-700 hover:!bg-red-50"
+        className="!h-8 self-start !text-xs !border-red-200 !text-red-700 hover:!bg-red-50"
       >
         {pending ? "Restricting..." : "Restrict Delivery Access"}
       </Button>
-      {state.status === "success" && (
-        <p className="text-xs font-medium text-green-700">{state.message}</p>
-      )}
       {state.status === "error" && (
         <p className="text-xs font-medium text-red-700">{state.message}</p>
       )}
@@ -103,11 +79,10 @@ function RestrictForm({ driverId }: { driverId: string }) {
 }
 
 function RestoreForm({ driverId }: { driverId: string }) {
-  const initialState: DriverActionState = { status: "idle" };
-  const [state, action, pending] = useActionState(adminRestoreDriver, initialState);
+  const [state, formAction, pending] = useActionState(restoreDriverEntryAction, initialState);
 
   return (
-    <form action={action}>
+    <form action={formAction}>
       <input type="hidden" name="driverId" value={driverId} />
       <Button
         type="submit"

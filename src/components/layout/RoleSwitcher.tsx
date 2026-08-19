@@ -10,6 +10,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   driver: "Driver",
   dispatcher: "Dispatcher",
   admin: "Admin",
+  viewer: "Viewer",
 };
 
 /** Sets the portal preference cookie (non-httpOnly, client-readable). */

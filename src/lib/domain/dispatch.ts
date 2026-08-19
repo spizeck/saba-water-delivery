@@ -12,7 +12,7 @@ import {
   recordOfferResponse,
 } from "./driverOffers";
 import { getDispatchSettings } from "./dispatchSettings";
-import { startDriverCooldown } from "./drivers";
+import { startCooldownByLinkedUser } from "./driverRegistry";
 import type { DriverOffer, WaterRequest } from "./types";
 import {
   claimWaterRequest,
@@ -264,8 +264,8 @@ export async function declineDriverOffer(
     const cooldownUntil = new Date(
       Date.now() + settings.declineCooldownHours * 60 * 60 * 1000,
     );
-    await startDriverCooldown({
-      driverId,
+    await startCooldownByLinkedUser({
+      userId: driverId,
       cooldownUntil,
       declineCount,
       maxDeclinesPerDay: settings.maxDeclinesPerDay,

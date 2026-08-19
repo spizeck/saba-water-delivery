@@ -6,10 +6,10 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getDriverEvents, getRoleEvents } from "@/lib/domain/admin";
-import { getDriverProfile } from "@/lib/domain/drivers";
+import { getDriverByLinkedUserId } from "@/lib/domain/driverRegistry";
 import { getUserProfile } from "@/lib/domain/users";
+import { formatSabaDate } from "@/lib/utils/datetime";
 
-import { DriverEligibilitySection } from "./DriverEligibilitySection";
 import { RoleManagement } from "./RoleManagement";
 import { UserHistory } from "./UserHistory";
 
@@ -50,9 +50,12 @@ export default async function UserDetailPage({ params }: PageProps) {
 
   const isDriver = targetUser.roles.includes("driver");
 
-  // Fetch driver profile and events in parallel if user is a driver.
-  const [driverProfile, roleEvents, driverEvents] = await Promise.all([
-    isDriver ? getDriverProfile(uid) : null,
+  // Fetch the linked Driver Registry entry (if any) and role/driver
+  // event history in parallel. Driver eligibility/linking is now managed
+  // from the Driver Registry (/admin/drivers), not here — see
+  // TECHNICAL.md "Driver Registry".
+  const [linkedDriver, roleEvents, driverEvents] = await Promise.all([
+    isDriver ? getDriverByLinkedUserId(uid) : null,
     getRoleEvents(uid),
     isDriver ? getDriverEvents(uid) : [],
   ]);
@@ -113,7 +116,7 @@ export default async function UserDetailPage({ params }: PageProps) {
               <div>
                 <dt className="font-medium text-slate-500">Member since</dt>
                 <dd className="text-slate-900">
-                  {new Date(targetUser.createdAt).toLocaleDateString()}
+                  {formatSabaDate(targetUser.createdAt)}
                 </dd>
               </div>
             </dl>
@@ -126,12 +129,34 @@ export default async function UserDetailPage({ params }: PageProps) {
             isOwnAccount={uid === adminUid}
           />
 
-          {/* Driver eligibility section (only for users with driver role) */}
-          {isDriver && driverProfile && (
-            <DriverEligibilitySection
-              driverId={uid}
-              driverProfile={driverProfile}
-            />
+          {/* Driver registry link (eligibility/meters/linking are managed
+              from the Driver Registry, not here). */}
+          {isDriver && (
+            <Card>
+              <h2 className="text-lg font-bold text-slate-900">Driver Status</h2>
+              {linkedDriver ? (
+                <>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Linked to Driver Registry entry{" "}
+                    <span className="font-medium text-slate-900">{linkedDriver.displayName}</span>.
+                  </p>
+                  <Link
+                    href={`/admin/drivers/${linkedDriver.id}`}
+                    className="mt-2 inline-block text-sm text-blue-700 hover:underline"
+                  >
+                    Manage eligibility, meters, and linking &rarr;
+                  </Link>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">
+                  This user has the driver role but is not linked to a
+                  Driver Registry entry.{" "}
+                  <Link href="/admin/drivers" className="text-blue-700 hover:underline">
+                    Manage the Driver Registry &rarr;
+                  </Link>
+                </p>
+              )}
+            </Card>
           )}
 
           {/* History */}

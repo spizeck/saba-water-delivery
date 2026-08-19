@@ -98,8 +98,12 @@ Never rely on UI visibility for access control.
 
 `roles` includes `"driver"` = user may access driver portal functionality.
 
-`drivers/{uid}.eligibilityStatus == "eligible"` = government has authorized
-that driver to claim deliveries.
+Government-managed **Driver Registry** eligibility
+(`driverRegistry.eligibilityStatus == "eligible"`, looked up by
+`linkedUserId`) = government has authorized that driver to claim
+deliveries. See "Driver Registry" below — a driver record can exist
+before any account exists at all, and getting the `driver` role does
+NOT by itself create one.
 
 These are independent. Do not combine them.
 
@@ -120,13 +124,22 @@ markWaterDelivered
 confirmWaterDelivery
 disputeWaterDelivery
 cancelWaterRequest
-setDriverAvailability
-restrictDriverAccess
-restoreDriverAccess
 getNextOfferForDriver
 acceptDriverOffer
 declineDriverOffer
 confirmDeliveryByStaff
+```
+
+Driver Registry operations (`src/lib/domain/driverRegistry.ts`):
+
+```text
+createDriver
+linkDriverAccount
+unlinkDriverAccount
+restrictDriver
+restoreDriver
+setAvailabilityByLinkedUser
+setMeterAssignment
 ```
 
 These functions should be reusable later by non-web interfaces such as WhatsApp.
@@ -252,6 +265,15 @@ Code-level defaults live in `appConfig.defaultMaxDeclinesPerDay` /
 admin saves settings for the first time. See
 `src/lib/domain/dispatchSettings.ts` and TECHNICAL.md "Dispatch Offers".
 
+## Operational timezone
+
+`appConfig.operationalTimezone` (`"America/Puerto_Rico"`) is the single
+centralized setting for all Saba-local date/time display and calendar
+boundaries. Use `src/lib/utils/datetime.ts` for any new date/time
+formatting or calendar-boundary logic — never hard-code a timezone or
+manually offset a timestamp elsewhere. See TECHNICAL.md "Saba
+Operational Timezone".
+
 ---
 
 # WhatsApp
@@ -371,8 +393,8 @@ The `/admin` portal provides user and role management. Only users with the
 
 - User list with search/filter by name, email, or role
 - User detail view with profile info, role management, and history
-- Add/remove operational roles (driver, dispatcher, admin)
-- Driver eligibility management (restrict/restore delivery access)
+- Add/remove operational roles (driver, dispatcher, admin, viewer)
+- Driver Registry management (`/admin/drivers`) — see below
 - Dispatch offer settings: maximum driver declines per day and decline
   cooldown hours (`config/dispatchSettings`, admin-only, audited)
 - Role-change audit trail (`users/{uid}/roleEvents` subcollection)
@@ -380,13 +402,65 @@ The `/admin` portal provides user and role management. Only users with the
 ## Key behaviors
 
 - `resident` is the baseline role and cannot be removed.
-- Adding `driver` role creates a `drivers/{uid}` document (ineligible/offline).
-- Removing `driver` role forces driver offline but preserves history.
+- Adding `driver` role does NOT create any driver record — operational
+  drivers are entered separately in the Driver Registry (see below).
+- Removing `driver` role forces the linked Driver Registry entry (if
+  any) to unlink and go offline, but preserves all history.
 - Admin cannot remove their own `admin` role (self-lockout protection).
 - The last system admin cannot be removed (system lockout protection).
 - All role mutations happen server-side via Admin SDK.
 - Driver role removal is BLOCKED when active claimed deliveries exist.
   The admin must resolve/reassign deliveries through the dispatcher workflow first.
+
+---
+
+# Driver Registry
+
+`/admin/drivers` is the government-managed roster — see PRODUCT.md /
+TECHNICAL.md "Driver Registry" for the full model and canonical-ID
+rationale. Summary for maintainers:
+
+- A driver can be created here with just a name (+ optional phone) —
+  no account required.
+- `/admin/drivers/[driverId]` — edit basic info; link/unlink an existing
+  user account (search by name/phone/email); restrict/restore
+  eligibility; edit fill-station meter assignments; view audit history.
+- "Registry Tools" on `/admin/drivers` has two idempotent, explicitly
+  admin-triggered actions: seed the known initial roster, and import
+  legacy pre-registry `drivers/{uid}` documents. Neither runs
+  automatically.
+- Operational code (claiming, offer eligibility, resident/dispatcher
+  driver pickers, statistics driver attribution) looks up a registry
+  entry by `linkedUserId`, never by registry ID — see TECHNICAL.md
+  "Canonical Driver ID".
+
+## Domain logic
+
+- `src/lib/domain/driverRegistry.ts` — all registry/linking/eligibility/
+  meter/migration logic
+- `src/lib/domain/fillStations.ts` — fill-station reference data
+- `src/app/admin/drivers/` — list, add-driver form, registry tools
+- `src/app/admin/drivers/[driverId]/` — detail page and panels
+
+---
+
+# Viewer Portal
+
+`/viewer` is a strongly read-only oversight page for the `viewer` role
+— see PRODUCT.md / TECHNICAL.md "Viewer Role". It is a separate,
+minimal page (not a stripped-down copy of the dispatcher dashboard)
+because dispatcher's components carry action buttons and richer
+customer fields (phone, full directions) that the viewer must not
+receive at all; the small amount of table markup duplicated here is
+worth avoiding a much larger conditional-rendering surface in the
+dispatcher components. `/statistics` is shared as-is between dispatcher,
+admin, and viewer, since it's already aggregate-only data.
+
+## Domain logic
+
+- `src/app/viewer/page.tsx` — builds a reduced request/driver
+  projection server-side before rendering (see TECHNICAL.md "Privacy-
+  by-projection")
 
 ## Domain logic
 

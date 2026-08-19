@@ -432,13 +432,19 @@ export async function claimWaterRequest(
   const { requestId, driverId } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  const driverRef = db.collection("drivers").doc(driverId);
+  // Driver eligibility/availability now lives on the Driver Registry
+  // entry linked to this uid, not a `drivers/{uid}` document — see
+  // TECHNICAL.md "Driver Registry" for the canonical-ID rationale.
+  const driverQuery = db
+    .collection("driverRegistry")
+    .where("linkedUserId", "==", driverId)
+    .limit(1);
   const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (txn) => {
-    const [requestSnap, driverSnap] = await Promise.all([
+    const [requestSnap, driverQuerySnap] = await Promise.all([
       txn.get(requestRef),
-      txn.get(driverRef),
+      txn.get(driverQuery),
     ]);
 
     // --- Validate request ---
@@ -468,10 +474,10 @@ export async function claimWaterRequest(
     }
 
     // --- Validate driver ---
-    if (!driverSnap.exists) {
+    if (driverQuerySnap.empty) {
       throw new Error("DRIVER_NOT_FOUND");
     }
-    const drvData = driverSnap.data()!;
+    const drvData = driverQuerySnap.docs[0].data();
 
     if (drvData.eligibilityStatus !== "eligible") {
       throw new Error("DRIVER_INELIGIBLE");
@@ -1083,13 +1089,16 @@ export async function dispatcherAssign(
   const { requestId, driverId, actorId } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  const driverRef = db.collection("drivers").doc(driverId);
+  const driverQuery = db
+    .collection("driverRegistry")
+    .where("linkedUserId", "==", driverId)
+    .limit(1);
   const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (txn) => {
-    const [requestSnap, driverSnap] = await Promise.all([
+    const [requestSnap, driverQuerySnap] = await Promise.all([
       txn.get(requestRef),
-      txn.get(driverRef),
+      txn.get(driverQuery),
     ]);
 
     if (!requestSnap.exists) throw new Error("REQUEST_NOT_FOUND");
@@ -1101,8 +1110,8 @@ export async function dispatcherAssign(
       throw new Error("REQUEST_NOT_ASSIGNABLE");
     }
 
-    if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
-    const drvData = driverSnap.data()!;
+    if (driverQuerySnap.empty) throw new Error("DRIVER_NOT_FOUND");
+    const drvData = driverQuerySnap.docs[0].data();
     if (drvData.eligibilityStatus !== "eligible") {
       throw new Error("DRIVER_INELIGIBLE");
     }
@@ -1149,13 +1158,16 @@ export async function dispatcherReassign(
   const { requestId, newDriverId, actorId, reason } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  const newDriverRef = db.collection("drivers").doc(newDriverId);
+  const driverQuery = db
+    .collection("driverRegistry")
+    .where("linkedUserId", "==", newDriverId)
+    .limit(1);
   const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (txn) => {
-    const [requestSnap, driverSnap] = await Promise.all([
+    const [requestSnap, driverQuerySnap] = await Promise.all([
       txn.get(requestRef),
-      txn.get(newDriverRef),
+      txn.get(driverQuery),
     ]);
 
     if (!requestSnap.exists) throw new Error("REQUEST_NOT_FOUND");
@@ -1165,8 +1177,8 @@ export async function dispatcherReassign(
       throw new Error("REQUEST_NOT_CLAIMED");
     }
 
-    if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
-    const drvData = driverSnap.data()!;
+    if (driverQuerySnap.empty) throw new Error("DRIVER_NOT_FOUND");
+    const drvData = driverQuerySnap.docs[0].data();
     if (drvData.eligibilityStatus !== "eligible") {
       throw new Error("DRIVER_INELIGIBLE");
     }

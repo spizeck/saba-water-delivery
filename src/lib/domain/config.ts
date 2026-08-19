@@ -39,13 +39,20 @@ export const appConfig = {
   defaultDeclineCooldownHours: 1,
 
   /**
-   * IANA timezone used to define the "local day" boundary for counting a
-   * driver's daily declines (see TECHNICAL.md "Dispatch Offers"). Saba is
-   * part of the Caribbean Netherlands; America/Kralendijk observes a fixed
-   * UTC-4 offset year-round (no daylight saving), so decline counts reset
-   * at a consistent, intuitive local time regardless of server timezone.
+   * IANA timezone for ALL Saba operational date/time display and
+   * calendar-boundary calculations (see TECHNICAL.md "Saba Operational
+   * Timezone"). This is the single centralized setting referenced by
+   * `src/lib/utils/datetime.ts` — no other module should hard-code a
+   * timezone or manually offset a timestamp.
+   *
+   * America/Puerto_Rico observes a fixed UTC-4 offset year-round (no
+   * daylight saving), matching Saba's actual clock. Firestore timestamps
+   * are never altered — they remain proper absolute instants; only
+   * display formatting and calendar-day/month/year boundaries (e.g. the
+   * driver decline-limit "day," statistics month/year periods) use this
+   * timezone.
    */
-  operationalTimezone: "America/Kralendijk",
+  operationalTimezone: "America/Puerto_Rico",
 } as const;
 
 export type AppConfig = typeof appConfig;

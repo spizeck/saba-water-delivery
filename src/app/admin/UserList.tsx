@@ -12,6 +12,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   driver: "Driver",
   dispatcher: "Dispatcher",
   admin: "Admin",
+  viewer: "Viewer",
 };
 
 interface UserListProps {
@@ -134,5 +135,7 @@ function getRoleBadgeClass(role: UserRole): string {
       return "bg-amber-50 text-amber-700";
     case "resident":
       return "bg-slate-100 text-slate-600";
+    case "viewer":
+      return "bg-teal-50 text-teal-700";
   }
 }

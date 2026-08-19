@@ -9,9 +9,15 @@ import type { UserRole } from "@/lib/domain/types";
 import { addUserRole, removeUserRole, type RoleActionState } from "../../actions";
 
 const MANAGEABLE_ROLES: { role: UserRole; label: string; description: string }[] = [
-  { role: "driver", label: "Driver", description: "Access driver portal and delivery functions" },
+  {
+    role: "driver",
+    label: "Driver",
+    description:
+      "Access the driver portal. Does not by itself make someone an operational driver — see the Driver Registry.",
+  },
   { role: "dispatcher", label: "Dispatcher", description: "Access dispatcher operational functions" },
   { role: "admin", label: "Admin", description: "Full system administration access" },
+  { role: "viewer", label: "Viewer", description: "Read-only oversight of requests and statistics" },
 ];
 
 interface RoleManagementProps {

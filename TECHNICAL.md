@@ -46,13 +46,19 @@ resident
 driver
 dispatcher
 admin
+viewer
 ```
 
 A single user may hold **multiple roles** simultaneously. The canonical field is:
 
 ```ts
-roles: Array<"resident" | "driver" | "dispatcher" | "admin">
+roles: Array<"resident" | "driver" | "dispatcher" | "admin" | "viewer">
 ```
+
+`viewer` is read-only oversight — see "Viewer Role" below. It is
+deliberately excluded from `hasStaffAccess()` (`src/lib/auth/roles.ts`);
+any mutating server action must keep requiring `dispatcher`/`admin`
+explicitly.
 
 New users default to `roles: ["resident"]`. Roles are only granted through
 trusted server-side (Admin SDK) operations — never by client writes.
@@ -114,7 +120,7 @@ This is a starting model, not an instruction to blindly reproduce every field.
 
 Role changes are recorded here for audit. These are admin-only operations.
 
-## drivers/{uid}
+## drivers/{uid} (LEGACY — superseded by driverRegistry, see below)
 
 ```ts
 {
@@ -127,16 +133,132 @@ Role changes are recorded here for audit. These are admin-only operations.
   restrictedAt: Timestamp | null
   restrictedBy: string | null
 
-  // Dispatch-offer decline cooldown. Set when a driver reaches the
-  // configured daily decline limit; cleared naturally once it passes.
-  // This is independent of eligibilityStatus and availabilityStatus —
-  // see "Dispatch Offers" below.
   cooldownUntil: Timestamp | null
 
   createdAt: Timestamp
   updatedAt: Timestamp
 }
 ```
+
+This collection assumed a driver was always keyed by, and only ever
+existed because of, an application user account (`doc id == uid`). It is
+retained read-only for historical data (see "Existing Driver Data
+Migration" below) but no new code creates or writes to it. All current
+operational logic uses `driverRegistry` instead.
+
+## driverRegistry/{driverId}
+
+```ts
+{
+  displayName: string
+  phone: string | null
+
+  // Firebase uid of the linked application account, or null if unlinked.
+  linkedUserId: string | null
+
+  eligibilityStatus: "eligible" | "ineligible"
+  availabilityStatus: "online" | "offline"
+
+  ineligibilityReason: string | null
+  restrictedAt: Timestamp | null
+  restrictedBy: string | null
+
+  cooldownUntil: Timestamp | null
+
+  createdAt: Timestamp
+  createdBy: string
+  updatedAt: Timestamp
+  updatedBy: string
+}
+```
+
+A driver is a government-managed entity — see PRODUCT.md "Driver
+Registry." `driverId` (this document's ID) is an auto-generated
+Firestore ID, independent of any user account, so a driver can be
+entered before they ever sign in. See "Canonical Driver ID" below for
+why this ID is never itself stored on a water request.
+
+### driverRegistry/{driverId}/events/{eventId}
+
+Same shape as `waterRequests/{id}/events` (`type`, `actorId`,
+`actorRole`, `createdAt`, `metadata`). Event types include the existing
+`driver_online` / `driver_offline` / `driver_access_restricted` /
+`driver_access_restored` / `driver_cooldown_started`, plus:
+
+```text
+driver_registry_created
+driver_registry_updated
+driver_account_linked
+driver_account_unlinked
+meter_assignment_added
+meter_assignment_updated
+meter_assignment_removed
+```
+
+### driverRegistry/{driverId}/meters/{stationId}
+
+```ts
+{
+  meterCode: string
+  meterNumber: number
+  updatedAt: Timestamp
+  updatedBy: string
+}
+```
+
+One document per fill station the driver has a meter assignment at.
+Document ID is the `fillStations` station ID, so each station's
+assignment can be edited independently.
+
+## fillStations/{stationId}
+
+```ts
+{
+  name: string
+  active: boolean
+}
+```
+
+Stable IDs: `bottom`, `wws`, `hells-gate`. `ensureDefaultFillStations()`
+(`src/lib/domain/fillStations.ts`) idempotently provisions these three
+on read if missing — safe to call repeatedly, since it never overwrites
+an existing document and contains no customer/driver data. New stations
+can be added later; inactive stations are excluded from driver-facing
+meter editing but not deleted.
+
+## Canonical Driver ID
+
+Two different "driver IDs" exist in this system, and the distinction is
+deliberate:
+
+- **`driverRegistry` document ID** — identifies the driver as a
+  government entity, for admin/meter/eligibility management. Never
+  stored on a water request or offer.
+- **Firebase uid of the linked account** — identifies the driver as an
+  authenticated actor. This is what `waterRequests.assignedDriverId`,
+  `waterRequests.preferredDriverId`, and `driverOffers.driverId` store,
+  unchanged from before the registry existed.
+
+Rationale: every operational action (receiving an offer, accepting,
+declining, claiming, marking delivered) inherently requires an
+authenticated session, so the uid is the only identifier available at
+that point anyway. Introducing the registry ID as a second, competing
+identifier for the same operational fields would require a lookup table
+and risk requests silently referencing two different "kinds" of driver
+ID over time. Instead, `driverRegistry.linkedUserId` is the single
+bridge: operational code (`claimWaterRequest`, `dispatcherAssign`,
+`dispatcherReassign`, `getEligibleDriverOptions`, dispatch cooldown/
+availability) looks up a driver's registry entry by `linkedUserId`
+rather than by registry ID.
+
+A practical consequence: **only linked, eligible drivers can appear in
+any picker or be assigned to a request** — an unlinked driver can be
+marked eligible in the registry (e.g. in anticipation of them signing
+up), but cannot yet be selected anywhere that ultimately needs a uid.
+
+This is a one-time architectural decision made now, before production
+data accumulates, specifically so future requests don't end up
+referencing driver IDs inconsistently.
 
 ## waterRequests/{requestId}
 
@@ -448,6 +570,36 @@ loops without an unbounded read.
 
 ---
 
+# Existing Driver Data Migration
+
+Before the Driver Registry existed, `drivers/{uid}` documents were
+created automatically whenever a user received the `driver` role. Any
+such documents that already exist in a given environment are **not**
+migrated or deleted automatically — see PRODUCT.md / DEVIN.md and the
+"Manual Firebase/admin actions" note in session reports.
+
+`importLegacyDrivers()` (`src/lib/domain/driverRegistry.ts`) is an
+idempotent, explicitly admin-triggered tool ("Import legacy driver
+accounts" button on `/admin/drivers`) that:
+
+1. Reads every `drivers/{uid}` document.
+2. Skips any uid that already has a linked `driverRegistry` entry.
+3. For the rest, creates a new `driverRegistry` entry with
+   `linkedUserId` set to that uid, `displayName`/`phone` pulled from
+   `users/{uid}`, and eligibility/availability/cooldown/restriction
+   state copied over unchanged.
+4. Records a `driver_registry_created` event with
+   `migratedFromLegacyDriverDoc: true` and the original uid, for
+   traceability.
+
+It never deletes the legacy `drivers/{uid}` documents. Running it more
+than once is safe — already-imported uids are skipped. **This must be
+run once by an admin after this feature ships to any environment with
+pre-existing driver accounts** (see the deployment/production-launch
+report for whether this repository's environment needs it).
+
+---
+
 # Preferred Driver Expiration
 
 The preferred-driver window must be configurable.
@@ -572,19 +724,34 @@ markWaterDelivered()
 confirmWaterDelivery()
 disputeWaterDelivery()
 cancelWaterRequest()
-setDriverAvailability()
-restrictDriverAccess()
-restoreDriverAccess()
 expirePreferredDriverHold()
 getNextOfferForDriver()
 acceptDriverOffer()
 declineDriverOffer()
-startDriverCooldown()
 getDispatchSettings()
 updateDispatchSettings()
 findActiveRequestsByPhone()
 getActiveCustomerIds()
 confirmDeliveryByStaff()
+```
+
+Driver Registry operations live in `src/lib/domain/driverRegistry.ts`:
+
+```text
+createDriver()
+updateDriver()
+linkDriverAccount()
+unlinkDriverAccount()
+unlinkDriverAccountByUserId()
+restrictDriver()
+restoreDriver()
+setAvailabilityByLinkedUser()
+startCooldownByLinkedUser()
+getEligibleDriverOptions()
+setMeterAssignment()
+removeMeterAssignment()
+importLegacyDrivers()
+seedInitialRoster()
 ```
 
 Future WhatsApp actions should call the same domain operations.
@@ -612,7 +779,12 @@ Dispatchers should have operational access.
 
 Admins should have administrative access.
 
-Privileged operations such as role changes, delivery access restrictions and forced reassignments should happen through trusted server-side code.
+Viewers should have read-only access to operational data (requests,
+driver status, statistics) and explicitly NOT to the admin user
+directory (`users/{userId}` reads remain `isStaff()`-only — see "Viewer
+Role" below).
+
+Privileged operations such as role changes, delivery access restrictions, driver-registry creation/linking/meter changes, and forced reassignments should happen through trusted server-side code.
 
 Design Firestore queries together with Security Rules.
 
@@ -628,6 +800,49 @@ can read another customer's unregistered request through this
 comparison. Staff access (`isStaff()`) is unaffected. This was reviewed
 when dispatcher-created requests were added; no rule changes were
 required.
+
+## Driver Registry, fill stations, and viewer access
+
+`driverRegistry/{id}` (and its `events`/`meters` subcollections) and
+`fillStations/{id}` are readable by `isStaff() || isViewer()`; all
+writes are `false` — every mutation goes through
+`src/lib/domain/driverRegistry.ts` via the Admin SDK, which bypasses
+these rules by design. Normal users cannot create themselves as
+drivers, and `viewer` never has write capability anywhere.
+
+`viewer` is added to `waterRequests` (and its `events` subcollection)
+read access alongside `isStaff()`, since operational oversight is the
+role's entire purpose. It is deliberately NOT added to `users/{userId}`
+read access — the Viewer UI never needs the admin user directory, and
+granting it would leak resident PII beyond what oversight requires (see
+PRODUCT.md "Viewer Privacy").
+
+---
+
+# Viewer Role
+
+`viewer` (`src/lib/domain/types.ts` `UserRole`) is enforced the same way
+every other role is: `requireRole([...])` at the top of each
+page/action, never by hiding UI. Concretely:
+
+- `/viewer` (`src/app/viewer/page.tsx`) requires `requireRole("viewer")`.
+- `/statistics` requires `requireRole(["dispatcher", "admin", "viewer"])`.
+- Every dispatcher/admin mutating server action continues to require
+  only `dispatcher`/`admin` — `viewer` is never added to those.
+- `hasStaffAccess()` (`src/lib/auth/roles.ts`) deliberately excludes
+  `viewer`; a new server action should default to requiring
+  `dispatcher`/`admin` and only add `viewer` if it is read-only.
+
+## Privacy-by-projection
+
+The `/viewer` page builds a reduced, oversight-appropriate projection of
+each `WaterRequest` **server-side**, before passing anything to JSX —
+no phone, email, or full delivery directions. Because this is a Next.js
+Server Component that renders plain HTML (not a Client Component
+receiving the full object as a prop), the omitted fields never reach
+the browser at all, not merely "hidden in the UI." Driver rows are
+similarly reduced to name/eligibility/availability/link-status, omitting
+the driver's own phone number.
 
 ---
 
@@ -702,12 +917,73 @@ At minimum audit:
 - Cancellation
 - Driver delivery access restricted
 - Driver delivery access restored
+- Driver Registry entry created/updated
+- Driver account linked/unlinked
+- Fill-station meter assignment added/updated/removed
 - Property photo uploaded/updated/removed
 - Request photo uploaded
 
 For administrative actions, record the responsible user.
 
 Avoid destructive history changes where an event record is more appropriate.
+
+---
+
+# Saba Operational Timezone
+
+The application's operational timezone is `America/Puerto_Rico`
+(`appConfig.operationalTimezone`, `src/lib/domain/config.ts`) — a fixed
+UTC-4 offset year-round, matching Saba's actual clock, with no daylight
+saving to account for.
+
+**Firestore timestamps are never altered.** Every stored `Timestamp`
+remains a proper absolute instant. Only two things are Saba-local:
+
+1. **Display formatting** — every place the app shows an absolute
+   moment in time (request submitted, claimed, delivered, confirmed;
+   dispatcher/admin/driver event history; role history; cooldown
+   expiration; dispatch-settings "last updated"; etc.) uses
+   `src/lib/utils/datetime.ts` (`formatSabaDateTime` / `formatSabaDate` /
+   `formatSabaTime`), which passes an explicit `timeZone` option to
+   `Intl`/`toLocaleString`. This means a viewer in any browser timezone,
+   or a server process running in any timezone (e.g. Vercel functions
+   default to UTC), sees the same genuine Saba time — never the
+   server's or browser's own zone.
+2. **Calendar boundaries** — "today," "this month," "this year" as used
+   by the driver decline-limit day and the statistics "this month"/"this
+   year" periods are computed as real UTC instants via
+   `startOfSabaDay()` / `startOfSabaMonth()` / `startOfSabaYear()`
+   (same file). The offset is derived from `Intl` at the instant in
+   question rather than hard-coded, so this keeps working correctly even
+   if the configured zone is later changed to one that observes DST.
+
+**Elapsed durations are unaffected and need nothing from this module** —
+"2h ago," the 1-hour decline cooldown, the 24-hour preferred-driver
+window, and the 48-hour confirmation window are plain millisecond
+differences, not calendar-anchored, so they are correct in any timezone
+by construction.
+
+Do not hard-code a `-4` (or any) hour offset anywhere else in the
+codebase. If a new feature needs Saba-local display or a new calendar
+boundary, add it to `src/lib/utils/datetime.ts` rather than
+reimplementing timezone math at the call site.
+
+## Calendar-Day Logic
+
+The one place a calendar day matters operationally is
+`maxDeclinesPerDay` (`countDeclinesToday()`,
+`src/lib/domain/driverOffers.ts`): it bounds its Firestore query with a
+generous 26-hour lookback, then filters precisely by comparing each
+decline's Saba-local calendar date (`sabaCalendarDateKey()`) against
+today's Saba-local calendar date. This resets at Saba local midnight,
+never UTC midnight.
+
+Statistics "This month" / "This year" periods use
+`startOfSabaMonth()` / `startOfSabaYear()` as the Firestore query lower
+bound (see `getPeriodStart()` in `src/lib/domain/statistics.ts`).
+"Last 7 days" / "Last 30 days" are plain elapsed-duration windows
+(`now - N days`), which are correct in any timezone and intentionally
+do not use calendar boundaries.
 
 ---
 

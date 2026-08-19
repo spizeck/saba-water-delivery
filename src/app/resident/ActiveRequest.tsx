@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import {
   confirmDelivery,
@@ -36,15 +37,7 @@ const STATUS_COLORS: Record<WaterRequestStatus, string> = {
   cancelled: "bg-slate-100 text-slate-600",
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const formatDate = formatSabaDateTime;
 
 interface Props {
   request: WaterRequest;

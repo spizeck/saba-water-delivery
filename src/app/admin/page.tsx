@@ -37,12 +37,20 @@ export default async function AdminPortalPage() {
                   Manage users, roles, and driver access.
                 </p>
               </div>
-              <Link
-                href="/statistics"
-                className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                View Statistics
-              </Link>
+              <div className="flex shrink-0 gap-2">
+                <Link
+                  href="/admin/drivers"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Driver Registry
+                </Link>
+                <Link
+                  href="/statistics"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  View Statistics
+                </Link>
+              </div>
             </div>
           </Card>
           <DispatchSettingsForm settings={dispatchSettings} />

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
-import { restrictDriverAccess, restoreDriverAccess } from "@/lib/domain/drivers";
+import { restrictDriver as restrictDriverEntry, restoreDriver as restoreDriverEntry } from "@/lib/domain/driverRegistry";
 import {
   cancelWaterRequest,
   confirmDeliveryByStaff,
@@ -45,7 +45,7 @@ export async function restrictDriver(
   if (!reason) return { status: "error", message: "A reason is required." };
 
   try {
-    await restrictDriverAccess({ driverId, restrictedBy: session.uid, reason });
+    await restrictDriverEntry({ driverId, restrictedBy: session.uid, reason });
   } catch (err: unknown) {
     if (err instanceof Error && err.message === "DRIVER_NOT_FOUND") {
       return { status: "error", message: "Driver not found." };
@@ -67,7 +67,7 @@ export async function restoreDriver(
   if (!driverId) return { status: "error", message: "Missing driver ID." };
 
   try {
-    await restoreDriverAccess({ driverId, restoredBy: session.uid });
+    await restoreDriverEntry({ driverId, restoredBy: session.uid });
   } catch (err: unknown) {
     if (err instanceof Error && err.message === "DRIVER_NOT_FOUND") {
       return { status: "error", message: "Driver not found." };

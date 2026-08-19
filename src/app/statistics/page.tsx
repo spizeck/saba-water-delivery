@@ -18,7 +18,7 @@ interface PageProps {
 const VALID_PERIODS: StatsPeriod[] = ["7d", "30d", "month", "year", "all"];
 
 export default async function StatisticsPage({ searchParams }: PageProps) {
-  const { profile } = await requireRole(["dispatcher", "admin"]);
+  const { profile } = await requireRole(["dispatcher", "admin", "viewer"]);
   const params = await searchParams;
 
   const period: StatsPeriod = VALID_PERIODS.includes(params.period as StatsPeriod)

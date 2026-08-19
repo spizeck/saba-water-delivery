@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/Card";
 import type { CurrentOperationalMetrics } from "@/lib/domain/statistics";
+import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 interface CurrentOpsSectionProps {
   current: CurrentOperationalMetrics;
@@ -59,15 +60,7 @@ export function CurrentOpsSection({ current }: CurrentOpsSectionProps) {
       {current.oldestRequestDate && (
         <p className="mt-3 text-xs text-slate-600">
           Oldest open request:{" "}
-          <span className="font-medium">
-            {new Date(current.oldestRequestDate).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            })}
-          </span>
+          <span className="font-medium">{formatSabaDateTime(current.oldestRequestDate)}</span>
         </p>
       )}
     </Card>

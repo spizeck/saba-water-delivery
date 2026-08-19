@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { DriverListItem } from "@/lib/domain/drivers";
+import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 
 import {
@@ -22,7 +22,7 @@ const initialState: RequestActionState = { status: "idle" };
 interface Props {
   requestId: string;
   status: WaterRequestStatus;
-  eligibleDrivers: DriverListItem[];
+  eligibleDrivers: EligibleDriverOption[];
   /** True when this is an unregistered customer's delivered/unconfirmed request. */
   canConfirmUnregisteredDelivery: boolean;
 }
@@ -192,7 +192,7 @@ function ResolveReopenPanel({ requestId, onDone }: { requestId: string; onDone: 
   );
 }
 
-function AssignPanel({ requestId, drivers, onDone }: { requestId: string; drivers: DriverListItem[]; onDone: () => void }) {
+function AssignPanel({ requestId, drivers, onDone }: { requestId: string; drivers: EligibleDriverOption[]; onDone: () => void }) {
   const [state, formAction, pending] = useActionState(assignRequest, initialState);
   if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
 
@@ -223,7 +223,7 @@ function AssignPanel({ requestId, drivers, onDone }: { requestId: string; driver
   );
 }
 
-function ReassignPanel({ requestId, drivers, onDone }: { requestId: string; drivers: DriverListItem[]; onDone: () => void }) {
+function ReassignPanel({ requestId, drivers, onDone }: { requestId: string; drivers: EligibleDriverOption[]; onDone: () => void }) {
   const [state, formAction, pending] = useActionState(reassignRequest, initialState);
   if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
 

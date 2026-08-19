@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { DispatchSettings } from "@/lib/domain/types";
+import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import { saveDispatchSettings, type DispatchSettingsActionState } from "./actions";
 
@@ -73,7 +74,7 @@ export function DispatchSettingsForm({ settings }: Props) {
 
         {settings.updatedAt && (
           <p className="text-xs text-slate-500">
-            Last updated {new Date(settings.updatedAt).toLocaleString()}
+            Last updated {formatSabaDateTime(settings.updatedAt)}
           </p>
         )}
       </form>

@@ -7,7 +7,12 @@
  * and (eventually) non-web interfaces such as WhatsApp.
  */
 
-export type UserRole = "resident" | "driver" | "dispatcher" | "admin";
+/**
+ * `viewer` is a read-only oversight role for government personnel who
+ * need visibility into operations without operational control. See
+ * PRODUCT.md / TECHNICAL.md "Viewer Role".
+ */
+export type UserRole = "resident" | "driver" | "dispatcher" | "admin" | "viewer";
 
 export interface UserProfile {
   uid: string;
@@ -26,6 +31,15 @@ export interface UserProfile {
 export type DriverEligibilityStatus = "eligible" | "ineligible";
 export type DriverAvailabilityStatus = "online" | "offline";
 
+/**
+ * LEGACY shape backing the original `drivers/{uid}` collection, which
+ * assumed a driver was always keyed by (and only ever existed because
+ * of) an application user account. Superseded by the government-managed
+ * Driver Registry (`DriverRegistryEntry` below / `driverRegistry/{id}`) —
+ * see TECHNICAL.md "Driver Registry". Retained only so historical
+ * `drivers/{uid}` documents can still be read (e.g. by the one-time
+ * legacy-import tool); no new code should create or rely on these.
+ */
 export interface DriverProfile {
   userId: string;
 
@@ -227,7 +241,14 @@ export type DriverEventType =
   | "driver_offline"
   | "driver_access_restricted"
   | "driver_access_restored"
-  | "driver_cooldown_started";
+  | "driver_cooldown_started"
+  | "driver_registry_created"
+  | "driver_registry_updated"
+  | "driver_account_linked"
+  | "driver_account_unlinked"
+  | "meter_assignment_added"
+  | "meter_assignment_updated"
+  | "meter_assignment_removed";
 
 export interface DriverEvent {
   id: string;
@@ -236,6 +257,72 @@ export interface DriverEvent {
   actorRole: UserRole | null;
   createdAt: string;
   metadata: Record<string, unknown> | null;
+}
+
+// ---------------------------------------------------------------------------
+// Driver Registry (government-managed driver roster)
+// ---------------------------------------------------------------------------
+
+/**
+ * A driver is a government-recognized entity, entered and managed by
+ * staff — never self-created by a user account receiving the `driver`
+ * role. A registry entry can exist entirely on its own before the
+ * person ever creates or signs into an application account.
+ *
+ * Canonical driver ID strategy (see TECHNICAL.md "Driver Registry"):
+ * `id` (this document's Firestore ID) identifies the driver as a
+ * government entity for admin/meter/eligibility management. It is
+ * NEVER stored as `waterRequests.assignedDriverId`/`preferredDriverId`
+ * or `driverOffers.driverId` — those remain the linked user's Firebase
+ * uid, because accepting/declining/claiming a delivery inherently
+ * requires an authenticated session. `linkedUserId` is the bridge
+ * between the two: operational code looks up a registry entry BY
+ * `linkedUserId` to check eligibility/availability/cooldown for a given
+ * authenticated driver.
+ */
+export interface DriverRegistryEntry {
+  id: string;
+  displayName: string;
+  phone: string | null;
+
+  /** Firebase uid of the linked application account, or null if unlinked. */
+  linkedUserId: string | null;
+
+  eligibilityStatus: DriverEligibilityStatus;
+  availabilityStatus: DriverAvailabilityStatus;
+
+  ineligibilityReason: string | null;
+  restrictedAt: string | null;
+  restrictedBy: string | null;
+
+  /** See DriverProfile.cooldownUntil — same dispatch-offer decline cooldown concept. */
+  cooldownUntil: string | null;
+
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/** Stable fill-station identifiers. New stations may be added later. */
+export type FillStationId = "bottom" | "wws" | "hells-gate" | string;
+
+export interface FillStation {
+  id: FillStationId;
+  name: string;
+  active: boolean;
+}
+
+/**
+ * A driver's meter assignment at one fill station. Only the operationally
+ * useful meter code/number are stored — not full serial numbers.
+ */
+export interface MeterAssignment {
+  stationId: FillStationId;
+  meterCode: string;
+  meterNumber: number;
+  updatedAt: string;
+  updatedBy: string;
 }
 
 // ---------------------------------------------------------------------------

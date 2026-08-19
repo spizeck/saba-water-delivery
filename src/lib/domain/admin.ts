@@ -5,6 +5,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { isUserRole } from "@/lib/auth/roles";
 
+import { unlinkDriverAccountByUserId } from "./driverRegistry";
 import type { UserProfile, UserRole } from "./types";
 
 /**
@@ -16,7 +17,9 @@ import type { UserProfile, UserRole } from "./types";
  */
 
 const USERS_COLLECTION = "users";
-const DRIVERS_COLLECTION = "drivers";
+const DRIVER_REGISTRY_COLLECTION = "driverRegistry";
+/** Legacy pre-registry collection, kept only for historical event display. */
+const LEGACY_DRIVERS_COLLECTION = "drivers";
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -76,18 +79,21 @@ export async function getAllUsers(): Promise<AdminUserListItem[]> {
     });
   }
 
-  // Fetch driver profiles in batches.
+  // Fetch linked Driver Registry entries in batches (eligibility/
+  // availability now live on the registry, not a legacy `drivers/{uid}`
+  // doc — see TECHNICAL.md "Driver Registry"). A user with the `driver`
+  // role but no linked registry entry simply shows no driver status.
   if (driverUids.length > 0) {
     const batchSize = 30;
     for (let i = 0; i < driverUids.length; i += batchSize) {
       const batch = driverUids.slice(i, i + batchSize);
-      const driverSnapshots = await Promise.all(
-        batch.map((uid) => db.collection(DRIVERS_COLLECTION).doc(uid).get()),
-      );
-      for (const driverDoc of driverSnapshots) {
-        if (!driverDoc.exists) continue;
-        const driverData = driverDoc.data()!;
-        const user = users.find((u) => u.uid === driverDoc.id);
+      const registrySnapshot = await db
+        .collection(DRIVER_REGISTRY_COLLECTION)
+        .where("linkedUserId", "in", batch)
+        .get();
+      for (const driverDoc of registrySnapshot.docs) {
+        const driverData = driverDoc.data();
+        const user = users.find((u) => u.uid === driverData.linkedUserId);
         if (user) {
           user.driverStatus = {
             eligibilityStatus: driverData.eligibilityStatus ?? "ineligible",
@@ -141,9 +147,15 @@ export interface AddRoleInput {
 }
 
 /**
- * Adds a role to a user. Preserves existing roles.
- * If adding "driver", ensures the driver profile document exists.
- * Also cleans up legacy singular `role` field when writing.
+ * Adds a role to a user. Preserves existing roles. Also cleans up legacy
+ * singular `role` field when writing.
+ *
+ * Deliberately does NOT create any driver profile/registry record when
+ * adding "driver" — per the Driver Registry model, a person becomes an
+ * operational driver only through an explicit government-managed
+ * registry entry + account link (see driverRegistry.ts), never merely by
+ * receiving this role. A user with the role but no linked registry entry
+ * can view the driver portal but has nothing to do there yet.
  */
 export async function addRole(input: AddRoleInput): Promise<UserProfile> {
   const { targetUid, role, actorId } = input;
@@ -185,24 +197,6 @@ export async function addRole(input: AddRoleInput): Promise<UserProfile> {
     createdAt: now,
   });
 
-  // If adding driver role, ensure driver profile exists.
-  if (role === "driver") {
-    const driverRef = db.collection(DRIVERS_COLLECTION).doc(targetUid);
-    const driverDoc = await driverRef.get();
-    if (!driverDoc.exists) {
-      await driverRef.set({
-        userId: targetUid,
-        eligibilityStatus: "ineligible",
-        availabilityStatus: "offline",
-        ineligibilityReason: "Pending government approval",
-        restrictedAt: null,
-        restrictedBy: null,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-  }
-
   const updated = await userRef.get();
   return toUserProfileFromDoc(targetUid, updated.data()!);
 }
@@ -221,8 +215,10 @@ export interface RemoveRoleInput {
  * - Cannot remove own final "admin" role (self-lockout).
  * - Cannot remove the system's last "admin" role.
  * 
- * If removing "driver", forces availability to offline but preserves
- * the driver profile and delivery history.
+ * If removing "driver" while linked to a Driver Registry entry,
+ * unlinks that entry (same guard as the dedicated unlink workflow: BLOCKS
+ * if the driver has active claimed deliveries) so removing the role
+ * through this generic UI can't leave an inconsistent link behind.
  */
 export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
   const { targetUid, role, actorId } = input;
@@ -289,24 +285,11 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
     createdAt: now,
   });
 
-  // If removing driver role, force offline but preserve profile.
+  // If removing the driver role, unlink any linked Driver Registry entry
+  // so the registry never points at a user who no longer has the role.
+  // The active-deliveries check above already guarantees this is safe.
   if (role === "driver") {
-    const driverRef = db.collection(DRIVERS_COLLECTION).doc(targetUid);
-    const driverDoc = await driverRef.get();
-    if (driverDoc.exists) {
-      await driverRef.update({
-        availabilityStatus: "offline",
-        updatedAt: now,
-      });
-      // Record driver event.
-      await driverRef.collection("events").add({
-        type: "driver_offline",
-        actorId,
-        actorRole: "admin",
-        createdAt: now,
-        metadata: { reason: "Driver role removed" },
-      });
-    }
+    await unlinkDriverAccountByUserId(targetUid, actorId);
   }
 
   const updated = await userRef.get();
@@ -360,10 +343,11 @@ export interface DriverEventItem {
   metadata: Record<string, unknown> | null;
 }
 
+/** Reads historical events from a legacy `drivers/{uid}` doc, if any. */
 export async function getDriverEvents(driverId: string): Promise<DriverEventItem[]> {
   const db = getAdminDb();
   const snapshot = await db
-    .collection(DRIVERS_COLLECTION)
+    .collection(LEGACY_DRIVERS_COLLECTION)
     .doc(driverId)
     .collection("events")
     .orderBy("createdAt", "desc")

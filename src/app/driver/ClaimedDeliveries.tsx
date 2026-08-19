@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { WaterRequest } from "@/lib/domain/types";
+import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import { markDelivered, type MarkDeliveredActionState } from "./actions";
 
@@ -18,14 +19,7 @@ interface Props {
   customerInfo: Record<string, CustomerInfo>;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const formatDate = formatSabaDateTime;
 
 export function ClaimedDeliveries({ deliveries, customerInfo }: Props) {
   if (deliveries.length === 0) return null;

@@ -69,6 +69,85 @@ Authentication should initially support:
 - Facebook
 - Email/password
 
+## Driver Registry
+
+Drivers are a government-managed roster, not a byproduct of account
+creation. A person becomes an operational driver only when government
+staff explicitly enters them in the **Driver Registry** — never merely
+by a user account receiving the `driver` role.
+
+A registry entry can exist entirely on its own, before that person ever
+creates or signs into an application account. The current roster
+(entered by staff, not self-registered) is:
+
+- Government
+- Shanon Levenston
+- Earl Ballentyne
+- Michael Hodge
+- Andy Lavia
+- Eagen Aquasab
+
+These are the same six people at every fill station — one registry
+entry each, not one per station.
+
+### Account linking
+
+Once a driver signs into the application for the first time (creating a
+normal user account), an admin explicitly links that account to their
+existing registry entry from **Drivers → Driver Detail → Link Account**,
+searching by name, phone, or email. Linking:
+
+- Adds the `driver` role to that account (preserving `resident` and any
+  other existing roles).
+- Does **not** automatically grant eligibility — that remains a separate
+  government decision.
+- Cannot accidentally link one account to more than one driver.
+
+An admin can also **unlink** an account later. Unlinking is blocked
+while the driver has active claimed deliveries (those must be resolved
+or reassigned first), and always preserves the registry record, driver
+history, and delivery history.
+
+### Separate concepts
+
+- **Registry** — recognized by government as a driver.
+- **Account link** — has a linked application account.
+- **Eligibility** — `eligible` / `ineligible` (government-controlled).
+- **Availability** — `online` / `offline` (driver-controlled).
+- **Cooldown** — temporary dispatch pause from the decline-limit policy.
+
+A driver can receive a new delivery offer only when all of: registry
+entry exists, account is linked, the account has the `driver` role, they
+are eligible, they are online, and they are not in cooldown.
+
+## Fill Stations and Meters
+
+The current fill stations are:
+
+- Bottom Fill Station (`bottom`)
+- W.W.S. Fill Station (`wws`)
+- Hells Gate Fill Station (`hells-gate`)
+
+Each driver has an independent meter assignment (a short code and a
+meter number) at each fill station — changing one station's assignment
+does not affect the others, even though today the same driver happens to
+use the same meter number everywhere:
+
+| Driver | Bottom | W.W.S. | Hells Gate |
+| --- | --- | --- | --- |
+| Government | BTM1 / Meter 1 | WWS1 / Meter 1 | HG1 / Meter 1 |
+| Shanon Levenston | BTM2 / Meter 2 | WWS2 / Meter 2 | HG2 / Meter 2 |
+| Earl Ballentyne | BTM3 / Meter 3 | WWS3 / Meter 3 | HG3 / Meter 3 |
+| Michael Hodge | BTM4 / Meter 4 | WWS4 / Meter 4 | HG4 / Meter 4 |
+| Andy Lavia | BTM5 / Meter 5 | WWS5 / Meter 5 | HG5 / Meter 5 |
+| Eagen Aquasab | BTM6 / Meter 6 | WWS6 / Meter 6 | HG6 / Meter 6 |
+
+Only the operationally useful meter code and number are stored — not
+full meter serial numbers. Admins can edit assignments per station, and
+every change is audited.
+
+---
+
 ## Driver
 
 Drivers can:
@@ -126,8 +205,11 @@ Role management safeguards:
 
 - Admins cannot remove their own admin role (self-lockout protection).
 - The last system admin cannot be removed (system lockout protection).
-- Adding the driver role creates a driver profile (ineligible by default).
-- Removing the driver role is blocked when active deliveries exist.
+- Adding the `driver` role does NOT by itself make someone an
+  operational driver — see "Driver Registry" above. Operational drivers
+  are entered and linked separately.
+- Removing the driver role is blocked when active deliveries exist, and
+  automatically unlinks the driver's Driver Registry entry if one exists.
 - Role changes are audited with actor and timestamp.
 
 Both dispatchers and administrators can view operational statistics including
@@ -135,6 +217,40 @@ demand trends, delivery metrics, driver activity, preferred-driver usage,
 and dispute rates.
 
 Dispatcher and administrator should be separate roles even if their permissions overlap initially.
+
+## Viewer
+
+`viewer` is a read-only oversight role for government personnel who need
+visibility into operations without operational control — for example, a
+supervisor who wants to monitor demand and delivery activity without
+being able to change anything.
+
+Users remain multi-role, e.g. `["resident", "viewer"]` or
+`["resident", "viewer", "admin"]`. New public users still default to
+`["resident"]` only; `viewer` is granted the same way as any other
+non-baseline role, from Admin User Management.
+
+Viewer may see:
+
+- Current water requests and their statuses
+- Aging/outstanding demand
+- Driver operational status (eligibility/availability, not contact info)
+- Operational statistics
+
+Viewer must NOT be able to create, assign, reassign, or cancel requests;
+resolve disputes; confirm deliveries; change driver eligibility;
+create/edit drivers or link/unlink accounts; modify meter assignments;
+modify users or roles; or modify dispatch settings. These restrictions
+are enforced server-side, not by hiding buttons.
+
+### Viewer privacy
+
+Read-only does not mean unrestricted access to resident information.
+Viewer does **not** get access to the Admin user directory, and the
+Viewer interface deliberately omits fields not needed for oversight —
+phone, email, and full delivery directions are not shown there, even
+though dispatcher/admin (who actively manage deliveries) do see them.
+See TECHNICAL.md "Viewer Role" for the enforcement details.
 
 ---
 
@@ -470,6 +586,18 @@ Property photos may reveal details of private residences. The system must treat 
 - **Retention** — a future retention/deletion policy for proof-of-delivery images should be anticipated in the architecture, but is not required for V1.
 
 Do not design photo storage as publicly accessible. Authorization must be enforced at the storage layer, not only through hidden UI elements.
+
+---
+
+# Saba Operational Timezone
+
+All operational date/time display and calendar boundaries (e.g. "this
+month," the driver decline-limit "day") use Saba local time
+(`America/Puerto_Rico`, a fixed UTC-4 with no daylight saving), not the
+timezone of whoever happens to be viewing the app or the server it runs
+on. Firestore itself continues to store proper absolute timestamps —
+only display and calendar-boundary calculations are Saba-local. See
+TECHNICAL.md "Saba Operational Timezone" for implementation details.
 
 ---
 

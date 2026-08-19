@@ -4,7 +4,7 @@ import Link from "next/link";
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getEligibleDriverOptions } from "@/lib/domain/drivers";
+import { getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
 import { getResidentDirectory } from "@/lib/domain/users";
 import { getActiveCustomerIds } from "@/lib/domain/waterRequests";
 

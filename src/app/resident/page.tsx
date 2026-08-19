@@ -4,7 +4,7 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getEligibleDriverOptions } from "@/lib/domain/drivers";
+import { getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
 import { getUserProfile } from "@/lib/domain/users";
 import {
   checkDeliveryConfirmationTimeout,

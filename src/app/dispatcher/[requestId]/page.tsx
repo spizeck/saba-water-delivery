@@ -5,11 +5,12 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getAllDrivers } from "@/lib/domain/drivers";
+import { getAllDriverRegistryEntries, getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getRequestEvents } from "@/lib/domain/waterRequests";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import { RequestActions } from "./RequestActions";
 
@@ -61,15 +62,7 @@ const EVENT_LABELS: Record<string, string> = {
   dispatcher_reassigned: "Dispatcher reassigned",
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const formatDate = formatSabaDateTime;
 
 interface PageProps {
   params: Promise<{ requestId: string }>;
@@ -108,11 +101,13 @@ export default async function RequestDetailPage({ params }: PageProps) {
   // snapshot; only fall back to a live profile lookup for legacy requests
   // that predate the snapshot field (and never for unregistered customers,
   // who have no `users/{uid}` document to look up).
-  const [legacyCustomerProfile, events, eligibleDrivers] = await Promise.all([
-    !data.customer && data.customerId ? getUserProfile(data.customerId) : null,
-    getRequestEvents(requestId),
-    getAllDrivers(),
-  ]);
+  const [legacyCustomerProfile, events, allDriverEntries, eligibleDriverOptions] =
+    await Promise.all([
+      !data.customer && data.customerId ? getUserProfile(data.customerId) : null,
+      getRequestEvents(requestId),
+      getAllDriverRegistryEntries(),
+      getEligibleDriverOptions(),
+    ]);
 
   const customer = data.customer
     ? { displayName: data.customer.displayName, phone: data.customer.phone ?? null }
@@ -120,10 +115,12 @@ export default async function RequestDetailPage({ params }: PageProps) {
       ? { displayName: legacyCustomerProfile.displayName, phone: legacyCustomerProfile.phone }
       : null;
 
-  // Resolve driver names.
+  // Resolve driver names (keyed by uid, since assignedDriverId/
+  // preferredDriverId store the linked account's uid — see
+  // TECHNICAL.md "Driver Registry").
   const driverNames: Record<string, string> = {};
-  for (const d of eligibleDrivers) {
-    driverNames[d.uid] = d.displayName;
+  for (const d of allDriverEntries) {
+    if (d.linkedUserId) driverNames[d.linkedUserId] = d.displayName;
   }
   if (data.assignedDriverId && !driverNames[data.assignedDriverId]) {
     const p = await getUserProfile(data.assignedDriverId);
@@ -267,7 +264,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
           <RequestActions
             requestId={requestId}
             status={status}
-            eligibleDrivers={eligibleDrivers.filter((d) => d.eligibilityStatus === "eligible")}
+            eligibleDrivers={eligibleDriverOptions}
             canConfirmUnregisteredDelivery={
               !isRegisteredCustomer && (status === "delivered" || status === "delivered_unconfirmed")
             }

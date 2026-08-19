@@ -3,8 +3,8 @@ import "server-only";
 import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
+import { sabaCalendarDateKey } from "@/lib/utils/datetime";
 
-import { appConfig } from "./config";
 import type { DriverOffer, DriverOfferResponse } from "./types";
 
 /**
@@ -33,21 +33,6 @@ function toDriverOffer(id: string, data: DocumentData): DriverOffer {
     response: (data.response ?? null) as DriverOfferResponse,
     respondedAt: data.respondedAt?.toDate?.().toISOString() ?? null,
   };
-}
-
-/**
- * Formats a date as its calendar day (YYYY-MM-DD) in the given IANA
- * timezone. Using the formatted calendar date for comparison (rather than
- * computing a UTC offset boundary by hand) is correct regardless of a
- * timezone's offset or any daylight-saving rules, and keeps this simple.
- */
-function localDateKey(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,14 +125,14 @@ export async function getDeclinedRequestIdsForDriver(
 
 /**
  * Counts how many offers this driver has declined during the current
- * local operational day (see `appConfig.operationalTimezone`).
+ * Saba-local operational day (see src/lib/utils/datetime.ts).
  *
  * Implementation note: we bound the Firestore query with a generous
  * 26-hour lookback (covers any timezone offset safely) and then filter
  * precisely by comparing formatted local calendar dates. This avoids
- * having to compute an exact UTC instant for "local midnight," which is
- * unnecessary complexity for a fixed-offset timezone and remains correct
- * even if the operational timezone ever changes to one with DST.
+ * having to compute an exact UTC instant for "local midnight" here, and
+ * remains correct even if the operational timezone ever changes to one
+ * with DST (see `sabaCalendarDateKey`).
  */
 export async function countDeclinesToday(driverId: string): Promise<number> {
   const db = getAdminDb();
@@ -160,14 +145,11 @@ export async function countDeclinesToday(driverId: string): Promise<number> {
     .where("respondedAt", ">=", lookback)
     .get();
 
-  const todayKey = localDateKey(new Date(), appConfig.operationalTimezone);
+  const todayKey = sabaCalendarDateKey(new Date());
 
   return snapshot.docs.filter((doc) => {
     const respondedAt = doc.data().respondedAt?.toDate?.();
-    return (
-      respondedAt instanceof Date &&
-      localDateKey(respondedAt, appConfig.operationalTimezone) === todayKey
-    );
+    return respondedAt instanceof Date && sabaCalendarDateKey(respondedAt) === todayKey;
   }).length;
 }
 

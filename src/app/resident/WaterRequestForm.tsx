@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { EligibleDriverOption } from "@/lib/domain/drivers";
+import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 
 import { requestWater, type RequestWaterFormState } from "./actions";
 

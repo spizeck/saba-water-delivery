@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/Card";
 import type { WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+import { formatSabaDate } from "@/lib/utils/datetime";
 
 const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   requested: "Submitted",
@@ -13,13 +14,7 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   cancelled: "Cancelled",
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+const formatDate = formatSabaDate;
 
 interface Props {
   requests: WaterRequest[];

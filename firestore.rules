@@ -39,6 +39,14 @@ service cloud.firestore {
       return hasRole('dispatcher') || hasRole('admin');
     }
 
+    // `viewer` is a read-only oversight role — never combined with
+    // isStaff(), which implies operational/mutation capability. Viewer
+    // must NOT gain access to the admin user directory or driver
+    // registry contact details (see TECHNICAL.md "Viewer Role").
+    function isViewer() {
+      return hasRole('viewer');
+    }
+
     // Users can read/update their own profile. Role changes must go
     // through trusted server-side (Admin SDK) code, not direct writes.
     //
@@ -75,11 +83,43 @@ service cloud.firestore {
       }
     }
 
-    // Driver eligibility state is staff-managed. Drivers may
-    // read their own profile; availability toggling should go through a
-    // trusted server function once implemented rather than a raw write.
+    // LEGACY pre-Driver-Registry collection, keyed by uid. Superseded by
+    // `driverRegistry/{id}` (below), which is keyed independently so a
+    // driver can be entered before they have an account — see
+    // TECHNICAL.md "Driver Registry". Retained read-only for historical
+    // data; no new code should write here.
     match /drivers/{driverId} {
       allow read: if isSignedIn() && (request.auth.uid == driverId || isStaff());
+      allow write: if false;
+    }
+
+    // Government-managed Driver Registry. All writes (create, edit,
+    // link/unlink account, restrict/restore, meter assignments) go
+    // through trusted server-side domain logic
+    // (src/lib/domain/driverRegistry.ts) — never a direct client write,
+    // and never self-service by a normal user. Staff and viewers may
+    // read for operational oversight; viewers get the same document as
+    // staff here since a driver's registry entry does not contain
+    // resident PII (only the driver's own name/phone, which staff can
+    // already see operationally).
+    match /driverRegistry/{driverId} {
+      allow read: if isStaff() || isViewer();
+      allow write: if false;
+
+      match /events/{eventId} {
+        allow read: if isStaff() || isViewer();
+        allow write: if false;
+      }
+
+      match /meters/{stationId} {
+        allow read: if isStaff() || isViewer();
+        allow write: if false;
+      }
+    }
+
+    // Fill stations are simple, non-sensitive reference data.
+    match /fillStations/{stationId} {
+      allow read: if isSignedIn();
       allow write: if false;
     }
 
@@ -97,17 +137,27 @@ service cloud.firestore {
     // — an unrelated resident cannot read another customer's unregistered
     // request through this rule. Staff access is unaffected either way.
     match /waterRequests/{requestId} {
+      // Viewer gets the same read access as staff for oversight (see
+      // PRODUCT.md "Viewer Role") — request documents contain the
+      // requesting customer's own contact info, which is a normal part
+      // of an operational request record, not a separate admin
+      // directory. The Viewer UI itself chooses to display only a
+      // reduced projection (see src/app/viewer/page.tsx); this rule is
+      // defense-in-depth for the underlying document, matching how
+      // staff access already works.
       allow read: if isSignedIn()
         && (resource.data.customerId == request.auth.uid
           || resource.data.assignedDriverId == request.auth.uid
-          || isStaff());
+          || isStaff()
+          || isViewer());
       allow write: if false;
 
       match /events/{eventId} {
         allow read: if isSignedIn()
           && (get(/databases/$(database)/documents/waterRequests/$(requestId)).data.customerId == request.auth.uid
             || get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid
-            || isStaff());
+            || isStaff()
+            || isViewer());
         allow write: if false;
       }
 

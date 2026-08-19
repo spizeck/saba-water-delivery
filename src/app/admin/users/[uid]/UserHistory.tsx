@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/Card";
 import type { DriverEventItem, RoleEvent } from "@/lib/domain/admin";
+import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 interface UserHistoryProps {
   roleEvents: RoleEvent[];
@@ -15,15 +16,7 @@ const DRIVER_EVENT_LABELS: Record<string, string> = {
   driver_access_restored: "Delivery access restored",
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const formatDate = formatSabaDateTime;
 
 export function UserHistory({
   roleEvents,

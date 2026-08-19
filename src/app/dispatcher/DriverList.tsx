@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { DriverListItem } from "@/lib/domain/drivers";
+import type { DriverRegistryEntry } from "@/lib/domain/types";
 
 import {
   restrictDriver,
@@ -15,7 +15,7 @@ import {
 const initialState: DriverActionState = { status: "idle" };
 
 interface Props {
-  drivers: DriverListItem[];
+  drivers: DriverRegistryEntry[];
 }
 
 export function DriverList({ drivers }: Props) {
@@ -35,14 +35,14 @@ export function DriverList({ drivers }: Props) {
       </h2>
       <div className="mt-4 flex flex-col gap-3">
         {drivers.map((driver) => (
-          <DriverRow key={driver.uid} driver={driver} />
+          <DriverRow key={driver.id} driver={driver} />
         ))}
       </div>
     </Card>
   );
 }
 
-function DriverRow({ driver }: { driver: DriverListItem }) {
+function DriverRow({ driver }: { driver: DriverRegistryEntry }) {
   const [action, setAction] = useState<"restrict" | "restore" | null>(null);
 
   const isEligible = driver.eligibilityStatus === "eligible";
@@ -60,6 +60,9 @@ function DriverRow({ driver }: { driver: DriverListItem }) {
             <span className={isOnline ? "text-green-700" : "text-slate-500"}>
               {isOnline ? "Online" : "Offline"}
             </span>
+            {!driver.linkedUserId && (
+              <span className="text-slate-400">No account linked</span>
+            )}
             {driver.ineligibilityReason && (
               <span className="text-red-600">{driver.ineligibilityReason}</span>
             )}
@@ -89,10 +92,10 @@ function DriverRow({ driver }: { driver: DriverListItem }) {
       </div>
 
       {action === "restrict" && (
-        <RestrictForm driverId={driver.uid} onDone={() => setAction(null)} />
+        <RestrictForm driverId={driver.id} onDone={() => setAction(null)} />
       )}
       {action === "restore" && (
-        <RestoreForm driverId={driver.uid} onDone={() => setAction(null)} />
+        <RestoreForm driverId={driver.id} onDone={() => setAction(null)} />
       )}
     </div>
   );

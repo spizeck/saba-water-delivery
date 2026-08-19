@@ -4,7 +4,7 @@ import Link from "next/link";
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getAllDrivers } from "@/lib/domain/drivers";
+import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { getUserProfile } from "@/lib/domain/users";
 import { getAllRequests } from "@/lib/domain/waterRequests";
 import type { WaterRequestStatus } from "@/lib/domain/types";
@@ -34,7 +34,7 @@ export default async function DispatcherPortalPage() {
 
   const [allRequests, allDrivers] = await Promise.all([
     getAllRequests(),
-    getAllDrivers(),
+    getAllDriverRegistryEntries(),
   ]);
 
   // Sort by priority, then by requestedAt (oldest first within priority).
@@ -84,7 +84,7 @@ export default async function DispatcherPortalPage() {
   ] as string[];
   const driverNames: Record<string, string> = {};
   for (const d of allDrivers) {
-    driverNames[d.uid] = d.displayName;
+    if (d.linkedUserId) driverNames[d.linkedUserId] = d.displayName;
   }
   // Also fetch any driver names not in the driver list.
   await Promise.all(

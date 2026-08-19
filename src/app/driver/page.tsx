@@ -5,10 +5,11 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getNextOfferForDriver } from "@/lib/domain/dispatch";
-import { ensureDriverProfile } from "@/lib/domain/drivers";
+import { getDriverByLinkedUserId } from "@/lib/domain/driverRegistry";
 import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
+import { formatSabaTime } from "@/lib/utils/datetime";
 
 import { AvailabilityToggle } from "./AvailabilityToggle";
 import { ClaimedDeliveries } from "./ClaimedDeliveries";
@@ -45,15 +46,37 @@ function resolveCustomerInfo(
 export default async function DriverPortalPage() {
   const { uid, profile } = await requireRole("driver");
 
-  // Ensure driver document exists (new drivers are ineligible by default).
-  const driverProfile = await ensureDriverProfile(uid);
-  const now = new Date();
+  // Having the `driver` role only grants access to this portal — it does
+  // NOT make someone an operational driver. That requires a government-
+  // managed Driver Registry entry explicitly linked to this account (see
+  // TECHNICAL.md "Driver Registry"). Nothing is auto-created here.
+  const driverEntry = await getDriverByLinkedUserId(uid);
 
-  const isOnline = driverProfile.availabilityStatus === "online";
-  const isEligible = driverProfile.eligibilityStatus === "eligible";
-  const inCooldown = isCooldownActive(driverProfile.cooldownUntil, now);
-  const cooldownUntil = driverProfile.cooldownUntil
-    ? new Date(driverProfile.cooldownUntil)
+  if (!driverEntry) {
+    return (
+      <>
+        <PortalHeader portalName="Driver" roles={profile.roles} />
+        <main className="flex-1 py-8">
+          <Container className="flex flex-col gap-6">
+            <Card>
+              <h1 className="text-2xl font-bold text-slate-900">Driver</h1>
+              <p className="mt-2 text-sm text-slate-600">
+                Your account is not yet linked to a driver record. Contact
+                the water office to be added to the Driver Registry.
+              </p>
+            </Card>
+          </Container>
+        </main>
+      </>
+    );
+  }
+
+  const now = new Date();
+  const isOnline = driverEntry.availabilityStatus === "online";
+  const isEligible = driverEntry.eligibilityStatus === "eligible";
+  const inCooldown = isCooldownActive(driverEntry.cooldownUntil, now);
+  const cooldownUntil = driverEntry.cooldownUntil
+    ? new Date(driverEntry.cooldownUntil)
     : null;
   const canReceiveOffers = isOnline && isEligible && !inCooldown;
 
@@ -152,12 +175,7 @@ export default async function DriverPortalPage() {
                 </p>
                 <p className="mt-1 text-sm text-amber-800">
                   You reached today&apos;s decline limit. You can receive new
-                  offers again at{" "}
-                  {cooldownUntil.toLocaleTimeString(undefined, {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                  .
+                  offers again at {formatSabaTime(cooldownUntil)}.
                 </p>
               </div>
             )}

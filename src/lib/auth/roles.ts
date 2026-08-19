@@ -6,6 +6,7 @@ export const USER_ROLES: readonly UserRole[] = [
   "driver",
   "dispatcher",
   "admin",
+  "viewer",
 ];
 
 export function isUserRole(value: unknown): value is UserRole {
@@ -30,6 +31,14 @@ export function hasRole(userRoles: UserRole[], required: UserRole | UserRole[]):
 export function hasStaffAccess(roles: UserRole[]): boolean {
   return roles.includes("dispatcher") || roles.includes("admin");
 }
+
+/**
+ * `viewer` is deliberately NOT part of `hasStaffAccess()` — it is a
+ * read-only oversight role with no mutation capability. Server actions
+ * that mutate anything must keep requiring `dispatcher`/`admin`
+ * explicitly; only read-oriented pages/queries should also accept
+ * `viewer`. See PRODUCT.md / TECHNICAL.md "Viewer Role".
+ */
 
 /**
  * IMPORTANT: This is a UI convenience only. Role values read on the client

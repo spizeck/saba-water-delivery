@@ -5,21 +5,15 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { EligibleDriverOption } from "@/lib/domain/drivers";
+import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
+import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import { createManualRequest, type CreateRequestActionState } from "../actions";
 
 const initialState: CreateRequestActionState = { status: "idle" };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+const formatDate = formatSabaDateTime;
 
 interface Props {
   residents: ResidentDirectoryEntry[];
