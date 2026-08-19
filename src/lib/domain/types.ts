@@ -117,33 +117,16 @@ export interface WaterRequestCustomerSnapshot {
 // ---------------------------------------------------------------------------
 
 /**
- * LEGACY: Structured, resident-understandable estimate of remaining water
- * supply. Removed from the request form in the government-requested
- * refinement; retained in the type only so historical requests continue
- * to load safely.
- */
-export type WaterSituationRemainingSupply =
-  | "out"
-  | "less_than_1_day"
-  | "1_to_2_days"
-  | "more_than_2_days"
-  | "unsure";
-
-/**
  * Structured vulnerable-person / critical-circumstance options. This is
  * intentionally NOT a medical intake form — see PRODUCT.md "Vulnerable
- * Persons / Critical Circumstances". Legacy values are kept in the
- * union so historical documents continue to load and display.
+ * Persons / Critical Circumstances".
  */
 export type VulnerableCircumstance =
   | "elderly"
   | "infant_or_young_child"
   | "medical_need"
   | "essential_services_commercial_business"
-  | "none"
-  // LEGACY values kept for backward compatibility:
-  | "essential_service"
-  | "other";
+  | "none";
 
 /** The resident's own characterization of urgency. See PRODUCT.md
  * "Resident-Reported Urgency". This is captured separately from the
@@ -158,21 +141,11 @@ export type ReportedUrgency = "normal" | "urgent" | "critical";
  * circumstances at request time — see PRODUCT.md "Historical Snapshot".
  */
 export interface WaterSituationSnapshot {
-  /**
-   * LEGACY: removed from the form; may be null or absent on new requests.
-   * Historical documents may still contain one of the old values.
-   */
-  remainingSupply: WaterSituationRemainingSupply | null;
   /** Number of people relying on this water supply. Null if not provided
    * (e.g. an unregistered caller who couldn't say). */
   personsAffected: number | null;
   /** May be empty (treated the same as ["none"]) if nothing was selected. */
   vulnerableCircumstances: VulnerableCircumstance[];
-  /**
-   * LEGACY: free-text explanation for the removed "other" option. Kept
-   * for historical requests; always null on new requests.
-   */
-  vulnerableOtherDetail: string | null;
   /** Resident-reported available cistern/storage capacity, as free-form text. */
   availableStorageCapacity: string | null;
   /** The resident's own characterization of urgency. */

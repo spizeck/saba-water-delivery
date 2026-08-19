@@ -10,8 +10,6 @@ rules_version = '2';
 // implemented — see TECHNICAL.md "Firestore Security".
 //
 // The user model supports multiple roles per user via a `roles` array.
-// Legacy documents may still use a singular `role` field; the helper
-// functions below handle both formats.
 //
 // Do not assume these rules alone are sufficient; queries and rules must
 // be designed together (Security Rules cannot filter an overly broad
@@ -22,13 +20,8 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Returns the user's roles array. Handles both the new `roles` array
-    // format and the legacy singular `role` field for backward compat.
     function userRoles() {
-      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-      return ('roles' in userData && userData.roles is list)
-        ? userData.roles
-        : [userData.role];
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles;
     }
 
     function hasRole(r) {
@@ -81,16 +74,6 @@ service cloud.firestore {
         allow delete: if isSignedIn()
           && request.auth.uid == userId;
       }
-    }
-
-    // LEGACY pre-Driver-Registry collection, keyed by uid. Superseded by
-    // `driverRegistry/{id}` (below), which is keyed independently so a
-    // driver can be entered before they have an account — see
-    // TECHNICAL.md "Driver Registry". Retained read-only for historical
-    // data; no new code should write here.
-    match /drivers/{driverId} {
-      allow read: if isSignedIn() && (request.auth.uid == driverId || isStaff());
-      allow write: if false;
     }
 
     // Government-managed Driver Registry. All writes (create, edit,

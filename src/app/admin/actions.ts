@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
-import { addRole, removeRole, getActiveDeliveryCount } from "@/lib/domain/admin";
+import { addRole, removeRole } from "@/lib/domain/admin";
 import { updateDispatchSettings } from "@/lib/domain/dispatchSettings";
 import { isUserRole } from "@/lib/auth/roles";
 import type { UserRole } from "@/lib/domain/types";
@@ -23,8 +23,6 @@ async function requireAdmin() {
 export interface RoleActionState {
   status: "idle" | "success" | "error";
   message?: string;
-  /** Number of active deliveries — set when warning needed. */
-  activeDeliveries?: number;
 }
 
 export async function addUserRole(
@@ -47,6 +45,11 @@ export async function addUserRole(
           return { status: "error", message: "User not found." };
         case "ROLE_ALREADY_EXISTS":
           return { status: "error", message: `User already has the ${role} role.` };
+        case "DRIVER_ROLE_SYSTEM_MANAGED":
+          return {
+            status: "error",
+            message: "The driver role is managed from the Driver Registry.",
+          };
         default:
           throw err;
       }
@@ -84,14 +87,11 @@ export async function removeUserRole(
           return { status: "error", message: "You cannot remove your own admin role." };
         case "LAST_ADMIN":
           return { status: "error", message: "Cannot remove the last admin from the system." };
-        case "DRIVER_HAS_ACTIVE_DELIVERIES": {
-          const count = await getActiveDeliveryCount(targetUid);
+        case "DRIVER_ROLE_SYSTEM_MANAGED":
           return {
             status: "error",
-            message: `Cannot remove driver role: this driver has ${count} active claimed delivery assignment(s). Resolve or reassign them through the dispatcher workflow first.`,
-            activeDeliveries: count,
+            message: "The driver role is managed from the Driver Registry.",
           };
-        }
         default:
           throw err;
       }

@@ -15,6 +15,14 @@ export function isUserRole(value: unknown): value is UserRole {
   );
 }
 
+/** Normalizes an unknown value into a valid `UserRole[]`. */
+export function toUserRoles(value: unknown): UserRole[] {
+  if (Array.isArray(value)) {
+    return (value as unknown[]).filter(isUserRole);
+  }
+  return ["resident"];
+}
+
 /**
  * Returns true if the user possesses at least one of the specified roles.
  */

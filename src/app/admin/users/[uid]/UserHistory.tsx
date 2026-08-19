@@ -1,10 +1,11 @@
 import { Card } from "@/components/ui/Card";
-import type { DriverEventItem, RoleEvent } from "@/lib/domain/admin";
+import type { RoleEvent } from "@/lib/domain/admin";
+import type { DriverEvent } from "@/lib/domain/types";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 interface UserHistoryProps {
   roleEvents: RoleEvent[];
-  driverEvents: DriverEventItem[];
+  driverEvents: DriverEvent[];
   actorNames: Record<string, string>;
   isDriver: boolean;
 }

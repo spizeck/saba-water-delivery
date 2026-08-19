@@ -5,8 +5,8 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getDriverEvents, getRoleEvents } from "@/lib/domain/admin";
-import { getDriverByLinkedUserId } from "@/lib/domain/driverRegistry";
+import { getRoleEvents } from "@/lib/domain/admin";
+import { getDriverByLinkedUserId, getDriverEvents } from "@/lib/domain/driverRegistry";
 import { getUserProfile } from "@/lib/domain/users";
 import { formatSabaDate } from "@/lib/utils/datetime";
 
@@ -54,10 +54,11 @@ export default async function UserDetailPage({ params }: PageProps) {
   // event history in parallel. Driver eligibility/linking is now managed
   // from the Driver Registry (/admin/drivers), not here — see
   // TECHNICAL.md "Driver Registry".
-  const [linkedDriver, roleEvents, driverEvents] = await Promise.all([
-    isDriver ? getDriverByLinkedUserId(uid) : null,
+  const linkedDriver = isDriver ? await getDriverByLinkedUserId(uid) : null;
+
+  const [roleEvents, driverEvents] = await Promise.all([
     getRoleEvents(uid),
-    isDriver ? getDriverEvents(uid) : [],
+    linkedDriver ? getDriverEvents(linkedDriver.id) : [],
   ]);
 
   // Resolve actor names for events.
@@ -127,6 +128,7 @@ export default async function UserDetailPage({ params }: PageProps) {
             targetUid={uid}
             currentRoles={targetUser.roles}
             isOwnAccount={uid === adminUid}
+            linkedDriverId={linkedDriver?.id ?? null}
           />
 
           {/* Driver registry link (eligibility/meters/linking are managed

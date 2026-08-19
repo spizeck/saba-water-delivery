@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -9,12 +10,6 @@ import type { UserRole } from "@/lib/domain/types";
 import { addUserRole, removeUserRole, type RoleActionState } from "../../actions";
 
 const MANAGEABLE_ROLES: { role: UserRole; label: string; description: string }[] = [
-  {
-    role: "driver",
-    label: "Driver",
-    description:
-      "Access the driver portal. Does not by itself make someone an operational driver — see the Driver Registry.",
-  },
   { role: "dispatcher", label: "Dispatcher", description: "Access dispatcher operational functions" },
   { role: "admin", label: "Admin", description: "Full system administration access" },
   { role: "viewer", label: "Viewer", description: "Read-only oversight of requests and statistics" },
@@ -24,12 +19,14 @@ interface RoleManagementProps {
   targetUid: string;
   currentRoles: UserRole[];
   isOwnAccount: boolean;
+  linkedDriverId: string | null;
 }
 
 export function RoleManagement({
   targetUid,
   currentRoles,
   isOwnAccount,
+  linkedDriverId,
 }: RoleManagementProps) {
   const [confirmingRemove, setConfirmingRemove] = useState<UserRole | null>(null);
 
@@ -37,7 +34,8 @@ export function RoleManagement({
     <Card>
       <h2 className="text-lg font-bold text-slate-900">Roles</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Resident is the baseline role and cannot be removed.
+        Resident is the baseline role and cannot be removed. The driver role is managed from the
+        Driver Registry.
       </p>
 
       <div className="mt-4 flex flex-col gap-3">
@@ -51,6 +49,29 @@ export function RoleManagement({
             Always active
           </span>
         </div>
+
+        {/* Driver role — system managed */}
+        {currentRoles.includes("driver") && (
+          <div className="flex items-center justify-between rounded-lg border border-slate-100 p-3">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Driver</p>
+              <p className="text-xs text-slate-500">Managed through the Driver Registry</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+                Active
+              </span>
+              {linkedDriverId && (
+                <Link
+                  href={`/admin/drivers/${linkedDriverId}`}
+                  className="text-xs text-blue-700 hover:underline"
+                >
+                  View Driver Record
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Manageable roles */}
         {MANAGEABLE_ROLES.map(({ role, label, description }) => {
@@ -163,9 +184,7 @@ function RoleRow({
       {/* Confirmation dialog for removal */}
       {hasRole && isConfirming && !(role === "admin" && isOwnAccount) && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-medium text-amber-800">
-            Remove the {label} role from this user?
-          </p>
+          <p className="text-xs font-medium text-amber-800">Remove the {label} role from this user?</p>
           <div className="mt-2 flex gap-2">
             <form action={removeAction}>
               <input type="hidden" name="targetUid" value={targetUid} />

@@ -103,10 +103,15 @@ searching by name, phone, or email. Linking:
   government decision.
 - Cannot accidentally link one account to more than one driver.
 
-An admin can also **unlink** an account later. Unlinking is blocked
-while the driver has active claimed deliveries (those must be resolved
-or reassigned first), and always preserves the registry record, driver
-history, and delivery history.
+An admin can also **unlink** an account later. Unlinking:
+
+- Removes the `driver` role from the linked account (preserving
+  `resident` and any other roles).
+- Forces the driver offline.
+- Is blocked while the driver has active claimed deliveries (those must
+  be resolved or reassigned first).
+- Always preserves the registry record, driver history, and delivery
+  history.
 
 ### Separate concepts
 
@@ -196,20 +201,22 @@ Dispatchers can:
 Administrators have dispatcher capabilities plus system-management capabilities:
 
 - Viewing all users with their roles and driver status.
-- Adding/removing operational roles (driver, dispatcher, admin).
-- Restricting/restoring driver delivery access.
+- Adding/removing manually assignable roles (`viewer`, `dispatcher`, `admin`).
+- Managing driver linking/unlinking and eligibility in the Driver Registry.
 - Managing application settings, including the driver decline limit and
   cooldown hours used by the dispatch offer workflow.
 
 Role management safeguards:
 
+- `resident` is the baseline role and cannot be removed.
+- `driver` is a **system-managed role** and cannot be added or removed
+  from the Admin User Management screen. Linking a Driver Registry entry
+  to a user automatically grants the `driver` role; unlinking it
+  automatically removes the `driver` role.
 - Admins cannot remove their own admin role (self-lockout protection).
 - The last system admin cannot be removed (system lockout protection).
-- Adding the `driver` role does NOT by itself make someone an
-  operational driver — see "Driver Registry" above. Operational drivers
-  are entered and linked separately.
-- Removing the driver role is blocked when active deliveries exist, and
-  automatically unlinks the driver's Driver Registry entry if one exists.
+- Unlinking a Driver Registry account is blocked while the driver has
+  active claimed deliveries.
 - Role changes are audited with actor and timestamp.
 
 Both dispatchers and administrators can view operational statistics including

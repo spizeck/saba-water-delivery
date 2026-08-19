@@ -96,13 +96,5 @@ describe("priority", () => {
       });
       expect(result.priority).toBe("normal");
     });
-
-    it("treats legacy essential_service as a critical circumstance", () => {
-      const result = determineInitialDispatchPriority({
-        vulnerableCircumstances: ["essential_service"],
-        reportedUrgency: "normal",
-      });
-      expect(result.priority).toBe("critical");
-    });
   });
 });

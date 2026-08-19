@@ -3,6 +3,7 @@ import "server-only";
 import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
+import { toUserRoles } from "@/lib/auth/roles";
 
 import type {
   DriverAvailabilityStatus,
@@ -265,11 +266,7 @@ export async function linkDriverAccount(
     if (!existingLinkSnap.empty) throw new Error("USER_ALREADY_LINKED");
 
     const userData = userDoc.data()!;
-    const currentRoles = Array.isArray(userData.roles) && userData.roles.length > 0
-      ? userData.roles
-      : typeof userData.role === "string"
-        ? [userData.role]
-        : ["resident"];
+    const currentRoles = toUserRoles(userData.roles);
     const alreadyHasDriver = currentRoles.includes("driver");
 
     // ---- All writes after reads ----
@@ -355,11 +352,7 @@ export async function unlinkDriverAccount(
     if (!userSnap.exists) throw new Error("USER_NOT_FOUND");
 
     const userData = userSnap.data()!;
-    const currentRoles = Array.isArray(userData.roles) && userData.roles.length > 0
-      ? userData.roles
-      : typeof userData.role === "string"
-        ? [userData.role]
-        : ["resident"];
+    const currentRoles = toUserRoles(userData.roles);
     const hasDriver = currentRoles.includes("driver");
 
     // ---- All writes after reads ----
@@ -402,22 +395,6 @@ export async function unlinkDriverAccount(
 
   const updated = await ref.get();
   return toDriverRegistryEntry(driverId, updated.data()!);
-}
-
-/**
- * Unlinks whichever driver record (if any) is linked to `userId`. Used
- * by `admin.ts`'s `removeRole("driver")` so removing the role through
- * the generic role-management UI keeps the registry consistent, without
- * requiring staff to separately visit the Driver Registry. Silently
- * does nothing if no driver is linked to this user.
- */
-export async function unlinkDriverAccountByUserId(
-  userId: string,
-  actorId: string,
-): Promise<void> {
-  const entry = await getDriverByLinkedUserId(userId);
-  if (!entry) return;
-  await unlinkDriverAccount({ driverId: entry.id, actorId });
 }
 
 // ---------------------------------------------------------------------------

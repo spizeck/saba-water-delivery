@@ -88,7 +88,7 @@ export function UserList({ users }: UserListProps) {
                       key={role}
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${getRoleBadgeClass(role)}`}
                     >
-                      {ROLE_LABELS[role]}
+                      {(ROLE_LABELS as Record<string, string>)[role]}
                     </span>
                   ))}
                   {user.driverStatus && (

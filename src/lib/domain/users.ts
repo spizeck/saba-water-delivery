@@ -5,31 +5,18 @@ import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 
 import type { UserProfile, UserRole } from "./types";
-import { isUserRole } from "@/lib/auth/roles";
+import { toUserRoles } from "@/lib/auth/roles";
 
 const USERS_COLLECTION = "users";
 
 /**
  * Normalizes a Firestore user document into a UserProfile.
  *
- * Handles backward compatibility: existing documents may have a singular
- * `role` field instead of the canonical `roles` array. This function
- * reads both and produces a valid `roles` array regardless of which
- * field(s) are present in the stored document.
+ * `roles` is the canonical role array. Documents without a valid `roles`
+ * field are treated as residents.
  */
 function toUserProfile(uid: string, data: DocumentData): UserProfile {
-  let roles: UserRole[];
-
-  if (Array.isArray(data.roles) && data.roles.length > 0) {
-    // New canonical format
-    roles = data.roles.filter((r: unknown) => isUserRole(r));
-  } else if (isUserRole(data.role)) {
-    // Legacy singular-role format — treat as single-element array
-    roles = [data.role];
-  } else {
-    // Fallback: no valid role info, default to resident
-    roles = ["resident"];
-  }
+  const roles = toUserRoles(data.roles);
 
   return {
     uid,
@@ -83,14 +70,7 @@ export async function getResidentDirectory(): Promise<ResidentDirectoryEntry[]> 
   const results: ResidentDirectoryEntry[] = [];
   for (const doc of snapshot.docs) {
     const data = doc.data();
-    let roles: UserRole[];
-    if (Array.isArray(data.roles) && data.roles.length > 0) {
-      roles = data.roles.filter((r: unknown) => isUserRole(r));
-    } else if (isUserRole(data.role)) {
-      roles = [data.role];
-    } else {
-      roles = ["resident"];
-    }
+    const roles = toUserRoles(data.roles);
     if (!roles.includes("resident")) continue;
 
     results.push({

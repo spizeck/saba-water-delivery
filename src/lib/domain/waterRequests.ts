@@ -15,7 +15,6 @@ import type {
   WaterRequestCustomerSnapshot,
   WaterRequestSource,
   WaterRequestStatus,
-  WaterSituationRemainingSupply,
   WaterSituationSnapshot,
 } from "./types";
 import { getUserProfile } from "./users";
@@ -78,19 +77,11 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     // than guessing (see PRODUCT.md "Historical Snapshot").
     waterSituation: data.waterSituation
       ? {
-          remainingSupply:
-            (data.waterSituation.remainingSupply as WaterSituationRemainingSupply) ?? null,
           personsAffected: data.waterSituation.personsAffected ?? null,
           vulnerableCircumstances:
             (data.waterSituation.vulnerableCircumstances as VulnerableCircumstance[]) ?? [],
-          vulnerableOtherDetail: data.waterSituation.vulnerableOtherDetail ?? null,
-          // New free-form string field, or a best-effort string conversion of
-          // the legacy numeric `availableStorageGallons` for older requests.
           availableStorageCapacity:
-            (data.waterSituation.availableStorageCapacity as string | undefined) ??
-            (data.waterSituation.availableStorageGallons != null
-              ? String(data.waterSituation.availableStorageGallons)
-              : null),
+            (data.waterSituation.availableStorageCapacity as string | undefined) ?? null,
           reportedUrgency: (data.waterSituation.reportedUrgency as ReportedUrgency) ?? "normal",
         }
       : null,
@@ -313,10 +304,8 @@ function buildWaterSituationSnapshot(input: WaterSituationInput): WaterSituation
   const availableStorageCapacity = input.availableStorageCapacity?.trim() || null;
 
   return {
-    remainingSupply: null,
     personsAffected: input.personsAffected ?? null,
     vulnerableCircumstances,
-    vulnerableOtherDetail: null,
     availableStorageCapacity,
     reportedUrgency: input.reportedUrgency,
   };
