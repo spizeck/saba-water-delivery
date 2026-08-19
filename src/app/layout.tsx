@@ -14,11 +14,23 @@ export const metadata: Metadata = {
   title: "Saba Water Delivery",
   description:
     "Government RO water delivery request and driver dispatch system for Saba.",
+  icons: {
+    icon: "/favicon.ico?v=2",
+    shortcut: "/favicon.ico?v=2",
+    apple: "/apple-icon.png?v=2",
+  },
+  manifest: "/manifest.json?v=2",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Saba Water Delivery",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
