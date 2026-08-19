@@ -22,12 +22,7 @@ import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm
 
 /** Shared, user-facing messages for water-situation validation errors. */
 const WATER_SITUATION_ERROR_MESSAGES: Record<string, string> = {
-  VULNERABLE_OTHER_DETAIL_REQUIRED:
-    "Please briefly describe the \"Other\" circumstance, or unselect it.",
   INVALID_PERSONS_AFFECTED: "Number of people must be a positive whole number.",
-  INVALID_AVAILABLE_STORAGE: "Available storage capacity must be zero or more.",
-  AVAILABLE_STORAGE_BELOW_STANDARD:
-    "Available capacity is below the standard 1,000-gallon delivery. Confirm the value is correct before submitting.",
 };
 
 // ---------------------------------------------------------------------------
@@ -276,6 +271,7 @@ export async function createManualRequest(
   const preferredDriverId =
     preferredDriverIdRaw && preferredDriverIdRaw !== "none" ? preferredDriverIdRaw : null;
   const overrideDuplicate = formData.get("overrideDuplicate") === "true";
+  const attestationAccepted = formData.get("attestationAccepted") === "true";
 
   if (!village) return { status: "error", message: "Village/area is required." };
   if (!deliveryDirections) {
@@ -283,12 +279,8 @@ export async function createManualRequest(
   }
 
   // Staff take the same "Your Water Situation" questions as the resident
-  // form, and (unlike residents) may explicitly confirm an unusual
-  // reported storage capacity — see PRODUCT.md "Dispatcher Manual
-  // Requests" / "Available Storage Capacity".
-  const waterSituation = parseWaterSituationFromFormData(formData, {
-    allowBelowStandardCapacityOverride: true,
-  });
+  // form. The storage-capacity field is free-form text.
+  const waterSituation = parseWaterSituationFromFormData(formData);
 
   if (customerType === "existing") {
     const residentUid = String(formData.get("residentUid") ?? "").trim();
@@ -305,6 +297,7 @@ export async function createManualRequest(
         source: "dispatcher",
         createdBy: session.uid,
         waterSituation,
+        attestationAccepted,
       });
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -315,6 +308,12 @@ export async function createManualRequest(
             message: existing
               ? `This resident already has an active request (status: ${existing.status}). Resolve it before creating a new one.`
               : "This resident already has an active request.",
+          };
+        }
+        if (err.message === "ATTESTATION_REQUIRED") {
+          return {
+            status: "error",
+            message: "You must confirm the attestation before creating the request.",
           };
         }
         const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
@@ -371,6 +370,7 @@ export async function createManualRequest(
         ? possibleMatches.map((m) => m.id)
         : undefined,
       waterSituation,
+      attestationAccepted,
     });
   } catch (err: unknown) {
     if (err instanceof Error) {
@@ -379,6 +379,11 @@ export async function createManualRequest(
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
           return { status: "error", message: "Phone number is required." };
+        case "ATTESTATION_REQUIRED":
+          return {
+            status: "error",
+            message: "You must confirm the attestation before creating the request.",
+          };
         default: {
           const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
           if (situationMessage) {

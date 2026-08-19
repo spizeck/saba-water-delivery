@@ -581,6 +581,13 @@ operationally confirm a delivered request from the request detail page
 (`/dispatcher/[requestId]`, `RequestActions.tsx`), recording
 `delivery_confirmed_by_dispatcher` rather than `customer_confirmed`.
 
+## Request attestation
+
+Both resident and dispatcher request forms now require an attestation
+checkbox before the final submission. `createWaterRequest()` rejects the
+request server-side if `attestationAccepted` is not `true`. The field is
+stored on the request along with `attestationAcceptedAt`.
+
 ## Domain logic
 
 - `src/lib/domain/waterRequests.ts` — `createWaterRequest()` (extended

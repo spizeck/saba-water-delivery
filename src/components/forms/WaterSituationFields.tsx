@@ -1,10 +1,6 @@
 "use client";
 
-import type {
-  ReportedUrgency,
-  VulnerableCircumstance,
-  WaterSituationRemainingSupply,
-} from "@/lib/domain/types";
+import type { ReportedUrgency, VulnerableCircumstance } from "@/lib/domain/types";
 
 /**
  * Shared "Your Water Situation" fields used by both the resident request
@@ -15,46 +11,30 @@ import type {
  * hidden-input submission pattern.
  */
 export interface WaterSituationValue {
-  remainingSupply: WaterSituationRemainingSupply | "";
   /** Kept as a string for controlled-input simplicity; parsed server-side. */
   personsAffected: string;
-  availableStorageGallons: string;
+  /** Free-form text describing available cistern/storage capacity. */
+  availableStorageCapacity: string;
   vulnerableCircumstances: VulnerableCircumstance[];
-  vulnerableOtherDetail: string;
   reportedUrgency: ReportedUrgency | "";
 }
 
 export const EMPTY_WATER_SITUATION: WaterSituationValue = {
-  remainingSupply: "",
   personsAffected: "",
-  availableStorageGallons: "",
+  availableStorageCapacity: "",
   vulnerableCircumstances: [],
-  vulnerableOtherDetail: "",
   reportedUrgency: "",
 };
 
 export function isWaterSituationComplete(value: WaterSituationValue): boolean {
-  if (!value.remainingSupply || !value.reportedUrgency) return false;
-  if (value.vulnerableCircumstances.includes("other") && !value.vulnerableOtherDetail.trim()) {
-    return false;
-  }
-  return true;
+  return Boolean(value.reportedUrgency);
 }
-
-const REMAINING_SUPPLY_OPTIONS: { value: WaterSituationRemainingSupply; label: string }[] = [
-  { value: "out", label: "Out of water" },
-  { value: "less_than_1_day", label: "Less than 1 day remaining" },
-  { value: "1_to_2_days", label: "1\u20132 days remaining" },
-  { value: "more_than_2_days", label: "More than 2 days remaining" },
-  { value: "unsure", label: "Not sure" },
-];
 
 const VULNERABLE_OPTIONS: { value: VulnerableCircumstance; label: string }[] = [
   { value: "elderly", label: "Elderly person" },
   { value: "infant_or_young_child", label: "Infant or young child" },
   { value: "medical_need", label: "Medical need" },
-  { value: "essential_service", label: "Essential service or critical operation" },
-  { value: "other", label: "Other critical circumstance" },
+  { value: "essential_services_commercial_business", label: "Essential services (Commercial/business)" },
 ];
 
 const URGENCY_OPTIONS: { value: ReportedUrgency; label: string; description: string }[] = [
@@ -76,37 +56,12 @@ const URGENCY_OPTIONS: { value: ReportedUrgency; label: string; description: str
   },
 ];
 
-const STANDARD_LOAD_GALLONS = 1000;
-
 interface Props {
   value: WaterSituationValue;
   onChange: (value: WaterSituationValue) => void;
-  /**
-   * Dispatcher-only: when a reported available-storage value is below
-   * the standard delivery amount, allow staff to explicitly confirm it
-   * is correct rather than being blocked outright (see PRODUCT.md
-   * "Available Storage Capacity"). The resident-facing form omits this
-   * — a resident-submitted value below 1,000 gallons is always treated
-   * as a likely data-entry error.
-   */
-  allowBelowStandardCapacityOverride?: boolean;
-  belowStandardCapacityConfirmed?: boolean;
-  onBelowStandardCapacityConfirmedChange?: (confirmed: boolean) => void;
 }
 
-export function WaterSituationFields({
-  value,
-  onChange,
-  allowBelowStandardCapacityOverride = false,
-  belowStandardCapacityConfirmed = false,
-  onBelowStandardCapacityConfirmedChange,
-}: Props) {
-  const storageNum = value.availableStorageGallons.trim()
-    ? Number(value.availableStorageGallons)
-    : null;
-  const belowStandard =
-    storageNum !== null && Number.isFinite(storageNum) && storageNum < STANDARD_LOAD_GALLONS;
-
+export function WaterSituationFields({ value, onChange }: Props) {
   function toggleVulnerable(option: VulnerableCircumstance) {
     const has = value.vulnerableCircumstances.includes(option);
     let next: VulnerableCircumstance[];
@@ -127,30 +82,6 @@ export function WaterSituationFields({
       <p className="text-sm font-bold text-slate-900">Your Water Situation</p>
 
       <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-        How much water do you have remaining?
-        <select
-          value={value.remainingSupply}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              remainingSupply: e.target.value as WaterSituationRemainingSupply,
-            })
-          }
-          required
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-        >
-          <option value="" disabled>
-            Select an option...
-          </option>
-          {REMAINING_SUPPLY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
         How many people rely on this water? (optional)
         <input
           type="number"
@@ -164,39 +95,18 @@ export function WaterSituationFields({
       </label>
 
       <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-        Available cistern/storage capacity (gallons, optional)
+        Available cistern/storage capacity
         <input
-          type="number"
-          min={0}
-          step={1}
-          inputMode="numeric"
-          value={value.availableStorageGallons}
-          onChange={(e) => onChange({ ...value, availableStorageGallons: e.target.value })}
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+          type="text"
+          value={value.availableStorageCapacity}
+          onChange={(e) => onChange({ ...value, availableStorageCapacity: e.target.value })}
+          placeholder="e.g. 1500, About 2,000 gallons, Unknown"
+          className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
         />
         <span className="text-xs font-normal text-slate-500">
-          Each delivery is 1,000 gallons.
+          Each delivery is 1,000 gallons. Enter a description or estimate.
         </span>
       </label>
-
-      {belowStandard && !allowBelowStandardCapacityOverride && (
-        <p className="text-xs font-medium text-red-700">
-          Available capacity is normally at least 1,000 gallons (the standard
-          delivery amount). Please double-check this value.
-        </p>
-      )}
-      {belowStandard && allowBelowStandardCapacityOverride && (
-        <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-          <input
-            type="checkbox"
-            checked={belowStandardCapacityConfirmed}
-            onChange={(e) => onBelowStandardCapacityConfirmedChange?.(e.target.checked)}
-            className="mt-0.5"
-          />
-          This capacity is correct even though it is below the standard
-          1,000-gallon delivery amount.
-        </label>
-      )}
 
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-sm font-medium text-slate-700">
@@ -216,16 +126,6 @@ export function WaterSituationFields({
           <input type="checkbox" checked={noneSelected} onChange={() => toggleVulnerable("none")} />
           None of these
         </label>
-        {value.vulnerableCircumstances.includes("other") && (
-          <textarea
-            value={value.vulnerableOtherDetail}
-            onChange={(e) => onChange({ ...value, vulnerableOtherDetail: e.target.value })}
-            rows={2}
-            required
-            placeholder="Briefly describe the circumstance (no medical details needed)"
-            className="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-          />
-        )}
       </fieldset>
 
       <fieldset className="flex flex-col gap-1.5">
@@ -261,14 +161,8 @@ export function WaterSituationFields({
 export function WaterSituationHiddenFields({ value }: { value: WaterSituationValue }) {
   return (
     <>
-      <input type="hidden" name="remainingSupply" value={value.remainingSupply} />
       <input type="hidden" name="personsAffected" value={value.personsAffected} />
-      <input
-        type="hidden"
-        name="availableStorageGallons"
-        value={value.availableStorageGallons}
-      />
-      <input type="hidden" name="vulnerableOtherDetail" value={value.vulnerableOtherDetail} />
+      <input type="hidden" name="availableStorageCapacity" value={value.availableStorageCapacity} />
       <input type="hidden" name="reportedUrgency" value={value.reportedUrgency} />
       {(value.vulnerableCircumstances.length > 0 ? value.vulnerableCircumstances : ["none"]).map(
         (c) => (

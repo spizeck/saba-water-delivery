@@ -51,7 +51,7 @@ export function CreateRequestForm({
   const [preferredDriverId, setPreferredDriverId] = useState("none");
   const [overrideDuplicate, setOverrideDuplicate] = useState(false);
   const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
-  const [belowStandardCapacityConfirmed, setBelowStandardCapacityConfirmed] = useState(false);
+  const [attestationChecked, setAttestationChecked] = useState(false);
 
   const [state, formAction, pending] = useActionState(createManualRequest, initialState);
 
@@ -88,6 +88,19 @@ export function CreateRequestForm({
     return customerName.trim().length > 0 && customerPhone.trim().length > 0;
   }
 
+  const URGENCY_LABEL: Record<string, string> = {
+    normal: "Normal",
+    urgent: "Urgent",
+    critical: "Critical",
+  };
+
+  const VULNERABLE_LABEL: Record<string, string> = {
+    elderly: "Elderly person",
+    infant_or_young_child: "Infant or young child",
+    medical_need: "Medical need",
+    essential_services_commercial_business: "Essential services (Commercial/business)",
+  };
+
   if (state.status === "success") {
     return (
       <Card className="!border-green-200 !bg-green-50">
@@ -111,7 +124,7 @@ export function CreateRequestForm({
               setPreferredDriverId("none");
               setOverrideDuplicate(false);
               setWaterSituation(EMPTY_WATER_SITUATION);
-              setBelowStandardCapacityConfirmed(false);
+              setAttestationChecked(false);
               router.refresh();
             }}
           >
@@ -276,13 +289,7 @@ export function CreateRequestForm({
         )}
 
         <div className="mt-4">
-          <WaterSituationFields
-            value={waterSituation}
-            onChange={setWaterSituation}
-            allowBelowStandardCapacityOverride
-            belowStandardCapacityConfirmed={belowStandardCapacityConfirmed}
-            onBelowStandardCapacityConfirmedChange={setBelowStandardCapacityConfirmed}
-          />
+          <WaterSituationFields value={waterSituation} onChange={setWaterSituation} />
         </div>
 
         <label className="mt-4 flex flex-col gap-1 text-sm font-medium text-slate-700">
@@ -308,10 +315,13 @@ export function CreateRequestForm({
           <Button
             size="lg"
             disabled={!canReview()}
-            onClick={() => setStep("review")}
+            onClick={() => {
+              setAttestationChecked(false);
+              setStep("review");
+            }}
             className="w-full"
           >
-            Review Request
+            Review &amp; Confirm Request
           </Button>
         </div>
       </Card>
@@ -354,9 +364,30 @@ export function CreateRequestForm({
         <div>
           <dt className="font-medium text-slate-500">Water situation</dt>
           <dd className="text-slate-900">
-            Remaining: {waterSituation.remainingSupply || "—"} &middot; Urgency:{" "}
-            {waterSituation.reportedUrgency || "—"}
+            <span className="font-medium">Urgency:</span> {" "}
+            {URGENCY_LABEL[waterSituation.reportedUrgency] || "—"}
           </dd>
+          {waterSituation.vulnerableCircumstances.some((c) => c !== "none") && (
+            <dd className="text-slate-900">
+              <span className="font-medium">Circumstances:</span> {" "}
+              {waterSituation.vulnerableCircumstances
+                .filter((c) => c !== "none")
+                .map((c) => VULNERABLE_LABEL[c] ?? c)
+                .join(", ")}
+            </dd>
+          )}
+          {waterSituation.personsAffected && (
+            <dd className="text-slate-900">
+              <span className="font-medium">People affected:</span> {" "}
+              {waterSituation.personsAffected}
+            </dd>
+          )}
+          {waterSituation.availableStorageCapacity && (
+            <dd className="text-slate-900">
+              <span className="font-medium">Available storage:</span> {" "}
+              {waterSituation.availableStorageCapacity}
+            </dd>
+          )}
         </div>
       </dl>
 
@@ -415,14 +446,25 @@ export function CreateRequestForm({
           value={overrideDuplicate ? "true" : "false"}
         />
         <WaterSituationHiddenFields value={waterSituation} />
-        <input
-          type="hidden"
-          name="confirmedBelowStandardCapacity"
-          value={belowStandardCapacityConfirmed ? "true" : "false"}
-        />
+
+        <label className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="attestationAccepted"
+            value="true"
+            checked={attestationChecked}
+            onChange={(e) => setAttestationChecked(e.target.checked)}
+            required
+            className="mt-0.5"
+          />
+          <span>
+            I have accurately recorded the information provided by the caller and confirmed it is
+            intended for this delivery location.
+          </span>
+        </label>
 
         {(state.status !== "duplicate_warning" || overrideDuplicate) && (
-          <Button type="submit" size="lg" disabled={pending}>
+          <Button type="submit" size="lg" disabled={pending || !attestationChecked}>
             {pending
               ? "Creating\u2026"
               : overrideDuplicate

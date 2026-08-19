@@ -117,8 +117,10 @@ export interface WaterRequestCustomerSnapshot {
 // ---------------------------------------------------------------------------
 
 /**
- * Structured, resident-understandable estimate of remaining water
- * supply. See PRODUCT.md "Current Water Situation".
+ * LEGACY: Structured, resident-understandable estimate of remaining water
+ * supply. Removed from the request form in the government-requested
+ * refinement; retained in the type only so historical requests continue
+ * to load safely.
  */
 export type WaterSituationRemainingSupply =
   | "out"
@@ -130,17 +132,18 @@ export type WaterSituationRemainingSupply =
 /**
  * Structured vulnerable-person / critical-circumstance options. This is
  * intentionally NOT a medical intake form — see PRODUCT.md "Vulnerable
- * Persons / Critical Circumstances". "other" allows a short free-text
- * explanation (`vulnerableOtherDetail`); no other option should ever
- * carry detailed health information.
+ * Persons / Critical Circumstances". Legacy values are kept in the
+ * union so historical documents continue to load and display.
  */
 export type VulnerableCircumstance =
   | "elderly"
   | "infant_or_young_child"
   | "medical_need"
+  | "essential_services_commercial_business"
+  | "none"
+  // LEGACY values kept for backward compatibility:
   | "essential_service"
-  | "other"
-  | "none";
+  | "other";
 
 /** The resident's own characterization of urgency. See PRODUCT.md
  * "Resident-Reported Urgency". This is captured separately from the
@@ -155,18 +158,24 @@ export type ReportedUrgency = "normal" | "urgent" | "critical";
  * circumstances at request time — see PRODUCT.md "Historical Snapshot".
  */
 export interface WaterSituationSnapshot {
-  remainingSupply: WaterSituationRemainingSupply;
+  /**
+   * LEGACY: removed from the form; may be null or absent on new requests.
+   * Historical documents may still contain one of the old values.
+   */
+  remainingSupply: WaterSituationRemainingSupply | null;
   /** Number of people relying on this water supply. Null if not provided
    * (e.g. an unregistered caller who couldn't say). */
   personsAffected: number | null;
   /** May be empty (treated the same as ["none"]) if nothing was selected. */
   vulnerableCircumstances: VulnerableCircumstance[];
-  /** Short free-text explanation, only meaningful when
-   * `vulnerableCircumstances` includes "other". Never a place for
-   * detailed medical information. */
+  /**
+   * LEGACY: free-text explanation for the removed "other" option. Kept
+   * for historical requests; always null on new requests.
+   */
   vulnerableOtherDetail: string | null;
-  /** Resident-reported available cistern/storage capacity, in gallons. */
-  availableStorageGallons: number | null;
+  /** Resident-reported available cistern/storage capacity, as free-form text. */
+  availableStorageCapacity: string | null;
+  /** The resident's own characterization of urgency. */
   reportedUrgency: ReportedUrgency;
 }
 
@@ -222,6 +231,15 @@ export interface WaterRequest {
    * time. Null only for historical documents that predate this field —
    * see PRODUCT.md "Historical Snapshot". Never null on new requests. */
   waterSituation: WaterSituationSnapshot | null;
+
+  /** Whether the resident (or dispatcher recording on a caller's behalf)
+   * confirmed the attestation before creating the request. Always true
+   * on new requests; null on historical documents that predate this
+   * field. */
+  attestationAccepted: boolean | null;
+  /** Timestamp when the attestation was accepted. Null for historical
+   * documents or if attestation was not required. */
+  attestationAcceptedAt: string | null;
 
   /** Operational dispatch priority — see `DispatchPriority` above.
    * Historical documents that predate this field default to "normal"

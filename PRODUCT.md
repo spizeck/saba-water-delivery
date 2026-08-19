@@ -283,26 +283,48 @@ this section describes.
 
 Every request — resident-submitted or dispatcher-created — captures:
 
-- **Current water supply**: Out of water / Less than 1 day remaining /
-  1-2 days remaining / More than 2 days remaining / Unsure.
 - **Number of people relying on this water supply** (optional positive
   integer).
 - **Vulnerable persons or critical circumstances**: Elderly person /
-  Infant or young child / Medical need / Essential service or critical
-  operation / Other critical circumstance (with a short explanation) /
-  None. This is deliberately NOT a medical intake form — enough
-  information to assess urgency, never a detailed health record.
-- **Available cistern/storage capacity**, in gallons, with a reminder
-  that each delivery is 1,000 gallons. An amount below 1,000 gallons is
-  treated as a likely data-entry error and blocked on the resident form;
-  dispatcher staff may explicitly confirm it is correct.
+  Infant or young child / Medical need / Essential services
+  (Commercial/business) / None. This is deliberately NOT a medical
+  intake form — enough information to assess urgency, never a detailed
+  health record. The generic "Other critical circumstance" option has
+  been removed.
+- **Available cistern/storage capacity**, as free-form text the resident
+  or caller can describe in their own words (e.g. "1500", "About 2,000
+  gallons", "Unknown"). It is not parsed into a number and does not
+  affect priority.
 - **Resident-reported urgency**: Normal / Urgent / Critical, in plain
   language (see the resident-facing wording in the request form).
+
+The earlier "How much water remains?" question has been removed.
+Urgency is now the primary water-situation indicator, together with
+vulnerable/critical circumstances.
 
 This information is a **snapshot** — it describes the circumstances at
 the moment the request was made and is never overwritten by later
 profile edits or re-derived later (see TECHNICAL.md "Historical
 Snapshot").
+
+## Required attestation
+
+Before a request can be submitted, the resident (or the dispatcher
+entering the request on a caller's behalf) must check an attestation
+confirming they are authorized to request water at the location and that
+the statements are true and factual. The system records:
+
+- `attestationAccepted: true`
+- `attestationAcceptedAt: Timestamp`
+
+The request is rejected server-side if the attestation is not checked.
+For dispatcher-created requests, the wording reflects that staff are
+accurately recording the information provided by the caller — not that
+the dispatcher is personally making a citizen attestation.
+
+The primary action on the request form is now "Review & Confirm
+Request", and a final "Request Water" / "Create Request" action appears
+only on the confirmation screen after the attestation is checked.
 
 ## Dispatch priority is not the same as reported urgency
 

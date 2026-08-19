@@ -313,16 +313,25 @@ referencing driver IDs inconsistently.
   // Never re-derived from a later profile lookup — see "Historical
   // Snapshot" below. Null only on historical documents that predate
   // this field.
+  //
+  // `remainingSupply`, `vulnerableOtherDetail`, and `availableStorageGallons`
+  // are legacy fields from an earlier form; `toWaterRequest()` normalizes
+  // them for historical documents. New requests use `availableStorageCapacity`
+  // (free-form string) and never collect `remainingSupply`.
   waterSituation: {
-    remainingSupply: "out" | "less_than_1_day" | "1_to_2_days" | "more_than_2_days" | "unsure"
+    remainingSupply: "out" | "less_than_1_day" | "1_to_2_days" | "more_than_2_days" | "unsure" | null
     personsAffected: number | null
     vulnerableCircumstances: Array<
-      "elderly" | "infant_or_young_child" | "medical_need" | "essential_service" | "other" | "none"
+      "elderly" | "infant_or_young_child" | "medical_need" | "essential_services_commercial_business" | "none" | "essential_service" | "other"
     >
     vulnerableOtherDetail: string | null
-    availableStorageGallons: number | null
+    availableStorageCapacity: string | null
     reportedUrgency: "normal" | "urgent" | "critical"
   } | null
+
+  // Attestation captured before request creation.
+  attestationAccepted: boolean | null
+  attestationAcceptedAt: Timestamp | null
 
   // Operational dispatch priority — see "Priority-Based Dispatch"
   // below. Historical documents predate this field and default to

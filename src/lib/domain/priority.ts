@@ -22,12 +22,7 @@
  *     match the desired dispatch order).
  */
 
-import type {
-  DispatchPriority,
-  ReportedUrgency,
-  VulnerableCircumstance,
-  WaterSituationRemainingSupply,
-} from "./types";
+import type { DispatchPriority, ReportedUrgency, VulnerableCircumstance } from "./types";
 
 // ---------------------------------------------------------------------------
 // Priority ranking (for Firestore ordering)
@@ -60,8 +55,9 @@ export function isValidDispatchPriority(value: unknown): value is DispatchPriori
 // ---------------------------------------------------------------------------
 
 export interface WaterSituationForPriority {
-  remainingSupply: WaterSituationRemainingSupply;
+  /** May be empty (treated the same as ["none"]) if nothing was selected. */
   vulnerableCircumstances: VulnerableCircumstance[];
+  /** The resident's own characterization of urgency. */
   reportedUrgency: ReportedUrgency;
 }
 
@@ -78,20 +74,16 @@ export interface PriorityDetermination {
  * priority.
  *
  * Rules, applied in order:
- *   1. CRITICAL — the resident reports being out of water, OR reported
- *      any vulnerable-person/critical circumstance (elderly, infant or
- *      young child, medical need, essential service, or another
- *      critical circumstance).
- *   2. URGENT — remaining supply is estimated at less than 1 day, or at
- *      1-2 days.
- *   3. URGENT (not CRITICAL) — the resident self-reported "Critical"
- *      urgency but none of the above structured, corroborating answers
- *      were given. A bare self-report is capped at Urgent so it cannot
+ *   1. CRITICAL — the resident reports a vulnerable-person or critical
+ *      circumstance (elderly, infant or young child, medical need, or
+ *      essential services (commercial/business)).
+ *   2. URGENT — the resident self-reported "Urgent" or "Critical"
+ *      urgency but no vulnerable/critical circumstance was reported.
+ *      A bare "Critical" self-report is capped at Urgent so it cannot
  *      alone create an unrestricted queue-jump; dispatcher/admin staff
  *      can review and escalate to Critical if warranted.
- *   4. NORMAL — everything else (more than 2 days remaining, or
- *      unsure, with no vulnerable circumstance and no critical
- *      self-report).
+ *   3. NORMAL — everything else ("Normal" self-report and no vulnerable
+ *      or critical circumstance).
  */
 export function determineInitialDispatchPriority(
   waterSituation: WaterSituationForPriority,
@@ -100,30 +92,27 @@ export function determineInitialDispatchPriority(
     (c) => c !== "none",
   );
 
-  if (waterSituation.remainingSupply === "out") {
-    return { priority: "critical", reason: "Resident reports being out of water." };
-  }
   if (hasVulnerableCircumstance) {
     return {
       priority: "critical",
       reason: "Resident reported a vulnerable-person or critical circumstance.",
     };
   }
-  if (waterSituation.remainingSupply === "less_than_1_day") {
+
+  if (waterSituation.reportedUrgency === "urgent") {
     return {
       priority: "urgent",
-      reason: "Resident reports less than 1 day of water remaining.",
+      reason: 'Resident self-reported "Urgent" priority with no vulnerable or critical circumstance.',
     };
   }
-  if (waterSituation.remainingSupply === "1_to_2_days") {
-    return { priority: "urgent", reason: "Resident reports 1-2 days of water remaining." };
-  }
+
   if (waterSituation.reportedUrgency === "critical") {
     return {
       priority: "urgent",
       reason:
-        'Resident self-reported "Critical" urgency without a corroborating structured answer (out of water / vulnerable circumstance / under 1 day remaining); treated as Urgent pending staff review.',
+        'Resident self-reported "Critical" urgency without a corroborating vulnerable or critical circumstance; treated as Urgent pending staff review.',
     };
   }
+
   return { priority: "normal", reason: "No urgent or critical indicators reported." };
 }

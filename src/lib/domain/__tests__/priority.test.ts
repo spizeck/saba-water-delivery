@@ -33,73 +33,73 @@ describe("priority", () => {
   });
 
   describe("determineInitialDispatchPriority", () => {
-    it("critical: resident reports out of water", () => {
+    it("critical: any vulnerable or critical circumstance", () => {
       const result = determineInitialDispatchPriority({
-        remainingSupply: "out",
-        vulnerableCircumstances: ["none"],
-        reportedUrgency: "normal",
-      });
-      expect(result.priority).toBe("critical");
-    });
-
-    it("critical: vulnerable circumstance regardless of supply", () => {
-      const result = determineInitialDispatchPriority({
-        remainingSupply: "more_than_2_days",
         vulnerableCircumstances: ["elderly"],
         reportedUrgency: "normal",
       });
       expect(result.priority).toBe("critical");
     });
 
-    it("urgent: less than 1 day of supply", () => {
+    it("critical: essential services (commercial/business)", () => {
       const result = determineInitialDispatchPriority({
-        remainingSupply: "less_than_1_day",
-        vulnerableCircumstances: ["none"],
+        vulnerableCircumstances: ["essential_services_commercial_business"],
         reportedUrgency: "normal",
+      });
+      expect(result.priority).toBe("critical");
+    });
+
+    it("critical: multiple vulnerable circumstances", () => {
+      const result = determineInitialDispatchPriority({
+        vulnerableCircumstances: ["medical_need", "infant_or_young_child"],
+        reportedUrgency: "normal",
+      });
+      expect(result.priority).toBe("critical");
+    });
+
+    it("urgent: self-reported urgent", () => {
+      const result = determineInitialDispatchPriority({
+        vulnerableCircumstances: ["none"],
+        reportedUrgency: "urgent",
       });
       expect(result.priority).toBe("urgent");
     });
 
-    it("urgent: 1-2 days of supply", () => {
+    it("caps bare critical self-report at urgent", () => {
       const result = determineInitialDispatchPriority({
-        remainingSupply: "1_to_2_days",
-        vulnerableCircumstances: ["none"],
-        reportedUrgency: "normal",
-      });
-      expect(result.priority).toBe("urgent");
-    });
-
-    it("caps bare 'critical' self-report at urgent", () => {
-      const result = determineInitialDispatchPriority({
-        remainingSupply: "more_than_2_days",
         vulnerableCircumstances: ["none"],
         reportedUrgency: "critical",
       });
       expect(result.priority).toBe("urgent");
     });
 
+    it("critical outranks a bare critical urgency when vulnerable", () => {
+      const result = determineInitialDispatchPriority({
+        vulnerableCircumstances: ["medical_need"],
+        reportedUrgency: "critical",
+      });
+      expect(result.priority).toBe("critical");
+    });
+
     it("normal: no urgent or critical indicators", () => {
       const result = determineInitialDispatchPriority({
-        remainingSupply: "more_than_2_days",
         vulnerableCircumstances: ["none"],
         reportedUrgency: "normal",
       });
       expect(result.priority).toBe("normal");
     });
 
-    it("critical out-of-water outranks urgent self-report", () => {
+    it("treats empty vulnerable circumstances as none", () => {
       const result = determineInitialDispatchPriority({
-        remainingSupply: "out",
-        vulnerableCircumstances: ["none"],
-        reportedUrgency: "critical",
+        vulnerableCircumstances: [],
+        reportedUrgency: "normal",
       });
-      expect(result.priority).toBe("critical");
+      expect(result.priority).toBe("normal");
     });
 
-    it("multiple non-none vulnerable circumstances still critical", () => {
+    it("treats legacy essential_service as a critical circumstance", () => {
       const result = determineInitialDispatchPriority({
-        remainingSupply: "more_than_2_days",
-        vulnerableCircumstances: ["medical_need", "infant_or_young_child"],
+        vulnerableCircumstances: ["essential_service"],
         reportedUrgency: "normal",
       });
       expect(result.priority).toBe("critical");

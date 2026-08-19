@@ -78,15 +78,24 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     // than guessing (see PRODUCT.md "Historical Snapshot").
     waterSituation: data.waterSituation
       ? {
-          remainingSupply: data.waterSituation.remainingSupply as WaterSituationRemainingSupply,
+          remainingSupply:
+            (data.waterSituation.remainingSupply as WaterSituationRemainingSupply) ?? null,
           personsAffected: data.waterSituation.personsAffected ?? null,
           vulnerableCircumstances:
             (data.waterSituation.vulnerableCircumstances as VulnerableCircumstance[]) ?? [],
           vulnerableOtherDetail: data.waterSituation.vulnerableOtherDetail ?? null,
-          availableStorageGallons: data.waterSituation.availableStorageGallons ?? null,
+          // New free-form string field, or a best-effort string conversion of
+          // the legacy numeric `availableStorageGallons` for older requests.
+          availableStorageCapacity:
+            (data.waterSituation.availableStorageCapacity as string | undefined) ??
+            (data.waterSituation.availableStorageGallons != null
+              ? String(data.waterSituation.availableStorageGallons)
+              : null),
           reportedUrgency: (data.waterSituation.reportedUrgency as ReportedUrgency) ?? "normal",
         }
       : null,
+    attestationAccepted: data.attestationAccepted ?? null,
+    attestationAcceptedAt: data.attestationAcceptedAt?.toDate?.().toISOString() ?? null,
     dispatchPriority: (data.dispatchPriority as DispatchPriority) ?? "normal",
     prioritySource: data.prioritySource === "dispatcher" ? "dispatcher" : "system",
     priorityReason: data.priorityReason ?? null,
@@ -239,23 +248,12 @@ export async function getClaimedRequestsForDriver(
  * from this in `buildWaterSituationSnapshot()` below.
  */
 export interface WaterSituationInput {
-  remainingSupply: WaterSituationRemainingSupply;
   /** Positive integer, or null if not provided (e.g. caller unsure). */
   personsAffected?: number | null;
   vulnerableCircumstances?: VulnerableCircumstance[];
-  vulnerableOtherDetail?: string | null;
-  /** Resident-reported available cistern/storage capacity, in gallons. */
-  availableStorageGallons?: number | null;
+  /** Resident-reported available cistern/storage capacity, as free-form text. */
+  availableStorageCapacity?: string | null;
   reportedUrgency: ReportedUrgency;
-  /**
-   * Staff-only explicit acknowledgement that a reported
-   * `availableStorageGallons` value below the standard 1,000-gallon
-   * delivery is correct — not a data-entry error. The resident-facing
-   * form has no way to set this, so a resident-submitted request always
-   * hard-blocks an under-1,000 value rather than silently accepting it
-   * (see PRODUCT.md "Available Storage Capacity").
-   */
-  confirmedBelowStandardCapacity?: boolean;
 }
 
 export interface CreateWaterRequestInput {
@@ -285,6 +283,14 @@ export interface CreateWaterRequestInput {
    * both resident and dispatcher-created requests — see PRODUCT.md
    * "Dispatcher Manual Requests" (staff capture the same information). */
   waterSituation: WaterSituationInput;
+  /**
+   * Attestation that the request is authorized and the statements are
+   * true. For resident requests, the resident confirms their own
+   * attestation. For dispatcher-created requests, the staff member
+   * confirms they accurately recorded the information provided by the
+   * caller — not that they personally made a citizen attestation.
+   */
+  attestationAccepted: boolean;
 }
 
 /**
@@ -298,43 +304,20 @@ function buildWaterSituationSnapshot(input: WaterSituationInput): WaterSituation
     ? input.vulnerableCircumstances
     : (["none"] as VulnerableCircumstance[]);
 
-  if (
-    vulnerableCircumstances.includes("other") &&
-    !input.vulnerableOtherDetail?.trim()
-  ) {
-    throw new Error("VULNERABLE_OTHER_DETAIL_REQUIRED");
-  }
-
   if (input.personsAffected != null) {
     if (!Number.isInteger(input.personsAffected) || input.personsAffected <= 0) {
       throw new Error("INVALID_PERSONS_AFFECTED");
     }
   }
 
-  if (input.availableStorageGallons != null) {
-    if (!Number.isFinite(input.availableStorageGallons) || input.availableStorageGallons < 0) {
-      throw new Error("INVALID_AVAILABLE_STORAGE");
-    }
-    // Prevent obvious data-entry errors (see PRODUCT.md "Available
-    // Storage Capacity") — a delivery is always 1,000 gallons, so a
-    // reported capacity below that is almost always a mistake. Staff
-    // may deliberately confirm it is correct; residents have no such
-    // override.
-    if (
-      input.availableStorageGallons < appConfig.standardLoadGallons &&
-      !input.confirmedBelowStandardCapacity
-    ) {
-      throw new Error("AVAILABLE_STORAGE_BELOW_STANDARD");
-    }
-  }
+  const availableStorageCapacity = input.availableStorageCapacity?.trim() || null;
 
   return {
-    remainingSupply: input.remainingSupply,
+    remainingSupply: null,
     personsAffected: input.personsAffected ?? null,
     vulnerableCircumstances,
-    vulnerableOtherDetail:
-      vulnerableCircumstances.includes("other") ? input.vulnerableOtherDetail!.trim() : null,
-    availableStorageGallons: input.availableStorageGallons ?? null,
+    vulnerableOtherDetail: null,
+    availableStorageCapacity,
     reportedUrgency: input.reportedUrgency,
   };
 }
@@ -375,6 +358,7 @@ export async function createWaterRequest(
     customer: customerInput,
     overrideMatchedRequestIds,
     waterSituation: waterSituationInput,
+    attestationAccepted,
   } = input;
 
   if (!customerId && !customerInput?.displayName?.trim()) {
@@ -385,6 +369,9 @@ export async function createWaterRequest(
   }
   if (source === "dispatcher" && !createdBy) {
     throw new Error("CREATED_BY_REQUIRED");
+  }
+  if (!attestationAccepted) {
+    throw new Error("ATTESTATION_REQUIRED");
   }
 
   const waterSituation = buildWaterSituationSnapshot(waterSituationInput);
@@ -478,6 +465,8 @@ export async function createWaterRequest(
       assignedDriverId: null,
       status: initialStatus,
       waterSituation,
+      attestationAccepted,
+      attestationAcceptedAt: now,
       dispatchPriority,
       priorityRank: priorityRankFor(dispatchPriority),
       prioritySource: "system",

@@ -22,6 +22,19 @@ interface Props {
   eligibleDrivers: EligibleDriverOption[];
 }
 
+const URGENCY_LABEL: Record<string, string> = {
+  normal: "Normal",
+  urgent: "Urgent",
+  critical: "Critical",
+};
+
+const VULNERABLE_LABEL: Record<string, string> = {
+  elderly: "Elderly person",
+  infant_or_young_child: "Infant or young child",
+  medical_need: "Medical need",
+  essential_services_commercial_business: "Essential services (Commercial/business)",
+};
+
 export function WaterRequestForm({
   village,
   deliveryDirections,
@@ -30,6 +43,7 @@ export function WaterRequestForm({
   const [confirming, setConfirming] = useState(false);
   const [preferredDriverId, setPreferredDriverId] = useState("none");
   const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
+  const [attestationChecked, setAttestationChecked] = useState(false);
   const [state, formAction, pending] = useActionState(requestWater, initialState);
 
   const selectedDriver = eligibleDrivers.find((d) => d.uid === preferredDriverId);
@@ -71,9 +85,12 @@ export function WaterRequestForm({
           <Button
             size="lg"
             disabled={!isWaterSituationComplete(waterSituation)}
-            onClick={() => setConfirming(true)}
+            onClick={() => {
+              setAttestationChecked(false);
+              setConfirming(true);
+            }}
           >
-            Request 1,000 Gallons
+            Review &amp; Confirm Request
           </Button>
         </div>
       </Card>
@@ -101,29 +118,76 @@ export function WaterRequestForm({
             {selectedDriver ? selectedDriver.displayName : "No preference"}
           </dd>
         </div>
+        <div>
+          <dt className="font-medium text-slate-500">Water situation</dt>
+          <dd className="text-slate-900">
+            <span className="font-medium">Urgency:</span> {" "}
+            {URGENCY_LABEL[waterSituation.reportedUrgency] || "—"}
+          </dd>
+          {waterSituation.vulnerableCircumstances.some((c) => c !== "none") && (
+            <dd className="text-slate-900">
+              <span className="font-medium">Circumstances:</span> {" "}
+              {waterSituation.vulnerableCircumstances
+                .filter((c) => c !== "none")
+                .map((c) => VULNERABLE_LABEL[c] ?? c)
+                .join(", ")}
+            </dd>
+          )}
+          {waterSituation.personsAffected && (
+            <dd className="text-slate-900">
+              <span className="font-medium">People affected:</span> {" "}
+              {waterSituation.personsAffected}
+            </dd>
+          )}
+          {waterSituation.availableStorageCapacity && (
+            <dd className="text-slate-900">
+              <span className="font-medium">Available storage:</span> {" "}
+              {waterSituation.availableStorageCapacity}
+            </dd>
+          )}
+        </div>
       </dl>
 
-      {state.status === "error" && (
-        <p role="alert" className="mt-3 text-sm font-medium text-red-700">
-          {state.message}
-        </p>
-      )}
-
-      <form action={formAction} className="mt-4 flex flex-col gap-3 sm:flex-row">
+      <form action={formAction} className="mt-4 flex flex-col gap-3">
         <input type="hidden" name="preferredDriverId" value={preferredDriverId} />
         <WaterSituationHiddenFields value={waterSituation} />
-        <Button type="submit" size="lg" disabled={pending}>
-          {pending ? "Submitting\u2026" : "Request Water"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          onClick={() => setConfirming(false)}
-          disabled={pending}
-        >
-          Go back
-        </Button>
+
+        <label className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="attestationAccepted"
+            value="true"
+            checked={attestationChecked}
+            onChange={(e) => setAttestationChecked(e.target.checked)}
+            required
+            className="mt-0.5"
+          />
+          <span>
+            I am authorized to request water at this location, and the statements made above are
+            true and factual.
+          </span>
+        </label>
+
+        {state.status === "error" && (
+          <p role="alert" className="text-sm font-medium text-red-700">
+            {state.message}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button type="submit" size="lg" disabled={pending || !attestationChecked}>
+            {pending ? "Submitting\u2026" : "Request Water"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => setConfirming(false)}
+            disabled={pending}
+          >
+            Go back
+          </Button>
+        </div>
       </form>
     </Card>
   );

@@ -77,18 +77,11 @@ const PRIORITY_COLORS: Record<string, string> = {
   critical: "bg-red-100 text-red-900",
 };
 
-const REMAINING_SUPPLY_LABELS: Record<string, string> = {
-  out: "Out of water",
-  less_than_1_day: "Less than 1 day remaining",
-  "1_to_2_days": "1\u20132 days remaining",
-  more_than_2_days: "More than 2 days remaining",
-  unsure: "Not sure",
-};
-
 const VULNERABLE_LABELS: Record<string, string> = {
   elderly: "Elderly person",
   infant_or_young_child: "Infant or young child",
   medical_need: "Medical need",
+  essential_services_commercial_business: "Essential services (Commercial/business)",
   essential_service: "Essential service or critical operation",
   other: "Other critical circumstance",
   none: "None",
@@ -283,12 +276,6 @@ export default async function RequestDetailPage({ params }: PageProps) {
               <h2 className="text-lg font-bold text-slate-900">Water Situation</h2>
               <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="font-medium text-slate-500">Remaining supply</dt>
-                  <dd className="text-slate-900">
-                    {REMAINING_SUPPLY_LABELS[data.waterSituation.remainingSupply] ?? "—"}
-                  </dd>
-                </div>
-                <div>
                   <dt className="font-medium text-slate-500">Resident-reported urgency</dt>
                   <dd className="text-slate-900 capitalize">
                     {data.waterSituation.reportedUrgency ?? "—"}
@@ -300,12 +287,13 @@ export default async function RequestDetailPage({ params }: PageProps) {
                     {data.waterSituation.personsAffected ?? "Not provided"}
                   </dd>
                 </div>
-                <div>
+                <div className="sm:col-span-2">
                   <dt className="font-medium text-slate-500">Available storage</dt>
                   <dd className="text-slate-900">
-                    {data.waterSituation.availableStorageGallons != null
-                      ? `${data.waterSituation.availableStorageGallons.toLocaleString()} gallons`
-                      : "Not provided"}
+                    {data.waterSituation.availableStorageCapacity ??
+                      (data.waterSituation.availableStorageGallons != null
+                        ? `${data.waterSituation.availableStorageGallons.toLocaleString()} gallons`
+                        : "Not provided")}
                   </dd>
                 </div>
                 <div className="sm:col-span-2">
