@@ -63,12 +63,6 @@ explicitly.
 New users default to `roles: ["resident"]`. Roles are only granted through
 trusted server-side (Admin SDK) operations — never by client writes.
 
-**Backward compatibility:** Existing Firestore user documents may still contain
-a singular `role` field. The server-side `toUserProfile()` function handles both
-formats transparently (reading `roles` if present, otherwise wrapping the
-singular `role` into an array). New documents are always written with the
-`roles` array.
-
 Role checks must be enforced server-side and/or through Firestore Security Rules as appropriate.
 
 Do not trust role values submitted by clients.
@@ -103,10 +97,6 @@ This is a starting model, not an instruction to blindly reproduce every field.
 }
 ```
 
-> **Migration note:** Legacy documents may have a singular `role` field instead
-> of `roles`. The application reads both formats safely. New documents and
-> profile updates always write `roles`.
-
 ## users/{uid}/roleEvents/{eventId}
 
 ```ts
@@ -119,32 +109,6 @@ This is a starting model, not an instruction to blindly reproduce every field.
 ```
 
 Role changes are recorded here for audit. These are admin-only operations.
-
-## drivers/{uid} (LEGACY — superseded by driverRegistry, see below)
-
-```ts
-{
-  userId: string
-
-  eligibilityStatus: "eligible" | "ineligible"
-  availabilityStatus: "online" | "offline"
-
-  ineligibilityReason: string | null
-  restrictedAt: Timestamp | null
-  restrictedBy: string | null
-
-  cooldownUntil: Timestamp | null
-
-  createdAt: Timestamp
-  updatedAt: Timestamp
-}
-```
-
-This collection assumed a driver was always keyed by, and only ever
-existed because of, an application user account (`doc id == uid`). It is
-retained read-only for historical data (see "Existing Driver Data
-Migration" below) but no new code creates or writes to it. All current
-operational logic uses `driverRegistry` instead.
 
 ## driverRegistry/{driverId}
 
@@ -313,18 +277,11 @@ referencing driver IDs inconsistently.
   // Never re-derived from a later profile lookup — see "Historical
   // Snapshot" below. Null only on historical documents that predate
   // this field.
-  //
-  // `remainingSupply`, `vulnerableOtherDetail`, and `availableStorageGallons`
-  // are legacy fields from an earlier form; `toWaterRequest()` normalizes
-  // them for historical documents. New requests use `availableStorageCapacity`
-  // (free-form string) and never collect `remainingSupply`.
   waterSituation: {
-    remainingSupply: "out" | "less_than_1_day" | "1_to_2_days" | "more_than_2_days" | "unsure" | null
     personsAffected: number | null
     vulnerableCircumstances: Array<
-      "elderly" | "infant_or_young_child" | "medical_need" | "essential_services_commercial_business" | "none" | "essential_service" | "other"
+      "elderly" | "infant_or_young_child" | "medical_need" | "essential_services_commercial_business" | "none"
     >
-    vulnerableOtherDetail: string | null
     availableStorageCapacity: string | null
     reportedUrgency: "normal" | "urgent" | "critical"
   } | null
@@ -359,12 +316,6 @@ referencing driver IDs inconsistently.
   updatedAt: Timestamp
 }
 ```
-
-> **Migration note:** Historical documents predate `customer`, `source`,
-> and `createdBy`. `toWaterRequest()` in `src/lib/domain/waterRequests.ts`
-> defaults `source` to `"resident"`, `createdBy` to `null`, and `customer`
-> to `null` (callers fall back to a live `users/{uid}` profile lookup via
-> `customerId` for those). No backfill/migration is required.
 
 ## users/{uid}/propertyPhotos/{photoId}
 
@@ -717,36 +668,6 @@ water situation on `/dispatcher/[requestId]`.
 
 ---
 
-# Existing Driver Data Migration
-
-Before the Driver Registry existed, `drivers/{uid}` documents were
-created automatically whenever a user received the `driver` role. Any
-such documents that already exist in a given environment are **not**
-migrated or deleted automatically — see PRODUCT.md / DEVIN.md and the
-"Manual Firebase/admin actions" note in session reports.
-
-`importLegacyDrivers()` (`src/lib/domain/driverRegistry.ts`) is an
-idempotent, explicitly admin-triggered tool ("Import legacy driver
-accounts" button on `/admin/drivers`) that:
-
-1. Reads every `drivers/{uid}` document.
-2. Skips any uid that already has a linked `driverRegistry` entry.
-3. For the rest, creates a new `driverRegistry` entry with
-   `linkedUserId` set to that uid, `displayName`/`phone` pulled from
-   `users/{uid}`, and eligibility/availability/cooldown/restriction
-   state copied over unchanged.
-4. Records a `driver_registry_created` event with
-   `migratedFromLegacyDriverDoc: true` and the original uid, for
-   traceability.
-
-It never deletes the legacy `drivers/{uid}` documents. Running it more
-than once is safe — already-imported uids are skipped. **This must be
-run once by an admin after this feature ships to any environment with
-pre-existing driver accounts** (see the deployment/production-launch
-report for whether this repository's environment needs it).
-
----
-
 # Preferred Driver Expiration
 
 The preferred-driver window must be configurable.
@@ -908,7 +829,6 @@ getEligibleDriverOptions()
 isDriverImmediatelyAvailable()
 setMeterAssignment()
 removeMeterAssignment()
-importLegacyDrivers()
 seedInitialRoster()
 ```
 

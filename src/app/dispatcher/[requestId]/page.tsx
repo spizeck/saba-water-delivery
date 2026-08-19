@@ -82,8 +82,6 @@ const VULNERABLE_LABELS: Record<string, string> = {
   infant_or_young_child: "Infant or young child",
   medical_need: "Medical need",
   essential_services_commercial_business: "Essential services (Commercial/business)",
-  essential_service: "Essential service or critical operation",
-  other: "Other critical circumstance",
   none: "None",
 };
 
@@ -290,10 +288,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
                 <div className="sm:col-span-2">
                   <dt className="font-medium text-slate-500">Available storage</dt>
                   <dd className="text-slate-900">
-                    {data.waterSituation.availableStorageCapacity ??
-                      (data.waterSituation.availableStorageGallons != null
-                        ? `${data.waterSituation.availableStorageGallons.toLocaleString()} gallons`
-                        : "Not provided")}
+                    {data.waterSituation.availableStorageCapacity ?? "Not provided"}
                   </dd>
                 </div>
                 <div className="sm:col-span-2">
@@ -304,11 +299,6 @@ export default async function RequestDetailPage({ params }: PageProps) {
                     {((data.waterSituation.vulnerableCircumstances as string[]) ?? ["none"])
                       .map((c) => VULNERABLE_LABELS[c] ?? c)
                       .join(", ")}
-                    {data.waterSituation.vulnerableOtherDetail && (
-                      <span className="block text-slate-600">
-                        {data.waterSituation.vulnerableOtherDetail}
-                      </span>
-                    )}
                   </dd>
                 </div>
               </dl>

@@ -69,10 +69,10 @@ export async function getAllUsers(): Promise<AdminUserListItem[]> {
     });
   }
 
-  // Fetch linked Driver Registry entries in batches (eligibility/
-  // availability now live on the registry, not a legacy `drivers/{uid}`
-  // doc — see TECHNICAL.md "Driver Registry"). A user with the `driver`
-  // role but no linked registry entry simply shows no driver status.
+  // Fetch linked Driver Registry entries in batches (eligibility and
+  // availability live on the registry — see TECHNICAL.md "Driver
+  // Registry"). A user with the `driver` role but no linked registry
+  // entry simply shows no driver status.
   if (driverUids.length > 0) {
     const batchSize = 30;
     for (let i = 0; i < driverUids.length; i += batchSize) {

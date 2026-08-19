@@ -568,8 +568,7 @@ export async function claimWaterRequest(
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
   // Driver eligibility/availability now lives on the Driver Registry
-  // entry linked to this uid, not a `drivers/{uid}` document — see
-  // TECHNICAL.md "Driver Registry" for the canonical-ID rationale.
+  // entry linked to this uid. See TECHNICAL.md "Driver Registry".
   const driverQuery = db
     .collection("driverRegistry")
     .where("linkedUserId", "==", driverId)

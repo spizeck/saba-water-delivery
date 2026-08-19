@@ -80,8 +80,8 @@ admin
 A single user may hold **multiple roles** (`roles: UserRole[]`). New users
 default to `["resident"]`. Roles are granted only via Admin SDK.
 
-The application handles backward-compatible reads from documents that still have
-a singular `role` field (wraps into an array). New writes always use `roles`.
+User documents use the canonical `roles` array. There is no support for the
+legacy singular `role` field.
 
 A **role/portal switcher** appears in the header for multi-role users. It
 navigates to the selected portal and stores the preference in a `portal` cookie.
@@ -450,9 +450,8 @@ rationale. Summary for maintainers:
 - `/admin/drivers/[driverId]` — edit basic info; link/unlink an existing
   user account (search by name/phone/email); restrict/restore
   eligibility; edit fill-station meter assignments; view audit history.
-- "Registry Tools" on `/admin/drivers` has two idempotent, explicitly
-  admin-triggered actions: seed the known initial roster, and import
-  legacy pre-registry `drivers/{uid}` documents. Neither runs
+- "Registry Tools" on `/admin/drivers` has one idempotent, explicitly
+  admin-triggered action: seed the known initial roster. It does not run
   automatically.
 - Operational code (claiming, offer eligibility, resident/dispatcher
   driver pickers, statistics driver attribution) looks up a registry

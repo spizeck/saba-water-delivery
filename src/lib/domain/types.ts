@@ -32,7 +32,6 @@ export type DriverEligibilityStatus = "eligible" | "ineligible";
 export type DriverAvailabilityStatus = "online" | "offline";
 
 /**
- * LEGACY shape backing the original `drivers/{uid}` collection, which
  * assumed a driver was always keyed by (and only ever existed because
  * of) an application user account. Superseded by the government-managed
  * Driver Registry (`DriverRegistryEntry` below / `driverRegistry/{id}`) —
@@ -379,7 +378,7 @@ export interface DriverRegistryEntry {
   restrictedAt: string | null;
   restrictedBy: string | null;
 
-  /** See DriverProfile.cooldownUntil — same dispatch-offer decline cooldown concept. */
+  /** Temporary dispatch-offer decline cooldown (future timestamp). */
   cooldownUntil: string | null;
 
   createdAt: string;

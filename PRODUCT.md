@@ -177,9 +177,9 @@ claimable offer at a time — see "Dispatch Offers" below.
 
 **Important:** Having the `driver` role does NOT make someone eligible to deliver
 water. Role membership (`roles` includes `"driver"`) grants access to driver
-functionality. Eligibility (`drivers/{uid}.eligibilityStatus == "eligible"`)
-determines whether a driver may actually claim deliveries. These are separate
-concepts.
+functionality. Eligibility (`driverRegistry/{driverId}.eligibilityStatus ==
+"eligible"`) determines whether a driver may actually claim deliveries. These
+are separate concepts.
 
 ## Dispatcher
 

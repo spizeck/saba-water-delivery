@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import {
   createDriver,
-  importLegacyDrivers,
   linkDriverAccount,
   removeMeterAssignment,
   restoreDriver,
@@ -266,17 +265,5 @@ export async function seedInitialRosterAction(
   return {
     status: "success",
     message: `${result.created} driver(s) added, ${result.skipped} already existed.`,
-  };
-}
-
-export async function importLegacyDriversAction(
-  _prevState: MaintenanceActionState,
-): Promise<MaintenanceActionState> {
-  const session = await requireAdmin();
-  const result = await importLegacyDrivers(session.uid);
-  revalidatePath("/admin/drivers");
-  return {
-    status: "success",
-    message: `${result.imported} legacy driver record(s) imported, ${result.skipped} already linked.`,
   };
 }
