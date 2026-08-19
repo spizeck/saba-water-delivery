@@ -32,38 +32,6 @@ export type DriverEligibilityStatus = "eligible" | "ineligible";
 export type DriverAvailabilityStatus = "online" | "offline";
 
 /**
- * assumed a driver was always keyed by (and only ever existed because
- * of) an application user account. Superseded by the government-managed
- * Driver Registry (`DriverRegistryEntry` below / `driverRegistry/{id}`) —
- * see TECHNICAL.md "Driver Registry". Retained only so historical
- * `drivers/{uid}` documents can still be read (e.g. by the one-time
- * legacy-import tool); no new code should create or rely on these.
- */
-export interface DriverProfile {
-  userId: string;
-
-  eligibilityStatus: DriverEligibilityStatus;
-  availabilityStatus: DriverAvailabilityStatus;
-
-  ineligibilityReason: string | null;
-  restrictedAt: string | null;
-  restrictedBy: string | null;
-
-  /**
-   * When set to a future timestamp, the driver has exceeded the daily
-   * decline limit and is temporarily paused from receiving new dispatch
-   * offers. This is a dispatch/availability control, separate from
-   * `eligibilityStatus` (government authorization) and `availabilityStatus`
-   * (the driver's own online/offline preference). See TECHNICAL.md
-   * "Dispatch Offers".
-   */
-  cooldownUntil: string | null;
-
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
  * Resident-facing statuses stay simple. Internal implementation details
  * (e.g. additional bookkeeping states) may be added later without
  * changing what is shown to residents.

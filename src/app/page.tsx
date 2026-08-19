@@ -25,7 +25,7 @@ export default function Home() {
               <LinkButton
                 href="/login?portal=resident"
                 size="lg"
-                className="w-full justify-center sm:w-auto"
+                className="w-full justify-center sm:flex-1"
                 aria-label="Log in to request water delivery"
               >
                 Login to Request Water
@@ -34,7 +34,7 @@ export default function Home() {
                 href="/login?portal=driver"
                 size="lg"
                 variant="outline"
-                className="w-full justify-center sm:w-auto"
+                className="w-full justify-center sm:flex-1"
                 aria-label="Log in to the driver portal"
               >
                 Driver Login
