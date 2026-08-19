@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { Footer } from "@/components/layout/Footer";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Container } from "@/components/ui/Container";
 
@@ -24,6 +25,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <LoginForm intendedPortal={portal ?? null} />
         </Container>
       </main>
+      <Footer />
     </>
   );
 }

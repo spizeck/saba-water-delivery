@@ -1,6 +1,17 @@
+import type { Metadata } from "next";
+
+import { Footer } from "@/components/layout/Footer";
+import { Logo } from "@/components/layout/Logo";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { LinkButton } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
+
+export const metadata: Metadata = {
+  title: "Saba Water Delivery",
+  description:
+    "Request government RO water delivery quickly and fairly through the official Saba Water Delivery portal.",
+};
 
 export default function Home() {
   const whatsappNumber = "+599 416 5363";
@@ -11,14 +22,20 @@ export default function Home() {
       <SiteHeader />
       <main className="flex flex-1 items-center py-12">
         <Container className="max-w-2xl">
-          <div className="flex flex-col items-start gap-6">
-            <div>
-              <h1 className="text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
-                Saba Water Delivery
-              </h1>
-              <p className="mt-2 max-w-xl text-lg text-slate-600">
-                Request government RO water delivery quickly and fairly.
-              </p>
+          <div className="flex flex-col items-start gap-8">
+            <div className="flex w-full flex-col items-start gap-4 sm:flex-row sm:items-center">
+              <Logo
+                className="relative h-24 w-24 sm:h-32 sm:w-32"
+                alt="Public Entity Saba"
+              />
+              <div>
+                <h1 className="text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
+                  Saba Water Delivery
+                </h1>
+                <p className="mt-2 max-w-xl text-lg text-slate-600">
+                  Request government RO water delivery quickly and fairly.
+                </p>
+              </div>
             </div>
 
             <div className="flex w-full flex-col gap-3 sm:flex-row">
@@ -41,10 +58,7 @@ export default function Home() {
               </LinkButton>
             </div>
 
-            <section
-              className="w-full border-t border-slate-200 pt-6"
-              aria-labelledby="help-heading"
-            >
+            <Card className="w-full" aria-labelledby="help-heading">
               <h2 id="help-heading" className="text-base font-semibold text-slate-900">
                 Need Help?
               </h2>
@@ -58,10 +72,11 @@ export default function Home() {
                   call via WhatsApp {whatsappNumber}
                 </a>
               </p>
-            </section>
+            </Card>
           </div>
         </Container>
       </main>
+      <Footer />
     </>
   );
 }

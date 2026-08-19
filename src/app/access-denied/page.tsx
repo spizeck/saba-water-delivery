@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { Footer } from "@/components/layout/Footer";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { LinkButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -52,6 +53,7 @@ export default async function AccessDeniedPage({ searchParams }: AccessDeniedPag
           </Card>
         </Container>
       </main>
+      <Footer />
     </>
   );
 }

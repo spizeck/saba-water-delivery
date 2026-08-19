@@ -611,6 +611,16 @@ Before making a significant architectural decision:
 
 ---
 
+# Public pages and legal
+
+- `/` — public homepage with the PES logo, resident/driver login buttons, Need Help card, and footer.
+- `/privacy` — Privacy Policy, marked as a draft pending government approval.
+- `/terms` — Terms of Use, marked as a draft pending government approval.
+- `Footer` is shown on public pages (`/`, `/login`, `/access-denied`, `/privacy`, `/terms`).
+- Logo appears in `SiteHeader` and `PortalHeader` for authenticated pages.
+
+---
+
 # Definition of Done for Initial Web MVP
 
 The MVP is successful when:
