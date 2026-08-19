@@ -2,23 +2,27 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getAdminAuth, isFirebaseAdminConfigured } from "@/lib/firebase/admin";
 import { ensureUserProfile } from "@/lib/domain/users";
+import { getDriverByLinkedUserId } from "@/lib/domain/driverRegistry";
 import {
   PORTAL_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
 } from "@/lib/auth/session";
 import type { UserRole } from "@/lib/domain/types";
-import { hasRole } from "@/lib/auth/roles";
+import { hasRole, isUserRole } from "@/lib/auth/roles";
 
 /**
  * Exchanges a Firebase client ID token for an httpOnly session cookie.
  *
  * Also ensures the signed-in user has a Firestore profile, defaulting a
- * brand-new user's roles to ["resident"] (see ensureUserProfile). This is
- * the only server endpoint involved in establishing a session; it never
- * trusts a role or uid supplied directly by the request body.
+ * brand-new user's roles to ["resident"]. This is the only server endpoint
+ * involved in establishing a session; it never trusts a role or uid supplied
+ * directly by the request body.
  *
- * Returns the user's roles array and a recommended portal to navigate to.
+ * The optional `intendedPortal` from the request body is the explicit portal
+ * the user chose on the homepage. It is validated against the canonical role
+ * list and the user's actual roles to avoid open redirects. The driver portal
+ * additionally requires a linked Driver Registry entry.
  */
 export async function POST(request: NextRequest) {
   if (!isFirebaseAdminConfigured) {
@@ -29,13 +33,21 @@ export async function POST(request: NextRequest) {
   }
 
   let idToken: unknown;
+  let intendedPortal: unknown;
   try {
-    ({ idToken } = await request.json());
+    const body = await request.json();
+    idToken = body.idToken;
+    intendedPortal = body.intendedPortal;
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
+
   if (typeof idToken !== "string" || !idToken) {
     return NextResponse.json({ error: "Missing idToken." }, { status: 400 });
+  }
+
+  if (intendedPortal != null && (typeof intendedPortal !== "string" || !isUserRole(intendedPortal))) {
+    return NextResponse.json({ error: "Invalid intended portal." }, { status: 400 });
   }
 
   try {
@@ -54,17 +66,36 @@ export async function POST(request: NextRequest) {
       expiresIn: SESSION_MAX_AGE_SECONDS * 1000,
     });
 
-    // Determine which portal to redirect to:
-    // 1. If a remembered portal cookie exists and the user still has that role, use it.
-    // 2. Otherwise default to "resident" if they have it, then first available role.
-    const rememberedPortal = request.cookies.get(PORTAL_COOKIE_NAME)?.value as UserRole | undefined;
+    const requestedPortal = intendedPortal as UserRole | undefined;
     let portal: string;
-    if (rememberedPortal && hasRole(profile.roles, rememberedPortal)) {
-      portal = rememberedPortal;
-    } else if (profile.roles.includes("resident")) {
-      portal = "resident";
+
+    if (requestedPortal && hasRole(profile.roles, requestedPortal)) {
+      if (requestedPortal === "driver") {
+        const linkedDriver = await getDriverByLinkedUserId(decoded.uid);
+        if (!linkedDriver) {
+          return NextResponse.json(
+            { error: "DRIVER_ACCESS_DENIED" },
+            { status: 403 },
+          );
+        }
+      }
+      portal = requestedPortal;
+    } else if (requestedPortal === "driver" && !hasRole(profile.roles, "driver")) {
+      return NextResponse.json(
+        { error: "DRIVER_ACCESS_DENIED" },
+        { status: 403 },
+      );
     } else {
-      portal = profile.roles[0] ?? "resident";
+      // No valid explicit intent: fall back to remembered portal cookie, then
+      // to the default resident portal.
+      const rememberedPortal = request.cookies.get(PORTAL_COOKIE_NAME)?.value as UserRole | undefined;
+      if (rememberedPortal && hasRole(profile.roles, rememberedPortal)) {
+        portal = rememberedPortal;
+      } else if (profile.roles.includes("resident")) {
+        portal = "resident";
+      } else {
+        portal = profile.roles[0] ?? "resident";
+      }
     }
 
     const response = NextResponse.json({ roles: profile.roles, portal });

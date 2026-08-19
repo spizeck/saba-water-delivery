@@ -19,7 +19,11 @@ import { getFirebaseAuth } from "@/lib/firebase/client";
 
 type Mode = "sign-in" | "create-account";
 
-export function LoginForm() {
+interface LoginFormProps {
+  intendedPortal: string | null;
+}
+
+export function LoginForm({ intendedPortal }: LoginFormProps) {
   const router = useRouter();
   const { user, loading, isConfigured } = useAuth();
   const [mode, setMode] = useState<Mode>("sign-in");
@@ -31,7 +35,7 @@ export function LoginForm() {
 
   // Once Firebase reports a signed-in user (fresh sign-in or a persisted
   // session from a previous visit), exchange it for a server session
-  // cookie and route to the correct portal based on the user's role.
+  // cookie and route to the portal requested on the home page.
   useEffect(() => {
     if (loading || !user || establishing.current) return;
     establishing.current = true;
@@ -41,8 +45,12 @@ export function LoginForm() {
     async function redirectAfterSignIn(signedInUser: User) {
       try {
         const idToken = await signedInUser.getIdToken();
-        const result = await establishSession(idToken);
+        const result = await establishSession(idToken, intendedPortal);
         if ("error" in result) {
+          if (result.error === "DRIVER_ACCESS_DENIED") {
+            router.replace("/access-denied?reason=driver");
+            return;
+          }
           setError(result.error);
           return;
         }
@@ -51,7 +59,7 @@ export function LoginForm() {
         establishing.current = false;
       }
     }
-  }, [loading, user, router]);
+  }, [loading, user, router, intendedPortal]);
 
   if (!isConfigured) {
     return (
@@ -120,6 +128,12 @@ export function LoginForm() {
   return (
     <Card>
       <h1 className="text-xl font-bold text-slate-900">Log in</h1>
+
+      {intendedPortal === "driver" && (
+        <p className="mt-2 text-sm text-slate-600">
+          This sign-in is for authorized drivers with a linked Driver Registry account.
+        </p>
+      )}
 
       <div className="mt-4 flex flex-col gap-3">
         <Button
