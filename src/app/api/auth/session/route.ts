@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     const decoded = await adminAuth.verifyIdToken(idToken);
     const userRecord = await adminAuth.getUser(decoded.uid);
 
-    const profile = await ensureUserProfile({
+    const { profile, created } = await ensureUserProfile({
       uid: decoded.uid,
       displayName: userRecord.displayName ?? userRecord.email?.split("@")[0] ?? "Resident",
       email: userRecord.email ?? null,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const response = NextResponse.json({ roles: profile.roles, portal });
+    const response = NextResponse.json({ roles: profile.roles, portal, created });
     response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

@@ -94,6 +94,12 @@ export interface EnsureUserProfileInput {
   phone: string | null;
 }
 
+export interface EnsureUserProfileResult {
+  profile: UserProfile;
+  /** True when this call was the one that created the profile. */
+  created: boolean;
+}
+
 /**
  * Ensures a Firestore profile exists for a newly authenticated user.
  *
@@ -102,17 +108,24 @@ export interface EnsureUserProfileInput {
  * influenced by anything the client submits. If a profile already
  * exists, it is returned unchanged: re-authenticating must never reset
  * an existing user's roles or overwrite their saved profile information.
+ *
+ * Uses `create` (not `set`) and a retry read so concurrent first-time
+ * logins cannot overwrite an existing profile and `created` is accurate
+ * for each caller.
  */
-export async function ensureUserProfile(input: EnsureUserProfileInput): Promise<UserProfile> {
+export async function ensureUserProfile(
+  input: EnsureUserProfileInput,
+): Promise<EnsureUserProfileResult> {
   const ref = getAdminDb().collection(USERS_COLLECTION).doc(input.uid);
+
   const existing = await ref.get();
   if (existing.exists) {
-    return toUserProfile(input.uid, existing.data()!);
+    return { profile: toUserProfile(input.uid, existing.data()!), created: false };
   }
 
   const defaultRoles: UserRole[] = ["resident"];
   const now = FieldValue.serverTimestamp();
-  await ref.set({
+  const newData = {
     displayName: input.displayName,
     email: input.email,
     phone: input.phone,
@@ -121,10 +134,22 @@ export async function ensureUserProfile(input: EnsureUserProfileInput): Promise<
     deliveryDirections: null,
     createdAt: now,
     updatedAt: now,
-  });
+  };
 
-  const created = await ref.get();
-  return toUserProfile(input.uid, created.data()!);
+  try {
+    await ref.create(newData);
+  } catch (err: unknown) {
+    // Another concurrent call likely created the document. Re-read and
+    // return the existing profile as long as it now exists.
+    const after = await ref.get();
+    if (!after.exists) {
+      throw err;
+    }
+    return { profile: toUserProfile(input.uid, after.data()!), created: false };
+  }
+
+  const after = await ref.get();
+  return { profile: toUserProfile(input.uid, after.data()!), created: true };
 }
 
 export interface UpdateUserProfileInput {

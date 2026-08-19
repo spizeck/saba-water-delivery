@@ -6,18 +6,23 @@ import {
   GoogleAuthProvider,
   signInWithEmailAndPassword,
   signInWithPopup,
-  type User,
 } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { establishSession } from "@/lib/auth/client-session";
+import { establishSession, type EstablishSessionResult } from "@/lib/auth/client-session";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { getFirebaseAuth } from "@/lib/firebase/client";
 
 type Mode = "sign-in" | "create-account";
+
+type SessionStep =
+  | "idle"
+  | "establishing"
+  | "ready"
+  | "error";
 
 interface LoginFormProps {
   intendedPortal: string | null;
@@ -31,20 +36,24 @@ export function LoginForm({ intendedPortal }: LoginFormProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [sessionStep, setSessionStep] = useState<SessionStep>("idle");
+  const [sessionResult, setSessionResult] = useState<Extract<
+    EstablishSessionResult,
+    { portal: string }
+  > | null>(null);
   const establishing = useRef(false);
 
   // Once Firebase reports a signed-in user (fresh sign-in or a persisted
   // session from a previous visit), exchange it for a server session
   // cookie and route to the portal requested on the home page.
   useEffect(() => {
-    if (loading || !user || establishing.current) return;
+    if (loading || !user || establishing.current || sessionStep !== "idle") return;
     establishing.current = true;
-    setError(null);
-    void redirectAfterSignIn(user);
-
-    async function redirectAfterSignIn(signedInUser: User) {
+    void (async () => {
+      setError(null);
+      setSessionStep("establishing");
       try {
-        const idToken = await signedInUser.getIdToken();
+        const idToken = await user.getIdToken();
         const result = await establishSession(idToken, intendedPortal);
         if ("error" in result) {
           if (result.error === "DRIVER_ACCESS_DENIED") {
@@ -52,14 +61,25 @@ export function LoginForm({ intendedPortal }: LoginFormProps) {
             return;
           }
           setError(result.error);
+          setSessionStep("error");
           return;
         }
-        router.replace(`/${result.portal}`);
+        setSessionResult(result);
+        setSessionStep("ready");
       } finally {
         establishing.current = false;
       }
+    })();
+  }, [loading, user, router, intendedPortal, sessionStep]);
+
+  // Navigate once the session has been established and any messaging state
+  // has been set. The brief paint of the final message is intentional; no
+  // extra delay is added.
+  useEffect(() => {
+    if (sessionStep === "ready" && sessionResult) {
+      router.replace(`/${sessionResult.portal}`);
     }
-  }, [loading, user, router, intendedPortal]);
+  }, [sessionStep, sessionResult, router]);
 
   if (!isConfigured) {
     return (
@@ -79,14 +99,37 @@ export function LoginForm({ intendedPortal }: LoginFormProps) {
     return <Card>Loading&hellip;</Card>;
   }
 
-  if (user) {
+  if (user && sessionStep !== "idle") {
+    if (sessionStep === "error") {
+      return (
+        <Card>
+          <h1 className="text-xl font-bold text-slate-900">Couldn&apos;t finish signing in</h1>
+          <p className="mt-2 text-slate-600">{error}</p>
+        </Card>
+      );
+    }
+
+    if (sessionStep === "ready" && sessionResult) {
+      const isNew = sessionResult.created;
+      return (
+        <Card>
+          <h1 className="text-xl font-bold text-slate-900">
+            {isNew ? "Setting up your account\u2026" : "Signing you in\u2026"}
+          </h1>
+          <p className="mt-2 text-slate-600">
+            {isNew
+              ? "Creating your Saba Water Delivery profile."
+              : `Signing in as ${user.email ?? user.uid}.`}
+          </p>
+        </Card>
+      );
+    }
+
     return (
       <Card>
-        <h1 className="text-xl font-bold text-slate-900">
-          {error ? "Couldn't finish signing in" : "Signing you in\u2026"}
-        </h1>
+        <h1 className="text-xl font-bold text-slate-900">Signing you in&hellip;</h1>
         <p className="mt-2 text-slate-600">
-          {error ?? `Setting up your account for ${user.email ?? user.uid}.`}
+          Please wait while we securely sign you in.
         </p>
       </Card>
     );
