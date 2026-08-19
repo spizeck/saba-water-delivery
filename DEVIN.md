@@ -80,8 +80,8 @@ admin
 A single user may hold **multiple roles** (`roles: UserRole[]`). New users
 default to `["resident"]`. Roles are granted only via Admin SDK.
 
-User documents use the canonical `roles` array. There is no support for the
-legacy singular `role` field.
+User documents use the canonical `roles` array. The singular `role` field is
+not supported.
 
 A **role/portal switcher** appears in the header for multi-role users. It
 navigates to the selected portal and stores the preference in a `portal` cookie.

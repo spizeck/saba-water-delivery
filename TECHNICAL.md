@@ -71,8 +71,8 @@ Do not trust role values submitted by clients.
 
 Having the `driver` role grants access to driver portal functionality. Whether a
 driver may actually claim deliveries is controlled separately by
-`drivers/{uid}.eligibilityStatus`. These are independent concepts and must not
-be conflated.
+`driverRegistry/{driverId}.eligibilityStatus`. These are independent concepts
+and must not be conflated.
 
 ---
 
@@ -437,8 +437,8 @@ are deliberately distinct from their resident-initiated equivalents —
 never disguise a staff-initiated action as the customer's own (see
 "Dispatcher-Created Requests" below).
 
-Driver events (`drivers/{uid}/events/{eventId}`) additionally include
-`driver_cooldown_started`, recorded when a driver reaches the daily
+Driver events (`driverRegistry/{driverId}/events/{eventId}`) additionally
+include `driver_cooldown_started`, recorded when a driver reaches the daily
 decline limit (see "Dispatch Offers" below).
 
 Preserve events for auditing and statistics.
@@ -527,7 +527,7 @@ decline count for the current local day
 (`countDeclinesToday()`) against the admin-configurable
 `config/dispatchSettings.maxDeclinesPerDay` (default 3). If the driver has
 reached the limit, `startDriverCooldown()` sets
-`drivers/{uid}.cooldownUntil` to `now + declineCooldownHours` (default 1
+`driverRegistry/{driverId}.cooldownUntil` to `now + declineCooldownHours` (default 1
 hour) and records a `driver_cooldown_started` driver event.
 
 `cooldownUntil` is intentionally separate from `eligibilityStatus`
@@ -727,9 +727,7 @@ automatically from their saved profile if the caller doesn't supply one
 — so resident-submitted requests get the same consistent snapshot
 structure as dispatcher-created ones, for stable historical display
 regardless of later profile edits. UI code should prefer `request.customer`
-over a live profile lookup; see `resolveCustomerInfo()` in
-`src/app/driver/page.tsx` and the analogous logic in the dispatcher pages
-for the fallback pattern used on legacy (pre-snapshot) documents.
+over a live profile lookup.
 
 ## Duplicate detection
 
