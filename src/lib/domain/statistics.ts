@@ -5,9 +5,15 @@ import type { DocumentData } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { sabaCalendarDateKey, startOfSabaMonth, startOfSabaYear } from "@/lib/utils/datetime";
 
-import type { WaterRequestSource, WaterRequestStatus } from "./types";
+import type { DispatchPriority, WaterRequestSource, WaterRequestStatus } from "./types";
 import { appConfig } from "./config";
 import { getOfferAggregate } from "./driverOffers";
+
+/** Fixed display order for priority breakdowns — not derived from the
+ * numeric `priorityRank` used for dispatch ordering, to keep the two
+ * concerns (dispatch order vs. reporting order) independently
+ * changeable. */
+const PRIORITY_LEVELS: DispatchPriority[] = ["critical", "urgent", "normal"];
 
 /**
  * Statistics domain module.
@@ -52,6 +58,11 @@ export interface SummaryMetrics {
   gallonsDelivered: number;
   /** How many requests were submitted online (resident) vs entered by staff. */
   bySource: { resident: number; dispatcher: number };
+  /** How many requests were created at each dispatch priority level
+   * (initial or current — this reflects the CURRENT priority, including
+   * any dispatcher override). Never broken down by resident/village to
+   * avoid ranking residents by urgency (see PRODUCT.md "Privacy"). */
+  byPriority: Record<DispatchPriority, number>;
 }
 
 export interface CurrentOperationalMetrics {
@@ -60,6 +71,16 @@ export interface CurrentOperationalMetrics {
   openOver48h: number;
   oldestRequestDate: string | null;
   unresolvedDisputes: number;
+  /** Currently-open requests at Critical / Urgent priority — see
+   * PRODUCT.md "Statistics". */
+  criticalOutstanding: number;
+  urgentOutstanding: number;
+}
+
+export interface PriorityTimingRow {
+  priority: DispatchPriority;
+  count: number;
+  avgRequestToDeliveryHours: number | null;
 }
 
 export interface TimingMetrics {
@@ -129,6 +150,7 @@ export interface StatsData {
   preferredDriver: PreferredDriverMetrics;
   disputes: DisputeMetrics;
   dispatchOffers: DispatchOfferMetrics;
+  priorityTiming: PriorityTimingRow[];
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +225,7 @@ interface RawRequest {
   source: WaterRequestSource;
   preferredDriverId: string | null;
   assignedDriverId: string | null;
+  dispatchPriority: DispatchPriority;
   requestedAt: Date | null;
   claimedAt: Date | null;
   deliveredAt: Date | null;
@@ -235,6 +258,9 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       source: (d.source as WaterRequestSource) ?? "resident",
       preferredDriverId: d.preferredDriverId ?? null,
       assignedDriverId: d.assignedDriverId ?? null,
+      // Historical requests predate `dispatchPriority` — default to
+      // "normal" (see toWaterRequest() in waterRequests.ts).
+      dispatchPriority: (d.dispatchPriority as DispatchPriority) ?? "normal",
       requestedAt: d.requestedAt?.toDate?.() ?? null,
       claimedAt: d.claimedAt?.toDate?.() ?? null,
       deliveredAt: d.deliveredAt?.toDate?.() ?? null,
@@ -261,6 +287,11 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       resident: requests.filter((r) => r.source === "resident").length,
       dispatcher: requests.filter((r) => r.source === "dispatcher").length,
     },
+    byPriority: {
+      normal: requests.filter((r) => r.dispatchPriority === "normal").length,
+      urgent: requests.filter((r) => r.dispatchPriority === "urgent").length,
+      critical: requests.filter((r) => r.dispatchPriority === "critical").length,
+    },
   };
 
   // ---------------------------------------------------------------------------
@@ -271,6 +302,7 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     const d = doc.data();
     return {
       status: d.status as WaterRequestStatus,
+      dispatchPriority: (d.dispatchPriority as DispatchPriority) ?? "normal",
       requestedAt: d.requestedAt?.toDate?.() ?? null,
     };
   });
@@ -293,6 +325,8 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       .sort((a, b) => (a.requestedAt!.getTime() - b.requestedAt!.getTime()))[0]
       ?.requestedAt?.toISOString() ?? null,
     unresolvedDisputes: allRequests.filter((r) => r.status === "disputed").length,
+    criticalOutstanding: openRequests.filter((r) => r.dispatchPriority === "critical").length,
+    urgentOutstanding: openRequests.filter((r) => r.dispatchPriority === "urgent").length,
   };
 
   // ---------------------------------------------------------------------------
@@ -610,6 +644,25 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       responded > 0 ? Math.round((offerAggregate.accepted / responded) * 1000) / 10 : null,
   };
 
+  // ---------------------------------------------------------------------------
+  // Priority timing (average delivery time by priority — see PRODUCT.md
+  // "Statistics"). Priority breakdowns are intentionally request-level
+  // aggregates only, never joined with resident identity or village, so
+  // this can never be used to rank individual residents/villages by
+  // urgency (see PRODUCT.md "Privacy").
+  // ---------------------------------------------------------------------------
+  const priorityTiming: PriorityTimingRow[] = PRIORITY_LEVELS.map((priority) => {
+    const inLevel = requests.filter((r) => r.dispatchPriority === priority);
+    const deliveryTimes = inLevel
+      .filter((r) => r.requestedAt && r.deliveredAt)
+      .map((r) => hoursBetween(r.requestedAt!, r.deliveredAt!));
+    return {
+      priority,
+      count: inLevel.length,
+      avgRequestToDeliveryHours: average(deliveryTimes),
+    };
+  });
+
   return {
     period,
     summary,
@@ -621,5 +674,6 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     preferredDriver,
     disputes,
     dispatchOffers,
+    priorityTiming,
   };
 }

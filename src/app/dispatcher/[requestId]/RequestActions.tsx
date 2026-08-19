@@ -5,11 +5,12 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
-import type { WaterRequestStatus } from "@/lib/domain/types";
+import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 
 import {
   assignRequest,
   cancelRequest,
+  changePriority,
   confirmUnregisteredDelivery,
   reassignRequest,
   resolveDisputeAsCompleted,
@@ -25,6 +26,7 @@ interface Props {
   eligibleDrivers: EligibleDriverOption[];
   /** True when this is an unregistered customer's delivered/unconfirmed request. */
   canConfirmUnregisteredDelivery: boolean;
+  currentPriority: DispatchPriority;
 }
 
 export function RequestActions({
@@ -32,6 +34,7 @@ export function RequestActions({
   status,
   eligibleDrivers,
   canConfirmUnregisteredDelivery,
+  currentPriority,
 }: Props) {
   const [activePanel, setActivePanel] = useState<string | null>(null);
 
@@ -105,11 +108,26 @@ export function RequestActions({
             Cancel request
           </Button>
         )}
+        <Button
+          size="md"
+          variant="outline"
+          onClick={() => setActivePanel(activePanel === "priority" ? null : "priority")}
+          className="text-sm !h-9 !px-3"
+        >
+          Change priority
+        </Button>
         {!isUnresolved && (
           <p className="text-sm text-slate-500 py-2">This request is resolved.</p>
         )}
       </div>
 
+      {activePanel === "priority" && (
+        <ChangePriorityPanel
+          requestId={requestId}
+          currentPriority={currentPriority}
+          onDone={() => setActivePanel(null)}
+        />
+      )}
       {activePanel === "resolveComplete" && (
         <ResolveCompletePanel requestId={requestId} onDone={() => setActivePanel(null)} />
       )}
@@ -279,6 +297,56 @@ function ConfirmUnregisteredPanel({ requestId, onDone }: { requestId: string; on
       <div className="flex gap-2">
         <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
           {pending ? "Confirming\u2026" : "Confirm delivery"}
+        </Button>
+        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ChangePriorityPanel({
+  requestId,
+  currentPriority,
+  onDone,
+}: {
+  requestId: string;
+  currentPriority: DispatchPriority;
+  onDone: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(changePriority, initialState);
+  if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-2 rounded-lg border border-slate-200 p-3">
+      <input type="hidden" name="requestId" value={requestId} />
+      <p className="text-sm font-medium text-slate-700">
+        Change dispatch priority (currently {currentPriority})
+      </p>
+      <select
+        name="newPriority"
+        defaultValue={currentPriority}
+        required
+        className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none"
+      >
+        <option value="normal">Normal</option>
+        <option value="urgent">Urgent</option>
+        <option value="critical">Critical</option>
+      </select>
+      <input
+        name="reason"
+        required
+        placeholder="Reason for this change (required)"
+        className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none"
+      />
+      <p className="text-xs text-slate-500">
+        This is audited with your name, the reason, and the previous priority.
+      </p>
+      {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+          {pending ? "Saving\u2026" : "Save priority"}
         </Button>
         <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
           Cancel

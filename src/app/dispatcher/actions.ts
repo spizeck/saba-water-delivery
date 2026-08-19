@@ -4,8 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { restrictDriver as restrictDriverEntry, restoreDriver as restoreDriverEntry } from "@/lib/domain/driverRegistry";
+import { isValidDispatchPriority } from "@/lib/domain/priority";
+import type { DispatchPriority } from "@/lib/domain/types";
 import {
   cancelWaterRequest,
+  changeRequestPriority,
   confirmDeliveryByStaff,
   createWaterRequest,
   dispatcherAssign,
@@ -15,6 +18,17 @@ import {
   resolveDisputeCompleted,
   resolveDisputeReopened,
 } from "@/lib/domain/waterRequests";
+import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm";
+
+/** Shared, user-facing messages for water-situation validation errors. */
+const WATER_SITUATION_ERROR_MESSAGES: Record<string, string> = {
+  VULNERABLE_OTHER_DETAIL_REQUIRED:
+    "Please briefly describe the \"Other\" circumstance, or unselect it.",
+  INVALID_PERSONS_AFFECTED: "Number of people must be a positive whole number.",
+  INVALID_AVAILABLE_STORAGE: "Available storage capacity must be zero or more.",
+  AVAILABLE_STORAGE_BELOW_STANDARD:
+    "Available capacity is below the standard 1,000-gallon delivery. Confirm the value is correct before submitting.",
+};
 
 // ---------------------------------------------------------------------------
 // Helper: verify dispatcher/admin access
@@ -268,6 +282,14 @@ export async function createManualRequest(
     return { status: "error", message: "Delivery directions are required." };
   }
 
+  // Staff take the same "Your Water Situation" questions as the resident
+  // form, and (unlike residents) may explicitly confirm an unusual
+  // reported storage capacity — see PRODUCT.md "Dispatcher Manual
+  // Requests" / "Available Storage Capacity".
+  const waterSituation = parseWaterSituationFromFormData(formData, {
+    allowBelowStandardCapacityOverride: true,
+  });
+
   if (customerType === "existing") {
     const residentUid = String(formData.get("residentUid") ?? "").trim();
     if (!residentUid) {
@@ -282,16 +304,23 @@ export async function createManualRequest(
         preferredDriverId,
         source: "dispatcher",
         createdBy: session.uid,
+        waterSituation,
       });
     } catch (err: unknown) {
-      if (err instanceof Error && err.message === "DUPLICATE_ACTIVE_REQUEST") {
-        const existing = await getActiveRequestForCustomer(residentUid);
-        return {
-          status: "error",
-          message: existing
-            ? `This resident already has an active request (status: ${existing.status}). Resolve it before creating a new one.`
-            : "This resident already has an active request.",
-        };
+      if (err instanceof Error) {
+        if (err.message === "DUPLICATE_ACTIVE_REQUEST") {
+          const existing = await getActiveRequestForCustomer(residentUid);
+          return {
+            status: "error",
+            message: existing
+              ? `This resident already has an active request (status: ${existing.status}). Resolve it before creating a new one.`
+              : "This resident already has an active request.",
+          };
+        }
+        const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
+        if (situationMessage) {
+          return { status: "error", message: situationMessage };
+        }
       }
       throw err;
     }
@@ -341,6 +370,7 @@ export async function createManualRequest(
       overrideMatchedRequestIds: overrideDuplicate
         ? possibleMatches.map((m) => m.id)
         : undefined,
+      waterSituation,
     });
   } catch (err: unknown) {
     if (err instanceof Error) {
@@ -349,8 +379,13 @@ export async function createManualRequest(
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
           return { status: "error", message: "Phone number is required." };
-        default:
+        default: {
+          const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
+          if (situationMessage) {
+            return { status: "error", message: situationMessage };
+          }
           throw err;
+        }
       }
     }
     throw err;
@@ -396,4 +431,45 @@ export async function confirmUnregisteredDelivery(
 
   revalidatePath("/dispatcher");
   return { status: "success", message: "Delivery confirmed on behalf of the customer." };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher priority override
+// ---------------------------------------------------------------------------
+
+/**
+ * Dispatcher/admin manually overrides a request's dispatch priority.
+ * Always requires a reason, which is audited (see PRODUCT.md
+ * "Dispatcher Priority Review"). Never touches the resident's original
+ * reported water-situation answers.
+ */
+export async function changePriority(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const newPriorityRaw = String(formData.get("newPriority") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (!isValidDispatchPriority(newPriorityRaw)) {
+    return { status: "error", message: "Select a valid priority." };
+  }
+  if (!reason) return { status: "error", message: "A reason is required." };
+
+  const newPriority = newPriorityRaw as DispatchPriority;
+
+  try {
+    await changeRequestPriority({ requestId, actorId: session.uid, newPriority, reason });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      if (err.message === "REQUEST_NOT_FOUND") return { status: "error", message: "Request not found." };
+      if (err.message === "PRIORITY_REASON_REQUIRED") return { status: "error", message: "A reason is required." };
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  return { status: "success", message: "Priority updated." };
 }

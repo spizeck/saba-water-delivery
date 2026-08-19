@@ -112,6 +112,76 @@ export interface WaterRequestCustomerSnapshot {
   isRegistered: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Water situation / dispatch priority
+// ---------------------------------------------------------------------------
+
+/**
+ * Structured, resident-understandable estimate of remaining water
+ * supply. See PRODUCT.md "Current Water Situation".
+ */
+export type WaterSituationRemainingSupply =
+  | "out"
+  | "less_than_1_day"
+  | "1_to_2_days"
+  | "more_than_2_days"
+  | "unsure";
+
+/**
+ * Structured vulnerable-person / critical-circumstance options. This is
+ * intentionally NOT a medical intake form — see PRODUCT.md "Vulnerable
+ * Persons / Critical Circumstances". "other" allows a short free-text
+ * explanation (`vulnerableOtherDetail`); no other option should ever
+ * carry detailed health information.
+ */
+export type VulnerableCircumstance =
+  | "elderly"
+  | "infant_or_young_child"
+  | "medical_need"
+  | "essential_service"
+  | "other"
+  | "none";
+
+/** The resident's own characterization of urgency. See PRODUCT.md
+ * "Resident-Reported Urgency". This is captured separately from the
+ * operational `dispatchPriority` — see "Do Not Blindly Trust
+ * Self-Declared Priority" below. */
+export type ReportedUrgency = "normal" | "urgent" | "critical";
+
+/**
+ * A snapshot of the resident's reported water situation at the time the
+ * request was made. Preserved on the request itself (never re-derived
+ * from a later profile lookup) because these facts describe the
+ * circumstances at request time — see PRODUCT.md "Historical Snapshot".
+ */
+export interface WaterSituationSnapshot {
+  remainingSupply: WaterSituationRemainingSupply;
+  /** Number of people relying on this water supply. Null if not provided
+   * (e.g. an unregistered caller who couldn't say). */
+  personsAffected: number | null;
+  /** May be empty (treated the same as ["none"]) if nothing was selected. */
+  vulnerableCircumstances: VulnerableCircumstance[];
+  /** Short free-text explanation, only meaningful when
+   * `vulnerableCircumstances` includes "other". Never a place for
+   * detailed medical information. */
+  vulnerableOtherDetail: string | null;
+  /** Resident-reported available cistern/storage capacity, in gallons. */
+  availableStorageGallons: number | null;
+  reportedUrgency: ReportedUrgency;
+}
+
+/**
+ * The system's OPERATIONAL dispatch priority for a request. Distinct
+ * from the resident's own `WaterSituationSnapshot.reportedUrgency` — see
+ * PRODUCT.md "Do Not Blindly Trust Self-Declared Priority". Determines
+ * offer ordering (see TECHNICAL.md "Priority-Based Dispatch") but never
+ * bypasses fairness-by-age within the same priority level.
+ */
+export type DispatchPriority = "normal" | "urgent" | "critical";
+
+/** How the current `dispatchPriority` was established. */
+export type PrioritySource = "system" | "dispatcher";
+
 export interface WaterRequest {
   id: string;
   /**
@@ -147,6 +217,26 @@ export interface WaterRequest {
   assignedDriverId: string | null;
 
   status: WaterRequestStatus;
+
+  /** Snapshot of the resident's reported water situation at creation
+   * time. Null only for historical documents that predate this field —
+   * see PRODUCT.md "Historical Snapshot". Never null on new requests. */
+  waterSituation: WaterSituationSnapshot | null;
+
+  /** Operational dispatch priority — see `DispatchPriority` above.
+   * Historical documents that predate this field default to "normal"
+   * (see `toWaterRequest()` in waterRequests.ts). */
+  dispatchPriority: DispatchPriority;
+  /** How the current priority was established. */
+  prioritySource: PrioritySource;
+  /** Explains the current priority — either the system's initial
+   * determination (see `determineInitialDispatchPriority` in
+   * `priority.ts`) or the reason a dispatcher/admin gave when
+   * overriding it. Null only for historical documents that predate
+   * this field. */
+  priorityReason: string | null;
+  priorityUpdatedBy: string | null;
+  priorityUpdatedAt: string | null;
 
   requestedAt: string;
   availableAt: string | null;
@@ -221,7 +311,10 @@ export type WaterRequestEventType =
   | "dispute_resolved_reopened"
   | "request_cancelled"
   | "dispatcher_assigned"
-  | "dispatcher_reassigned";
+  | "dispatcher_reassigned"
+  | "request_priority_changed"
+  | "preferred_driver_bypassed_for_priority"
+  | "preferred_driver_hold_released_for_priority";
 
 export interface WaterRequestEvent {
   id: string;

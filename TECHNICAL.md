@@ -308,6 +308,38 @@ referencing driver IDs inconsistently.
     | "disputed"
     | "cancelled"
 
+  // Snapshot of the resident's reported water situation at request
+  // time (see PRODUCT.md "Additional Water Request Information").
+  // Never re-derived from a later profile lookup — see "Historical
+  // Snapshot" below. Null only on historical documents that predate
+  // this field.
+  waterSituation: {
+    remainingSupply: "out" | "less_than_1_day" | "1_to_2_days" | "more_than_2_days" | "unsure"
+    personsAffected: number | null
+    vulnerableCircumstances: Array<
+      "elderly" | "infant_or_young_child" | "medical_need" | "essential_service" | "other" | "none"
+    >
+    vulnerableOtherDetail: string | null
+    availableStorageGallons: number | null
+    reportedUrgency: "normal" | "urgent" | "critical"
+  } | null
+
+  // Operational dispatch priority — see "Priority-Based Dispatch"
+  // below. Historical documents predate this field and default to
+  // "normal" (see `toWaterRequest()`).
+  dispatchPriority: "normal" | "urgent" | "critical"
+  // Denormalized numeric mirror of `dispatchPriority`, used ONLY to
+  // sort Firestore queries (critical=0, urgent=1, normal=2) because the
+  // string values do not alphabetize into the intended order. Always
+  // kept in sync with `dispatchPriority` — see `priorityRankFor()` in
+  // src/lib/domain/priority.ts. Never read directly by application
+  // code outside of query construction.
+  priorityRank: number
+  prioritySource: "system" | "dispatcher"
+  priorityReason: string | null
+  priorityUpdatedBy: string | null
+  priorityUpdatedAt: Timestamp | null
+
   requestedAt: Timestamp
   availableAt: Timestamp | null
   claimedAt: Timestamp | null
@@ -435,6 +467,9 @@ customer_confirmed
 delivery_confirmed_by_dispatcher
 customer_disputed
 request_cancelled
+request_priority_changed
+preferred_driver_bypassed_for_priority
+preferred_driver_hold_released_for_priority
 ```
 
 `request_created_by_dispatcher` and `delivery_confirmed_by_dispatcher`
@@ -567,6 +602,109 @@ DST.
 declined from being selected as their next offer again, bounded to a
 recent window of their own decline history — enough to prevent obvious
 loops without an unbounded read.
+
+---
+
+# Priority-Based Dispatch
+
+See PRODUCT.md "Water Situation & Request Priority" / "Preferred
+Driver" for the product rationale. This section is the implementation
+reference for "why was this request offered before that one."
+
+## Initial priority
+
+`determineInitialDispatchPriority()` (`src/lib/domain/priority.ts`) is
+the single, documented, deterministic function that maps a
+`WaterSituationSnapshot` to an initial `dispatchPriority`. It is a short
+decision tree, not a scoring model — see the function's doc comment for
+the exact rule order. `createWaterRequest()` calls it once, at creation
+time, and stores the result plus the human-readable `priorityReason`
+directly on the request.
+
+## Priority ranking for Firestore ordering
+
+`dispatchPriority` is a string (`"normal" | "urgent" | "critical"`), but
+alphabetical order of those strings does not match the intended
+critical-first ordering. Every request also stores a denormalized
+numeric `priorityRank` (`priorityRankFor()` in `priority.ts`: critical =
+0, urgent = 1, normal = 2), kept in sync everywhere `dispatchPriority` is
+written (`createWaterRequest()`, `changeRequestPriority()`). All
+priority-aware Firestore queries `orderBy("priorityRank", "asc")` first,
+then `orderBy("requestedAt", "asc")` — see `firestore.indexes.json` for
+the composite indexes this requires.
+
+## Dispatch offer selection
+
+`getNextOfferForDriver()` (`src/lib/domain/dispatch.ts`) selects, in
+order:
+
+1. A `preferred_driver_hold` addressed to this driver, not yet expired
+   (ordered by `priorityRank` then `requestedAt` in case more than one
+   is ever addressed to the same driver — practically always at most
+   one).
+2. Otherwise, the oldest `available` request this driver has not
+   already declined, ordered by `priorityRank` then `requestedAt` —
+   i.e. highest priority first, oldest first within a priority level.
+
+This preserves the existing decline/cooldown and atomic-claim guarantees
+unchanged — priority only changes WHICH request is selected, never how
+selection or claiming works mechanically.
+
+## Preferred driver vs. priority
+
+A preferred driver is a resident preference, never a guaranteed
+assignment (see PRODUCT.md). `isDriverImmediatelyAvailable()`
+(`src/lib/domain/driverRegistry.ts`) answers "could this driver claim a
+request right now" (linked, eligible, online, not in cooldown) and is
+the single check used everywhere this distinction matters:
+
+- **`createWaterRequest()`**: for a Normal-priority request with a
+  preferred driver, a `preferred_driver_hold` is always created
+  (exclusive window), even if the driver is currently offline. For an
+  Urgent/Critical request, the hold is only created if
+  `isDriverImmediatelyAvailable()` is true; otherwise the request skips
+  the hold entirely and starts `"available"` immediately, with a
+  `preferred_driver_bypassed_for_priority` event recorded (the
+  preference itself, `preferredDriverId`, is still stored for
+  display/statistics — it just never blocked dispatch).
+- **`changeRequestPriority()`**: when a dispatcher/admin escalates an
+  existing `preferred_driver_hold` to Urgent/Critical,
+  `reevaluatePreferredDriverHoldForPriority()` re-checks the same
+  availability condition immediately. If the driver is available, the
+  hold is left alone (not delaying anything). If not,
+  `preferred_driver_hold_released_for_priority` transitions the request
+  straight to `"available"`, preserving `requestedAt`.
+- **Decline** (existing behavior, unchanged): `declineDriverOffer()`
+  still ends a hold immediately regardless of priority — an active
+  decline is always decisive.
+
+## Dispatcher priority override
+
+`changeRequestPriority()` (`src/lib/domain/waterRequests.ts`) is the
+only way to change `dispatchPriority` after creation. It:
+
+- Requires a non-empty `reason` (`PRIORITY_REASON_REQUIRED` otherwise).
+- Sets `prioritySource: "dispatcher"`, `priorityReason`,
+  `priorityUpdatedBy`, `priorityUpdatedAt`.
+- Records a `request_priority_changed` event with the previous and new
+  priority, reason, and actor.
+- Re-evaluates an active preferred-driver hold as described above.
+- Never modifies the resident's original `waterSituation` snapshot.
+
+`src/app/dispatcher/actions.ts` `changePriority()` is the server action
+behind the "Change priority" panel on `/dispatcher/[requestId]`
+(`RequestActions.tsx`), staff-only (`requireRole(["dispatcher",
+"admin"])`).
+
+## Privacy
+
+Drivers only ever see the priority LEVEL (e.g. an "Urgent
+delivery"/"Critical delivery" badge in `OfferCard.tsx` /
+`ClaimedDeliveries.tsx`), never the underlying `waterSituation` detail —
+see PRODUCT.md "Water Situation Privacy". `/viewer` includes
+`dispatchPriority` in its reduced projection (operational, not
+sensitive) but not `waterSituation`. Dispatcher/admin see the full
+water situation on `/dispatcher/[requestId]`.
 
 ---
 
@@ -733,6 +871,16 @@ updateDispatchSettings()
 findActiveRequestsByPhone()
 getActiveCustomerIds()
 confirmDeliveryByStaff()
+changeRequestPriority()
+reevaluatePreferredDriverHoldForPriority()
+```
+
+`src/lib/domain/priority.ts` (pure, no Firestore access):
+
+```text
+determineInitialDispatchPriority()
+priorityRankFor()
+isValidDispatchPriority()
 ```
 
 Driver Registry operations live in `src/lib/domain/driverRegistry.ts`:
@@ -748,6 +896,7 @@ restoreDriver()
 setAvailabilityByLinkedUser()
 startCooldownByLinkedUser()
 getEligibleDriverOptions()
+isDriverImmediatelyAvailable()
 setMeterAssignment()
 removeMeterAssignment()
 importLegacyDrivers()
@@ -884,6 +1033,38 @@ At minimum:
 - Prefer short-lived signed URLs generated server-side when the Storage Rules alone cannot express the required access check (e.g. verifying an active delivery relationship).
 - Storage Rules are defined in `storage.rules` and referenced from `firebase.json`.
 
+## Client-side compression (cellular data)
+
+Photo upload UI is not implemented yet (see DEVIN.md "Implementation
+Sequence"), but the compression requirement is architected now because
+government raised cellular-data usage as a launch concern (see
+PRODUCT.md "Photo Cellular-Data Requirements"). When implemented:
+
+- Images MUST be resized/compressed client-side (browser-side, before
+  any network request) — never upload an original full-resolution
+  phone photo, and never upload both an original and a compressed copy.
+- All compression parameters (max long dimension, format, quality,
+  max compressed size, max photos per upload) are centralized in
+  `src/lib/domain/photoConfig.ts` (`photoUploadConfig`) — no call site
+  should hard-code these numbers. Tuning after real-world testing on
+  Saba's cellular network means editing exactly one file.
+- Orientation must be baked into the re-encoded pixels before other
+  EXIF metadata (GPS, device info) is stripped, so a compressed photo
+  never displays sideways.
+- Compression/upload failure must produce an immediate, clear error —
+  never a silent, unbounded retry loop that keeps consuming cellular
+  data.
+
+## Photo Failure Testing Requirements
+
+Add explicit tests for these scenarios before shipping any photo
+upload UI: a large modern phone photo, a slow cellular connection, an
+interrupted upload, upload retry behavior, browser memory usage with
+multiple photos queued, compression failure, an unsupported image
+format, file-size validation, and orientation correctness after
+compression. See PRODUCT.md "Photo Cellular-Data Requirements" for the
+product-level rationale.
+
 ---
 
 # Server vs Client
@@ -1014,6 +1195,14 @@ preferred-driver/dispute calculations) — `source` is preserved on each
 request purely to answer "how many requests came in online vs were
 entered by staff," not to segregate them from the rest of the numbers.
 See `SummaryMetrics.bySource` in `src/lib/domain/statistics.ts`.
+
+`SummaryMetrics.byPriority`, `CurrentOperationalMetrics.criticalOutstanding`
+/ `urgentOutstanding`, and `StatsData.priorityTiming` (count and average
+request-to-delivery time per priority level) report on `dispatchPriority`
+using the CURRENT value (including any dispatcher override) — they are
+request-level aggregates only, never joined with resident identity or
+village, so priority statistics can never be used to rank individual
+residents or villages by urgency (see PRODUCT.md "Privacy").
 
 Design indexes intentionally as query patterns become clear.
 

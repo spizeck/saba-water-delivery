@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import {
+  EMPTY_WATER_SITUATION,
+  isWaterSituationComplete,
+  WaterSituationFields,
+  WaterSituationHiddenFields,
+} from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
@@ -44,6 +50,8 @@ export function CreateRequestForm({
   const [customerEmail, setCustomerEmail] = useState("");
   const [preferredDriverId, setPreferredDriverId] = useState("none");
   const [overrideDuplicate, setOverrideDuplicate] = useState(false);
+  const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
+  const [belowStandardCapacityConfirmed, setBelowStandardCapacityConfirmed] = useState(false);
 
   const [state, formAction, pending] = useActionState(createManualRequest, initialState);
 
@@ -73,6 +81,7 @@ export function CreateRequestForm({
 
   function canReview(): boolean {
     if (!village.trim() || !deliveryDirections.trim()) return false;
+    if (!isWaterSituationComplete(waterSituation)) return false;
     if (customerType === "existing") {
       return Boolean(selectedResident) && !selectedHasActiveRequest;
     }
@@ -101,6 +110,8 @@ export function CreateRequestForm({
               setCustomerEmail("");
               setPreferredDriverId("none");
               setOverrideDuplicate(false);
+              setWaterSituation(EMPTY_WATER_SITUATION);
+              setBelowStandardCapacityConfirmed(false);
               router.refresh();
             }}
           >
@@ -264,6 +275,16 @@ export function CreateRequestForm({
           </div>
         )}
 
+        <div className="mt-4">
+          <WaterSituationFields
+            value={waterSituation}
+            onChange={setWaterSituation}
+            allowBelowStandardCapacityOverride
+            belowStandardCapacityConfirmed={belowStandardCapacityConfirmed}
+            onBelowStandardCapacityConfirmedChange={setBelowStandardCapacityConfirmed}
+          />
+        </div>
+
         <label className="mt-4 flex flex-col gap-1 text-sm font-medium text-slate-700">
           Preferred driver
           <select
@@ -330,6 +351,13 @@ export function CreateRequestForm({
             {selectedDriver ? selectedDriver.displayName : "No preference"}
           </dd>
         </div>
+        <div>
+          <dt className="font-medium text-slate-500">Water situation</dt>
+          <dd className="text-slate-900">
+            Remaining: {waterSituation.remainingSupply || "—"} &middot; Urgency:{" "}
+            {waterSituation.reportedUrgency || "—"}
+          </dd>
+        </div>
       </dl>
 
       {state.status === "duplicate_warning" && !overrideDuplicate && (
@@ -385,6 +413,12 @@ export function CreateRequestForm({
           type="hidden"
           name="overrideDuplicate"
           value={overrideDuplicate ? "true" : "false"}
+        />
+        <WaterSituationHiddenFields value={waterSituation} />
+        <input
+          type="hidden"
+          name="confirmedBelowStandardCapacity"
+          value={belowStandardCapacityConfirmed ? "true" : "false"}
         />
 
         {(state.status !== "duplicate_warning" || overrideDuplicate) && (

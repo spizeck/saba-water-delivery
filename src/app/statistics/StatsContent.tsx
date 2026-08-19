@@ -96,6 +96,26 @@ export function StatsContent({ stats }: StatsContentProps) {
       {/* Current operations */}
       <CurrentOpsSection current={stats.current} />
 
+      {/* Priority breakdown */}
+      <Card>
+        <h2 className="text-lg font-bold text-slate-900">Requests by Priority</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Current dispatch priority (initial or staff-overridden), and average
+          request-to-delivery time by priority.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {stats.priorityTiming.map((row) => (
+            <div key={row.priority}>
+              <p className="text-xs font-medium uppercase text-slate-500">{row.priority}</p>
+              <p className="mt-0.5 text-xl font-bold text-slate-900">{row.count}</p>
+              <p className="text-xs text-slate-500">
+                Avg delivery time: {formatDuration(row.avgRequestToDeliveryHours)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       {/* Timing metrics */}
       <Card>
         <h2 className="text-lg font-bold text-slate-900">Average Times</h2>

@@ -144,6 +144,23 @@ export async function getDriverByLinkedUserId(
   return toDriverRegistryEntry(snapshot.docs[0].id, snapshot.docs[0].data());
 }
 
+/**
+ * True if the linked driver could claim a request RIGHT NOW: registry
+ * entry exists, is linked, eligible, online, and not in a decline
+ * cooldown. Used to decide whether a preferred-driver preference gets
+ * exclusive dispatch access for an Urgent/Critical request, or whether
+ * it must be bypassed so the request reaches the general queue without
+ * delay — see PRODUCT.md "Preferred Driver Offline Edge Case".
+ */
+export async function isDriverImmediatelyAvailable(userId: string): Promise<boolean> {
+  const entry = await getDriverByLinkedUserId(userId);
+  if (!entry) return false;
+  if (entry.eligibilityStatus !== "eligible") return false;
+  if (entry.availabilityStatus !== "online") return false;
+  if (entry.cooldownUntil && new Date(entry.cooldownUntil) > new Date()) return false;
+  return true;
+}
+
 export async function getAllDriverRegistryEntries(): Promise<DriverRegistryEntry[]> {
   const db = getAdminDb();
   const snapshot = await db.collection(REGISTRY_COLLECTION).get();

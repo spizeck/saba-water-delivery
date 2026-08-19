@@ -4,6 +4,12 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import {
+  EMPTY_WATER_SITUATION,
+  isWaterSituationComplete,
+  WaterSituationFields,
+  WaterSituationHiddenFields,
+} from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 
 import { requestWater, type RequestWaterFormState } from "./actions";
@@ -23,6 +29,7 @@ export function WaterRequestForm({
 }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [preferredDriverId, setPreferredDriverId] = useState("none");
+  const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
   const [state, formAction, pending] = useActionState(requestWater, initialState);
 
   const selectedDriver = eligibleDrivers.find((d) => d.uid === preferredDriverId);
@@ -41,6 +48,8 @@ export function WaterRequestForm({
         </p>
 
         <div className="mt-4 flex flex-col gap-4">
+          <WaterSituationFields value={waterSituation} onChange={setWaterSituation} />
+
           {eligibleDrivers.length > 0 && (
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Preferred driver (optional)
@@ -59,7 +68,11 @@ export function WaterRequestForm({
             </label>
           )}
 
-          <Button size="lg" onClick={() => setConfirming(true)}>
+          <Button
+            size="lg"
+            disabled={!isWaterSituationComplete(waterSituation)}
+            onClick={() => setConfirming(true)}
+          >
             Request 1,000 Gallons
           </Button>
         </div>
@@ -98,6 +111,7 @@ export function WaterRequestForm({
 
       <form action={formAction} className="mt-4 flex flex-col gap-3 sm:flex-row">
         <input type="hidden" name="preferredDriverId" value={preferredDriverId} />
+        <WaterSituationHiddenFields value={waterSituation} />
         <Button type="submit" size="lg" disabled={pending}>
           {pending ? "Submitting\u2026" : "Request Water"}
         </Button>

@@ -39,6 +39,10 @@ export function OfferCard({ offer, request, customer }: Props) {
 
   const isPreferredHold = request.status === "preferred_driver_hold";
   const pending = acceptPending || declinePending;
+  // Drivers only need to know a delivery is urgent/critical, never WHY
+  // (e.g. vulnerable-circumstance details) — see PRODUCT.md "Privacy".
+  const isCritical = request.dispatchPriority === "critical";
+  const isUrgent = request.dispatchPriority === "urgent";
 
   if (acceptState.status === "success") {
     return (
@@ -63,11 +67,23 @@ export function OfferCard({ offer, request, customer }: Props) {
     <Card>
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-bold text-slate-900">Next Delivery</h2>
-        {isPreferredHold && (
-          <span className="inline-flex shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-            Preferred for you
-          </span>
-        )}
+        <div className="flex shrink-0 gap-1.5">
+          {isCritical && (
+            <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-900">
+              Critical delivery
+            </span>
+          )}
+          {isUrgent && (
+            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+              Urgent delivery
+            </span>
+          )}
+          {isPreferredHold && (
+            <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+              Preferred for you
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 flex flex-col gap-1">

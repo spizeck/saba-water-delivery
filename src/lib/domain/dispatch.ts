@@ -63,9 +63,17 @@ export interface NextOffer {
  *
  * Selection priority:
  *   1. A preferred-driver hold addressed to this driver (not yet expired).
- *   2. The oldest "available" request this driver has not already
- *      declined (fairness by request age — see PRODUCT.md "Open Request
- *      Queue").
+ *      Ties (more than one hold addressed to the same driver) are broken
+ *      by dispatch priority, then oldest request first.
+ *   2. Otherwise, the highest dispatch-priority "available" request this
+ *      driver has not already declined, oldest first within the same
+ *      priority (see PRODUCT.md "Priority-Based Dispatch" /
+ *      TECHNICAL.md "Priority-Aware Selection") — critical requests
+ *      before urgent, urgent before normal, and fairness-by-age
+ *      preserved within each level. Ordering uses the denormalized
+ *      numeric `priorityRank` field (see `src/lib/domain/priority.ts`)
+ *      because "critical" < "urgent" < "normal" alphabetically would
+ *      not match the intended order.
  *
  * Callers must ensure the driver is online, eligible, and not in a
  * decline cooldown before calling this — those are prerequisites for
@@ -101,12 +109,15 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
     await expirePreferredDriverHold({ requestId: doc.id });
   }
 
-  // Priority 1: preferred-driver hold addressed to this driver.
+  // Priority 1: preferred-driver hold addressed to this driver. Ordered
+  // by dispatch priority first, then oldest request first, in case more
+  // than one hold is ever addressed to the same driver.
   let candidate: WaterRequest | null = null;
   const holdSnapshot = await db
     .collection(REQUESTS_COLLECTION)
     .where("status", "==", "preferred_driver_hold")
     .where("preferredDriverId", "==", driverId)
+    .orderBy("priorityRank", "asc")
     .orderBy("requestedAt", "asc")
     .limit(1)
     .get();
@@ -120,12 +131,15 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
     }
   }
 
-  // Priority 2: oldest open request not already declined by this driver.
+  // Priority 2: highest dispatch-priority open request not already
+  // declined by this driver, oldest first within the same priority
+  // level — see PRODUCT.md "Priority-Based Dispatch".
   if (!candidate) {
     const declinedIds = await getDeclinedRequestIdsForDriver(driverId);
     const availableSnapshot = await db
       .collection(REQUESTS_COLLECTION)
       .where("status", "==", "available")
+      .orderBy("priorityRank", "asc")
       .orderBy("requestedAt", "asc")
       .limit(25)
       .get();

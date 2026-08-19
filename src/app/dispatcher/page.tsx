@@ -5,9 +5,10 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { priorityRankFor } from "@/lib/domain/priority";
+import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getAllRequests } from "@/lib/domain/waterRequests";
-import type { WaterRequestStatus } from "@/lib/domain/types";
 
 import { DriverList } from "./DriverList";
 import { RequestList } from "./RequestList";
@@ -37,11 +38,16 @@ export default async function DispatcherPortalPage() {
     getAllDriverRegistryEntries(),
   ]);
 
-  // Sort by priority, then by requestedAt (oldest first within priority).
+  // Sort by operational status group first (disputes/unconfirmed need
+  // staff attention regardless of dispatch priority), then by dispatch
+  // priority (critical, then urgent, then normal — see PRODUCT.md
+  // "Priority-Based Dispatch"), then oldest request first within that.
   const sortedRequests = [...allRequests].sort((a, b) => {
     const pa = STATUS_PRIORITY[a.status] ?? 99;
     const pb = STATUS_PRIORITY[b.status] ?? 99;
     if (pa !== pb) return pa - pb;
+    const priorityDiff = priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
+    if (priorityDiff !== 0) return priorityDiff;
     return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
   });
 

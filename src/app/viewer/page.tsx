@@ -57,10 +57,14 @@ export default async function ViewerPortalPage() {
     .sort((a, b) => new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime());
 
   // Reduced, oversight-appropriate projection — no phone/email/full
-  // directions (see module doc above).
+  // directions, and no vulnerable-circumstance detail (see module doc
+  // above and PRODUCT.md "Privacy"). The dispatch priority LEVEL itself
+  // is operational oversight information, not sensitive, so it is
+  // included.
   const requestRows = openRequests.map((r) => ({
     id: r.id,
     status: r.status,
+    dispatchPriority: r.dispatchPriority,
     village: r.village,
     source: r.source,
     requestedAt: r.requestedAt,
@@ -109,6 +113,7 @@ export default async function ViewerPortalPage() {
                   <thead>
                     <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase text-slate-500">
                       <th className="pb-2 pr-3">Status</th>
+                      <th className="pb-2 pr-3">Priority</th>
                       <th className="pb-2 pr-3">Village</th>
                       <th className="pb-2 pr-3">Requested</th>
                       <th className="pb-2 pr-3">Source</th>
@@ -119,6 +124,7 @@ export default async function ViewerPortalPage() {
                     {requestRows.map((r) => (
                       <tr key={r.id}>
                         <td className="py-2 pr-3 text-slate-900">{STATUS_LABELS[r.status]}</td>
+                        <td className="py-2 pr-3 text-slate-600 capitalize">{r.dispatchPriority}</td>
                         <td className="py-2 pr-3 text-slate-600">{r.village}</td>
                         <td className="py-2 pr-3 text-slate-600">{formatSabaDate(r.requestedAt)}</td>
                         <td className="py-2 pr-3 text-slate-600">

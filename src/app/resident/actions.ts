@@ -9,6 +9,18 @@ import {
   createWaterRequest,
   disputeWaterDelivery,
 } from "@/lib/domain/waterRequests";
+import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm";
+
+/** Shared, user-facing messages for water-situation validation errors —
+ * used by both the resident and dispatcher actions. */
+const WATER_SITUATION_ERROR_MESSAGES: Record<string, string> = {
+  VULNERABLE_OTHER_DETAIL_REQUIRED:
+    "Please briefly describe the \"Other\" circumstance, or unselect it.",
+  INVALID_PERSONS_AFFECTED: "Number of people must be a positive whole number.",
+  INVALID_AVAILABLE_STORAGE: "Available storage capacity must be zero or more.",
+  AVAILABLE_STORAGE_BELOW_STANDARD:
+    "Available capacity should be at least 1,000 gallons (the standard delivery amount). Please double-check this value.",
+};
 
 // ---------------------------------------------------------------------------
 // Profile
@@ -82,19 +94,31 @@ export async function requestWater(
   const preferredDriverId = String(formData.get("preferredDriverId") ?? "").trim();
   const hasPreferred = preferredDriverId && preferredDriverId !== "none";
 
+  // Resident form has no capacity-override flag — a below-standard value
+  // is always treated as a likely data-entry error (see PRODUCT.md
+  // "Available Storage Capacity").
+  const waterSituation = parseWaterSituationFromFormData(formData);
+
   try {
     await createWaterRequest({
       customerId: session.uid,
       village: profile.village,
       deliveryDirections: profile.deliveryDirections,
       preferredDriverId: hasPreferred ? preferredDriverId : null,
+      waterSituation,
     });
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === "DUPLICATE_ACTIVE_REQUEST") {
-      return {
-        status: "error",
-        message: "You already have an active water request.",
-      };
+    if (err instanceof Error) {
+      if (err.message === "DUPLICATE_ACTIVE_REQUEST") {
+        return {
+          status: "error",
+          message: "You already have an active water request.",
+        };
+      }
+      const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
+      if (situationMessage) {
+        return { status: "error", message: situationMessage };
+      }
     }
     throw err;
   }

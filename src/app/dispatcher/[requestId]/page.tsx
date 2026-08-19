@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getAllDriverRegistryEntries, getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
-import type { WaterRequestStatus } from "@/lib/domain/types";
+import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getRequestEvents } from "@/lib/domain/waterRequests";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -60,6 +60,38 @@ const EVENT_LABELS: Record<string, string> = {
   request_cancelled: "Request cancelled",
   dispatcher_assigned: "Dispatcher assigned",
   dispatcher_reassigned: "Dispatcher reassigned",
+  request_priority_changed: "Priority changed",
+  preferred_driver_bypassed_for_priority: "Preferred driver bypassed (priority)",
+  preferred_driver_hold_released_for_priority: "Preferred driver hold released (priority)",
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  normal: "Normal",
+  urgent: "Urgent",
+  critical: "Critical",
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  normal: "bg-slate-100 text-slate-600",
+  urgent: "bg-amber-50 text-amber-800",
+  critical: "bg-red-100 text-red-900",
+};
+
+const REMAINING_SUPPLY_LABELS: Record<string, string> = {
+  out: "Out of water",
+  less_than_1_day: "Less than 1 day remaining",
+  "1_to_2_days": "1\u20132 days remaining",
+  more_than_2_days: "More than 2 days remaining",
+  unsure: "Not sure",
+};
+
+const VULNERABLE_LABELS: Record<string, string> = {
+  elderly: "Elderly person",
+  infant_or_young_child: "Infant or young child",
+  medical_need: "Medical need",
+  essential_service: "Essential service or critical operation",
+  other: "Other critical circumstance",
+  none: "None",
 };
 
 const formatDate = formatSabaDateTime;
@@ -163,6 +195,13 @@ export default async function RequestDetailPage({ params }: PageProps) {
                 <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[status]}`}>
                   {STATUS_LABELS[status]}
                 </span>
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    PRIORITY_COLORS[data.dispatchPriority ?? "normal"]
+                  }`}
+                >
+                  {PRIORITY_LABELS[data.dispatchPriority ?? "normal"]} priority
+                </span>
                 <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                   {data.source === "dispatcher" ? "Entered by staff" : "Submitted online"}
                 </span>
@@ -236,6 +275,64 @@ export default async function RequestDetailPage({ params }: PageProps) {
             </dl>
           </Card>
 
+          {/* Water situation — operational context for priority review.
+              Staff need this to assess urgency; drivers never see it
+              (see PRODUCT.md "Privacy"). */}
+          {data.waterSituation && (
+            <Card>
+              <h2 className="text-lg font-bold text-slate-900">Water Situation</h2>
+              <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="font-medium text-slate-500">Remaining supply</dt>
+                  <dd className="text-slate-900">
+                    {REMAINING_SUPPLY_LABELS[data.waterSituation.remainingSupply] ?? "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-500">Resident-reported urgency</dt>
+                  <dd className="text-slate-900 capitalize">
+                    {data.waterSituation.reportedUrgency ?? "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-500">Persons affected</dt>
+                  <dd className="text-slate-900">
+                    {data.waterSituation.personsAffected ?? "Not provided"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-500">Available storage</dt>
+                  <dd className="text-slate-900">
+                    {data.waterSituation.availableStorageGallons != null
+                      ? `${data.waterSituation.availableStorageGallons.toLocaleString()} gallons`
+                      : "Not provided"}
+                  </dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-slate-500">
+                    Vulnerable / critical circumstances
+                  </dt>
+                  <dd className="text-slate-900">
+                    {((data.waterSituation.vulnerableCircumstances as string[]) ?? ["none"])
+                      .map((c) => VULNERABLE_LABELS[c] ?? c)
+                      .join(", ")}
+                    {data.waterSituation.vulnerableOtherDetail && (
+                      <span className="block text-slate-600">
+                        {data.waterSituation.vulnerableOtherDetail}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              {data.priorityReason && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Priority reason: {data.priorityReason}
+                  {data.prioritySource === "dispatcher" && " (staff override)"}
+                </p>
+              )}
+            </Card>
+          )}
+
           {/* Dispute reason — prominently displayed for disputed requests */}
           {status === "disputed" && (() => {
             const disputeEvent = events.find((e) => e.type === "customer_disputed");
@@ -268,6 +365,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
             canConfirmUnregisteredDelivery={
               !isRegisteredCustomer && (status === "delivered" || status === "delivered_unconfirmed")
             }
+            currentPriority={(data.dispatchPriority as DispatchPriority) ?? "normal"}
           />
 
           {/* Event history */}

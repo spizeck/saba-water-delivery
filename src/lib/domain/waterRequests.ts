@@ -5,11 +5,18 @@ import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 
 import { appConfig } from "./config";
+import { isDriverImmediatelyAvailable } from "./driverRegistry";
+import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import type {
+  DispatchPriority,
+  ReportedUrgency,
+  VulnerableCircumstance,
   WaterRequest,
   WaterRequestCustomerSnapshot,
   WaterRequestSource,
   WaterRequestStatus,
+  WaterSituationRemainingSupply,
+  WaterSituationSnapshot,
 } from "./types";
 import { getUserProfile } from "./users";
 
@@ -66,6 +73,25 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
       data.preferredDriverExpiresAt?.toDate?.().toISOString() ?? null,
     assignedDriverId: data.assignedDriverId ?? null,
     status: data.status,
+    // Historical documents predate `waterSituation`/`dispatchPriority` —
+    // treat them as "normal" priority with no situation snapshot rather
+    // than guessing (see PRODUCT.md "Historical Snapshot").
+    waterSituation: data.waterSituation
+      ? {
+          remainingSupply: data.waterSituation.remainingSupply as WaterSituationRemainingSupply,
+          personsAffected: data.waterSituation.personsAffected ?? null,
+          vulnerableCircumstances:
+            (data.waterSituation.vulnerableCircumstances as VulnerableCircumstance[]) ?? [],
+          vulnerableOtherDetail: data.waterSituation.vulnerableOtherDetail ?? null,
+          availableStorageGallons: data.waterSituation.availableStorageGallons ?? null,
+          reportedUrgency: (data.waterSituation.reportedUrgency as ReportedUrgency) ?? "normal",
+        }
+      : null,
+    dispatchPriority: (data.dispatchPriority as DispatchPriority) ?? "normal",
+    prioritySource: data.prioritySource === "dispatcher" ? "dispatcher" : "system",
+    priorityReason: data.priorityReason ?? null,
+    priorityUpdatedBy: data.priorityUpdatedBy ?? null,
+    priorityUpdatedAt: data.priorityUpdatedAt?.toDate?.().toISOString() ?? null,
     requestedAt: data.requestedAt?.toDate?.().toISOString() ?? new Date().toISOString(),
     availableAt: data.availableAt?.toDate?.().toISOString() ?? null,
     claimedAt: data.claimedAt?.toDate?.().toISOString() ?? null,
@@ -206,6 +232,32 @@ export async function getClaimedRequestsForDriver(
 // Create
 // ---------------------------------------------------------------------------
 
+/**
+ * Caller-supplied water-situation answers. See PRODUCT.md "Additional
+ * Water Request Information". This is the raw form input; the stable,
+ * immutable `WaterSituationSnapshot` stored on the request is derived
+ * from this in `buildWaterSituationSnapshot()` below.
+ */
+export interface WaterSituationInput {
+  remainingSupply: WaterSituationRemainingSupply;
+  /** Positive integer, or null if not provided (e.g. caller unsure). */
+  personsAffected?: number | null;
+  vulnerableCircumstances?: VulnerableCircumstance[];
+  vulnerableOtherDetail?: string | null;
+  /** Resident-reported available cistern/storage capacity, in gallons. */
+  availableStorageGallons?: number | null;
+  reportedUrgency: ReportedUrgency;
+  /**
+   * Staff-only explicit acknowledgement that a reported
+   * `availableStorageGallons` value below the standard 1,000-gallon
+   * delivery is correct — not a data-entry error. The resident-facing
+   * form has no way to set this, so a resident-submitted request always
+   * hard-blocks an under-1,000 value rather than silently accepting it
+   * (see PRODUCT.md "Available Storage Capacity").
+   */
+  confirmedBelowStandardCapacity?: boolean;
+}
+
 export interface CreateWaterRequestInput {
   /** Firebase uid of the resident, or null for an unregistered/manual customer. */
   customerId: string | null;
@@ -229,6 +281,62 @@ export interface CreateWaterRequestInput {
    * the creation audit event for traceability — never silent.
    */
   overrideMatchedRequestIds?: string[];
+  /** Resident's reported water situation at request time. Required for
+   * both resident and dispatcher-created requests — see PRODUCT.md
+   * "Dispatcher Manual Requests" (staff capture the same information). */
+  waterSituation: WaterSituationInput;
+}
+
+/**
+ * Validates and normalizes raw water-situation form input into the
+ * stable snapshot shape stored on the request. Throws a specific error
+ * code (see callers for user-facing messages) rather than silently
+ * coercing bad input.
+ */
+function buildWaterSituationSnapshot(input: WaterSituationInput): WaterSituationSnapshot {
+  const vulnerableCircumstances = input.vulnerableCircumstances?.length
+    ? input.vulnerableCircumstances
+    : (["none"] as VulnerableCircumstance[]);
+
+  if (
+    vulnerableCircumstances.includes("other") &&
+    !input.vulnerableOtherDetail?.trim()
+  ) {
+    throw new Error("VULNERABLE_OTHER_DETAIL_REQUIRED");
+  }
+
+  if (input.personsAffected != null) {
+    if (!Number.isInteger(input.personsAffected) || input.personsAffected <= 0) {
+      throw new Error("INVALID_PERSONS_AFFECTED");
+    }
+  }
+
+  if (input.availableStorageGallons != null) {
+    if (!Number.isFinite(input.availableStorageGallons) || input.availableStorageGallons < 0) {
+      throw new Error("INVALID_AVAILABLE_STORAGE");
+    }
+    // Prevent obvious data-entry errors (see PRODUCT.md "Available
+    // Storage Capacity") — a delivery is always 1,000 gallons, so a
+    // reported capacity below that is almost always a mistake. Staff
+    // may deliberately confirm it is correct; residents have no such
+    // override.
+    if (
+      input.availableStorageGallons < appConfig.standardLoadGallons &&
+      !input.confirmedBelowStandardCapacity
+    ) {
+      throw new Error("AVAILABLE_STORAGE_BELOW_STANDARD");
+    }
+  }
+
+  return {
+    remainingSupply: input.remainingSupply,
+    personsAffected: input.personsAffected ?? null,
+    vulnerableCircumstances,
+    vulnerableOtherDetail:
+      vulnerableCircumstances.includes("other") ? input.vulnerableOtherDetail!.trim() : null,
+    availableStorageGallons: input.availableStorageGallons ?? null,
+    reportedUrgency: input.reportedUrgency,
+  };
 }
 
 /**
@@ -266,6 +374,7 @@ export async function createWaterRequest(
     createdBy = null,
     customer: customerInput,
     overrideMatchedRequestIds,
+    waterSituation: waterSituationInput,
   } = input;
 
   if (!customerId && !customerInput?.displayName?.trim()) {
@@ -277,6 +386,10 @@ export async function createWaterRequest(
   if (source === "dispatcher" && !createdBy) {
     throw new Error("CREATED_BY_REQUIRED");
   }
+
+  const waterSituation = buildWaterSituationSnapshot(waterSituationInput);
+  const { priority: dispatchPriority, reason: priorityReason } =
+    determineInitialDispatchPriority(waterSituation);
 
   // Build a stable customer snapshot at creation time. Registered
   // residents get one built from their saved profile unless the caller
@@ -304,16 +417,30 @@ export async function createWaterRequest(
   }
 
   const hasPreferredDriver = Boolean(preferredDriverId);
+
+  // A preferred driver is a resident PREFERENCE, never a guaranteed
+  // assignment (see PRODUCT.md "Preferred Driver"). For a Normal request
+  // the preference always gets an exclusive hold window, even if the
+  // driver is currently offline (they may come online before it
+  // expires). For an Urgent/Critical request, an offline/ineligible/
+  // unlinked/cooldown preferred driver must not delay dispatch at all —
+  // see PRODUCT.md "Preferred Driver Offline Edge Case" — so the hold is
+  // skipped entirely and the request goes straight to the general queue.
+  const preferredDriverImmediatelyAvailable = hasPreferredDriver
+    ? await isDriverImmediatelyAvailable(preferredDriverId!)
+    : false;
+  const skipHoldForPriority =
+    hasPreferredDriver && dispatchPriority !== "normal" && !preferredDriverImmediatelyAvailable;
+  const willHold = hasPreferredDriver && !skipHoldForPriority;
+
   const now = FieldValue.serverTimestamp();
 
   // Compute the preferred-driver expiration time if applicable.
-  const preferredDriverExpiresAt = hasPreferredDriver
+  const preferredDriverExpiresAt = willHold
     ? new Date(Date.now() + appConfig.preferredDriverWindowHours * 60 * 60 * 1000)
     : null;
 
-  const initialStatus: WaterRequestStatus = hasPreferredDriver
-    ? "preferred_driver_hold"
-    : "available";
+  const initialStatus: WaterRequestStatus = willHold ? "preferred_driver_hold" : "available";
 
   const requestRef = db.collection(REQUESTS_COLLECTION).doc();
 
@@ -350,8 +477,15 @@ export async function createWaterRequest(
       preferredDriverExpiresAt: preferredDriverExpiresAt,
       assignedDriverId: null,
       status: initialStatus,
+      waterSituation,
+      dispatchPriority,
+      priorityRank: priorityRankFor(dispatchPriority),
+      prioritySource: "system",
+      priorityReason,
+      priorityUpdatedBy: null,
+      priorityUpdatedAt: null,
       requestedAt: now,
-      availableAt: hasPreferredDriver ? null : now,
+      availableAt: willHold ? null : now,
       claimedAt: null,
       deliveredAt: null,
       confirmedAt: null,
@@ -374,6 +508,8 @@ export async function createWaterRequest(
         village,
         preferredDriverId: preferredDriverId ?? null,
         isRegisteredCustomer: Boolean(customerId),
+        dispatchPriority,
+        priorityReason,
         ...(overrideMatchedRequestIds?.length
           ? { overrodeDuplicateWarningFor: overrideMatchedRequestIds }
           : {}),
@@ -382,17 +518,38 @@ export async function createWaterRequest(
 
     // Additional audit event if a preferred driver was selected.
     if (hasPreferredDriver) {
-      const prefEventRef = requestRef.collection("events").doc();
-      txn.set(prefEventRef, {
-        type: "preferred_driver_selected",
-        actorId: creationActorId,
-        actorRole: source === "dispatcher" ? "dispatcher" : "resident",
-        createdAt: now,
-        metadata: {
-          driverId: preferredDriverId,
-          expiresAt: preferredDriverExpiresAt?.toISOString() ?? null,
-        },
-      });
+      if (willHold) {
+        const prefEventRef = requestRef.collection("events").doc();
+        txn.set(prefEventRef, {
+          type: "preferred_driver_selected",
+          actorId: creationActorId,
+          actorRole: source === "dispatcher" ? "dispatcher" : "resident",
+          createdAt: now,
+          metadata: {
+            driverId: preferredDriverId,
+            expiresAt: preferredDriverExpiresAt?.toISOString() ?? null,
+          },
+        });
+      } else {
+        // The preference was bypassed because the request is Urgent/
+        // Critical and the preferred driver was not immediately
+        // available — see PRODUCT.md "Preferred Driver Offline Edge
+        // Case". The preference is preserved on the request for
+        // display/statistics, but never blocked general dispatch.
+        const bypassEventRef = requestRef.collection("events").doc();
+        txn.set(bypassEventRef, {
+          type: "preferred_driver_bypassed_for_priority",
+          actorId: creationActorId,
+          actorRole: source === "dispatcher" ? "dispatcher" : "resident",
+          createdAt: now,
+          metadata: {
+            driverId: preferredDriverId,
+            dispatchPriority,
+            reason:
+              "Preferred driver was not immediately available (offline, ineligible, unlinked, or in cooldown); released directly to the general queue rather than delaying an urgent/critical request.",
+          },
+        });
+      }
     }
   });
 
@@ -562,6 +719,145 @@ export async function expirePreferredDriverHold(
       },
     });
   });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+/**
+ * Releases an active preferred-driver hold to the general queue WITHOUT
+ * waiting for the window to expire, because the request's priority was
+ * escalated (or the preferred driver became unavailable) and the
+ * preference can no longer justify delaying dispatch. Preserves the
+ * original `requestedAt` — see PRODUCT.md "Request Age Still Matters".
+ * No-ops if the request is no longer in a hold (another reader may have
+ * already resolved it), mirroring `expirePreferredDriverHold`.
+ */
+async function releasePreferredDriverHoldForPriority(
+  requestId: string,
+  dispatchPriority: DispatchPriority,
+): Promise<void> {
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) return;
+    const data = snap.data()!;
+    if (data.status !== "preferred_driver_hold") return;
+
+    txn.update(requestRef, {
+      status: "available",
+      availableAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "preferred_driver_hold_released_for_priority",
+      actorId: null,
+      actorRole: null,
+      createdAt: now,
+      metadata: {
+        preferredDriverId: data.preferredDriverId,
+        dispatchPriority,
+      },
+    });
+  });
+}
+
+/**
+ * Re-evaluates an existing preferred-driver hold after the request's
+ * priority escalates to Urgent/Critical (see PRODUCT.md "Priority
+ * Escalation During Preferred Hold"). If the preferred driver is
+ * currently immediately available, the exclusive hold may continue
+ * (no action needed — it isn't delaying anything). Otherwise the hold
+ * is released to the general queue immediately, same as the offline/
+ * ineligible/cooldown bypass applied at creation time.
+ */
+export async function reevaluatePreferredDriverHoldForPriority(
+  requestId: string,
+): Promise<void> {
+  const request = await getWaterRequestById(requestId);
+  if (!request) return;
+  if (request.status !== "preferred_driver_hold") return;
+  if (request.dispatchPriority === "normal") return;
+  if (!request.preferredDriverId) return;
+
+  const available = await isDriverImmediatelyAvailable(request.preferredDriverId);
+  if (available) return;
+
+  await releasePreferredDriverHoldForPriority(requestId, request.dispatchPriority);
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher priority override
+// ---------------------------------------------------------------------------
+
+export interface ChangeRequestPriorityInput {
+  requestId: string;
+  actorId: string;
+  newPriority: DispatchPriority;
+  reason: string;
+}
+
+/**
+ * Dispatcher/admin override of a request's operational dispatch
+ * priority. Always requires a reason, which is audited alongside the
+ * previous/new priority and acting staff member (see PRODUCT.md
+ * "Dispatcher Priority Review"). Never overwrites the resident's
+ * original `waterSituation` snapshot — only the derived
+ * `dispatchPriority` fields change.
+ *
+ * If this escalates a request that is currently held for a preferred
+ * driver, the hold is immediately re-evaluated (see
+ * `reevaluatePreferredDriverHoldForPriority`) rather than left to
+ * expire on its original schedule.
+ */
+export async function changeRequestPriority(
+  input: ChangeRequestPriorityInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId, newPriority, reason } = input;
+  if (!reason.trim()) throw new Error("PRIORITY_REASON_REQUIRED");
+
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+    const data = snap.data()!;
+    const previousPriority = (data.dispatchPriority as DispatchPriority) ?? "normal";
+
+    txn.update(requestRef, {
+      dispatchPriority: newPriority,
+      priorityRank: priorityRankFor(newPriority),
+      prioritySource: "dispatcher",
+      priorityReason: reason.trim(),
+      priorityUpdatedBy: actorId,
+      priorityUpdatedAt: now,
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "request_priority_changed",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: {
+        previousPriority,
+        newPriority,
+        reason: reason.trim(),
+      },
+    });
+  });
+
+  if (newPriority !== "normal") {
+    await reevaluatePreferredDriverHoldForPriority(requestId);
+  }
 
   const updated = await requestRef.get();
   return toWaterRequest(requestId, updated.data()!);

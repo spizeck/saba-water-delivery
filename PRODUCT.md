@@ -270,6 +270,80 @@ Scheduled delivery dates and time slots are outside the initial scope.
 
 ---
 
+# Water Situation & Request Priority
+
+Government operational feedback ahead of production launch asked for two
+related things: more information about the resident's actual water
+situation, and a simple, explainable way to let genuine emergencies move
+ahead of the queue without breaking fairness for everyone else. See
+TECHNICAL.md "Priority-Based Dispatch" for the implementation details
+this section describes.
+
+## Water situation information
+
+Every request — resident-submitted or dispatcher-created — captures:
+
+- **Current water supply**: Out of water / Less than 1 day remaining /
+  1-2 days remaining / More than 2 days remaining / Unsure.
+- **Number of people relying on this water supply** (optional positive
+  integer).
+- **Vulnerable persons or critical circumstances**: Elderly person /
+  Infant or young child / Medical need / Essential service or critical
+  operation / Other critical circumstance (with a short explanation) /
+  None. This is deliberately NOT a medical intake form — enough
+  information to assess urgency, never a detailed health record.
+- **Available cistern/storage capacity**, in gallons, with a reminder
+  that each delivery is 1,000 gallons. An amount below 1,000 gallons is
+  treated as a likely data-entry error and blocked on the resident form;
+  dispatcher staff may explicitly confirm it is correct.
+- **Resident-reported urgency**: Normal / Urgent / Critical, in plain
+  language (see the resident-facing wording in the request form).
+
+This information is a **snapshot** — it describes the circumstances at
+the moment the request was made and is never overwritten by later
+profile edits or re-derived later (see TECHNICAL.md "Historical
+Snapshot").
+
+## Dispatch priority is not the same as reported urgency
+
+A resident selecting "Critical" does **not** automatically grant an
+unrestricted queue-jump. The system tracks two separate things:
+
+- `reportedUrgency` — the resident's own characterization.
+- `dispatchPriority` (`normal` / `urgent` / `critical`) — the actual
+  operational priority used for dispatch ordering, together with who
+  set it (`prioritySource`: `system` or `dispatcher`), why
+  (`priorityReason`), and — for staff overrides — who and when.
+
+The initial `dispatchPriority` is set by a short, documented,
+deterministic rule (see TECHNICAL.md "Initial Priority Rules") based on
+the structured water-situation answers, not an opaque score. Government
+staff can always see the full water situation and override the priority
+with a required reason; every override is audited
+(`request_priority_changed`).
+
+## Priority-based dispatch
+
+Requests are offered to drivers **highest priority first, oldest
+request first within that priority** — critical, then urgent, then
+normal, and within each level, fairness by request age exactly as
+before. A resident's request never loses its place in the queue due to
+a decline, hold expiration, or dispatcher reassignment — its original
+request time is always preserved (see "Request Age Still Matters" in
+TECHNICAL.md).
+
+Drivers still receive only ONE offer at a time — priority changes which
+request that is, never how many they see.
+
+## Statistics and privacy
+
+Statistics report priority-level counts, outstanding critical/urgent
+requests, and average delivery time by priority (see "Statistics"
+below). Vulnerable-circumstance details are never included in
+statistics or shown to drivers — see "Privacy" below.
+
+---
+
 # Dispatcher-Created Requests
 
 Not every resident submits their own request online. Government staff
@@ -365,6 +439,29 @@ If the preferred driver actively declines their offer, the hold ends
 immediately (rather than waiting for the window to expire) and the
 request opens to the general queue at its original request time. See
 "Dispatch Offers" below.
+
+## A preference, never a guarantee
+
+A preferred driver is explicitly a **resident preference**, not an
+assignment. It must never prevent government from fulfilling a genuine
+water emergency. Concretely:
+
+- **Normal-priority request**: the preferred-driver window applies
+  exactly as above, even if that driver is currently offline — they may
+  still come online and claim it before the window expires. Clearly
+  store the expiration; release to the general queue when it passes.
+- **Urgent/Critical request**: the preference does not get to create an
+  unreasonable delay. If the preferred driver is immediately eligible,
+  linked, online, and not in cooldown, they still get first offer. If
+  they are offline, ineligible, unlinked, or in cooldown, the hold is
+  skipped entirely and the request goes straight to the general queue —
+  it is never trapped waiting for that specific driver.
+- **Preferred driver declines**: the preference ends immediately and
+  the request opens to the general queue, regardless of priority.
+- **Priority escalated while held** (e.g. dispatcher changes Normal to
+  Critical while the resident's preferred driver is offline): the hold
+  is re-evaluated immediately using the same rule as above, rather than
+  being left to expire on its original schedule.
 
 ---
 
@@ -527,6 +624,27 @@ Residents should be able to save their normal delivery location for future reque
 
 ---
 
+# Water Situation Privacy
+
+Some of the new water-situation information is sensitive, especially
+vulnerable-person circumstances and anything medical-related. Apply
+least privilege:
+
+- **Drivers** may need to know a delivery is Urgent/Critical to
+  understand why it was offered ahead of others, but do NOT need — and
+  are never shown — the underlying vulnerable-circumstance details,
+  persons-affected count, or available-storage figures.
+- **Dispatcher/admin** staff see the full water situation, because they
+  need it to assess and, if necessary, override priority.
+- **Viewer** (read-only oversight) sees the dispatch priority level
+  (operational, not sensitive) but not the underlying water-situation
+  detail, consistent with the existing Viewer privacy posture (see
+  "Viewer Privacy" above).
+- **Statistics** never break priority data down by individual resident,
+  village, or driver — aggregate counts and timings only.
+
+---
+
 # Property Photos
 
 Residents should be able to upload photos of their property to help drivers locate the delivery point.
@@ -589,6 +707,45 @@ Do not design photo storage as publicly accessible. Authorization must be enforc
 
 ---
 
+# Photo Cellular-Data Requirements
+
+Photo functionality (property photos, proof of delivery) remains a
+future implementation phase — see DEVIN.md "Implementation Sequence" —
+but government specifically raised **cellular-data usage** as a launch
+concern, so the requirement is documented now so it is not missed later.
+
+When photo upload is implemented:
+
+- Original full-resolution phone photos must **never** be uploaded.
+  Images are resized/compressed **client-side** before upload.
+- Target delivery-documentation quality, not archival photography — a
+  reasonable initial target is a maximum long dimension around 1600px
+  with sensible JPEG/WebP compression, enough to identify a house,
+  cistern, access point, or proof of delivery.
+- Only the compressed copy is uploaded — never both the original and
+  compressed versions.
+- Unnecessary metadata (GPS, device info) is stripped; image
+  orientation must still display correctly after compression.
+- All compression numbers are centralized in one configuration module
+  (`src/lib/domain/photoConfig.ts`) — never hard-coded at multiple call
+  sites, so they can be tuned after real-world testing without hunting
+  through the codebase.
+- The user should be able to see the compressed upload size before/
+  during upload (optional UX, but the architecture must make this size
+  available).
+- A clear, immediate error on compression/upload failure. Repeated
+  automatic retries must never be allowed to silently consume excessive
+  cellular data.
+
+Required future test coverage before shipping photo upload (see
+TECHNICAL.md "Photo Failure Testing Requirements"): a large modern
+phone photo, a slow cellular connection, an interrupted upload, upload
+retry behavior, browser memory usage with multiple photos, compression
+failure, an unsupported image format, file-size validation, and
+orientation correctness after compression.
+
+---
+
 # Saba Operational Timezone
 
 All operational date/time display and calendar boundaries (e.g. "this
@@ -625,6 +782,14 @@ The underlying data must support at minimum:
 - Driver online/offline activity where useful
 - Dispatch offers sent, accepted, and declined, and acceptance rate
 - Requests by source (submitted online vs entered by staff)
+- Requests by dispatch priority (Normal / Urgent / Critical)
+- Average delivery time by dispatch priority
+- Critical requests currently outstanding
+- Urgent requests currently outstanding
+
+Never rank individual residents, villages, or drivers by urgency —
+priority statistics are aggregate counts and timings only (see
+"Privacy" below).
 
 Because every completed request represents 1,000 gallons:
 

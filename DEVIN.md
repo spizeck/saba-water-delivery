@@ -128,7 +128,22 @@ getNextOfferForDriver
 acceptDriverOffer
 declineDriverOffer
 confirmDeliveryByStaff
+changeRequestPriority
 ```
+
+Dispatch-priority determination is centralized in a small, pure,
+documented module (`src/lib/domain/priority.ts`):
+
+```text
+determineInitialDispatchPriority
+priorityRankFor
+isValidDispatchPriority
+```
+
+See PRODUCT.md "Water Situation & Request Priority" and TECHNICAL.md
+"Priority-Based Dispatch" — this is a deliberately simple, explainable
+decision tree, never an opaque score, and dispatcher/admin can always
+review and override it.
 
 Driver Registry operations (`src/lib/domain/driverRegistry.ts`):
 
@@ -334,6 +349,16 @@ The system will support two categories of photos:
 - Firestore subcollection rules for photo metadata are in `firestore.rules`.
 - The photo upload UI is **not required for V1**. Build it when explicitly requested.
 - When implementing uploads, prefer server-side validation of file type and size before writing to Storage.
+- **Client-side compression is a hard requirement, not an optimization** —
+  government raised cellular-data usage as a launch concern (see
+  PRODUCT.md "Photo Cellular-Data Requirements"). Centralize every
+  compression parameter (max dimension, format, quality, size limits)
+  in `src/lib/domain/photoConfig.ts` (`photoUploadConfig`) rather than
+  hard-coding them at upload call sites. Never upload an original
+  full-resolution phone photo, and never upload both an original and a
+  compressed copy. See TECHNICAL.md "Client-side compression (cellular
+  data)" / "Photo Failure Testing Requirements" for the full test list
+  to cover before shipping this feature.
 
 ---
 

@@ -72,9 +72,21 @@ function DeliveryCard({
 
   return (
     <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
-      <p className="font-medium text-slate-900">
-        1,000 gal &mdash; {request.village}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium text-slate-900">
+          1,000 gal &mdash; {request.village}
+        </p>
+        {request.dispatchPriority === "critical" && (
+          <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-900">
+            Critical
+          </span>
+        )}
+        {request.dispatchPriority === "urgent" && (
+          <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+            Urgent
+          </span>
+        )}
+      </div>
       <dl className="mt-2 flex flex-col gap-1 text-sm">
         <div className="flex gap-2">
           <dt className="font-medium text-slate-500">Customer:</dt>

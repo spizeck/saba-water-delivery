@@ -1,7 +1,19 @@
 import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
-import type { WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+import type { DispatchPriority, WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+
+const PRIORITY_LABELS: Record<DispatchPriority, string> = {
+  normal: "Normal",
+  urgent: "Urgent",
+  critical: "Critical",
+};
+
+const PRIORITY_COLORS: Record<DispatchPriority, string> = {
+  normal: "bg-slate-100 text-slate-600",
+  urgent: "bg-amber-50 text-amber-800",
+  critical: "bg-red-100 text-red-900",
+};
 
 const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   requested: "Submitted",
@@ -66,6 +78,7 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase text-slate-500">
                   <th className="pb-2 pr-3">Status</th>
+                  <th className="pb-2 pr-3">Priority</th>
                   <th className="pb-2 pr-3">Age</th>
                   <th className="pb-2 pr-3">Customer</th>
                   <th className="pb-2 pr-3">Village</th>
@@ -79,6 +92,11 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                     <td className="py-2 pr-3">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[req.status]}`}>
                         {STATUS_LABELS[req.status]}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[req.dispatchPriority]}`}>
+                        {PRIORITY_LABELS[req.dispatchPriority]}
                       </span>
                     </td>
                     <td className="py-2 pr-3 text-slate-600">

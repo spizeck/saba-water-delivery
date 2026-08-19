@@ -24,6 +24,26 @@ export function CurrentOpsSection({ current }: CurrentOpsSectionProps) {
           </p>
         </div>
         <div>
+          <p className="text-xs font-medium text-slate-500">Critical outstanding</p>
+          <p
+            className={`mt-0.5 text-xl font-bold ${
+              current.criticalOutstanding > 0 ? "text-red-700" : "text-slate-900"
+            }`}
+          >
+            {current.criticalOutstanding}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-slate-500">Urgent outstanding</p>
+          <p
+            className={`mt-0.5 text-xl font-bold ${
+              current.urgentOutstanding > 0 ? "text-amber-700" : "text-slate-900"
+            }`}
+          >
+            {current.urgentOutstanding}
+          </p>
+        </div>
+        <div>
           <p className="text-xs font-medium text-slate-500">Open &gt; 24h</p>
           <p
             className={`mt-0.5 text-xl font-bold ${
