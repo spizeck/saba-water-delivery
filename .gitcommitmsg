@@ -1,0 +1,26 @@
+Fix dispatch offer selection after completed deliveries
+
+Root cause: getDeclinedRequestIdsForDriver() excluded any request the
+ driver had ever declined (within the last 300), with no time window.
+ A driver who had declined available requests in the past would see "No
+deliveries available" after completing a delivery even though those
+requests were still valid.
+
+Changes:
+- getDeclinedRequestIdsForDriver() now excludes only declines within the
+  last 24 hours, matching the intended "recent dispatch window" semantics.
+- Extracted pure selection logic into dispatchSelection.ts so the rules
+  are unit-testable without a database.
+- isOfferableToDriver() now accepts a `now` reference instead of calling
+  new Date(), making tests deterministic and behavior consistent.
+- Added dispatch.test.ts covering sequential deliveries, priority/age
+  ordering, preferred-driver holds, declined-request exclusion, and stale
+  pending-offer cleanup.
+
+No cleanup of existing driverOffers records is required; stale pending
+offers for already-completed requests are expired automatically on the
+next driver portal load.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>

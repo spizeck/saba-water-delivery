@@ -102,22 +102,26 @@ export async function getPendingOfferForDriver(
 }
 
 /**
- * Returns the set of request IDs this driver has already declined.
- * Used to avoid immediately re-offering the same request back to the
- * same driver. Bounded to a reasonable lookback so the query stays cheap
- * at island scale while still preventing obvious re-offer loops.
+ * Returns the set of request IDs this driver has declined within the
+ * recent dispatch window.
+ *
+ * Declining an offer is meant to give other eligible drivers the first
+ * opportunity on that specific request, not to permanently blacklist the
+ * request for the declining driver. Historical decline records remain in
+ * `driverOffers` for audit/statistics, but only recent declines affect
+ * future offers. The default lookback is 24 hours.
  */
 export async function getDeclinedRequestIdsForDriver(
   driverId: string,
-  limit = 300,
+  since: Date = new Date(Date.now() - 24 * 60 * 60 * 1000),
 ): Promise<Set<string>> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(DRIVER_OFFERS_COLLECTION)
     .where("driverId", "==", driverId)
     .where("response", "==", "declined")
+    .where("respondedAt", ">=", since)
     .orderBy("respondedAt", "desc")
-    .limit(limit)
     .get();
 
   return new Set(snapshot.docs.map((doc) => doc.data().requestId as string));

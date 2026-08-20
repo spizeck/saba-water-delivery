@@ -14,6 +14,10 @@ import { sabaCalendarDateKey } from "@/lib/utils/datetime";
 import { appConfig } from "./config";
 import type { DriverOffer, WaterRequest } from "./types";
 import {
+  isOfferableToDriver,
+  selectNextDispatchCandidate,
+} from "./dispatchSelection";
+import {
   claimWaterRequest,
   expirePreferredDriverHold,
   getWaterRequestById,
@@ -35,16 +39,6 @@ import {
 
 const REQUESTS_COLLECTION = "waterRequests";
 
-/** True if `request` is still valid to show as an offer to `driverId`. */
-function isOfferableToDriver(request: WaterRequest, driverId: string): boolean {
-  if (request.assignedDriverId) return false;
-  if (request.status === "available") return true;
-  if (request.status === "preferred_driver_hold" && request.preferredDriverId === driverId) {
-    if (!request.preferredDriverExpiresAt) return true;
-    return new Date(request.preferredDriverExpiresAt) > new Date();
-  }
-  return false;
-}
 
 // ---------------------------------------------------------------------------
 // Selecting the next offer
@@ -80,18 +74,21 @@ export interface NextOffer {
  */
 export async function getNextOfferForDriver(driverId: string): Promise<NextOffer | null> {
   const db = getAdminDb();
+  const now = new Date();
 
   // Reuse an existing pending offer so reloading the page doesn't
   // manufacture a new offer while one is awaiting a response.
+  let pendingPair: { offer: DriverOffer; request: WaterRequest } | null = null;
   const pending = await getPendingOfferForDriver(driverId);
   if (pending) {
     const request = await getWaterRequestById(pending.requestId);
-    if (request && isOfferableToDriver(request, driverId)) {
-      return { offer: pending, request };
+    if (request && isOfferableToDriver(request, driverId, now)) {
+      pendingPair = { offer: pending, request };
+    } else {
+      // The request was claimed/cancelled/reassigned out from under this
+      // offer before the driver responded — expire it and select fresh.
+      await recordOfferResponse(pending.id, "expired");
     }
-    // The request was claimed/cancelled/reassigned out from under this
-    // offer before the driver responded — expire it and select fresh.
-    await recordOfferResponse(pending.id, "expired");
   }
 
   // Opportunistic maintenance: expire any preferred-driver holds that have
@@ -101,7 +98,7 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
   const expiredHoldsSnapshot = await db
     .collection(REQUESTS_COLLECTION)
     .where("status", "==", "preferred_driver_hold")
-    .where("preferredDriverExpiresAt", "<=", new Date())
+    .where("preferredDriverExpiresAt", "<=", now)
     .limit(10)
     .get();
   for (const doc of expiredHoldsSnapshot.docs) {
@@ -111,7 +108,6 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
   // Priority 1: preferred-driver hold addressed to this driver. Ordered
   // by dispatch priority first, then oldest request first, in case more
   // than one hold is ever addressed to the same driver.
-  let candidate: WaterRequest | null = null;
   const holdSnapshot = await db
     .collection(REQUESTS_COLLECTION)
     .where("status", "==", "preferred_driver_hold")
@@ -120,35 +116,31 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
     .orderBy("requestedAt", "asc")
     .limit(1)
     .get();
-
-  if (!holdSnapshot.empty) {
-    const doc = holdSnapshot.docs[0];
-    const data = doc.data();
-    const expiresAt = data.preferredDriverExpiresAt?.toDate?.();
-    if (!expiresAt || expiresAt > new Date()) {
-      candidate = toWaterRequest(doc.id, data);
-    }
-  }
+  const holds = holdSnapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
 
   // Priority 2: highest dispatch-priority open request not already
-  // declined by this driver, oldest first within the same priority
-  // level — see PRODUCT.md "Priority-Based Dispatch".
-  if (!candidate) {
-    const declinedIds = await getDeclinedRequestIdsForDriver(driverId);
-    const availableSnapshot = await db
-      .collection(REQUESTS_COLLECTION)
-      .where("status", "==", "available")
-      .orderBy("priorityRank", "asc")
-      .orderBy("requestedAt", "asc")
-      .limit(25)
-      .get();
+  // declined by this driver recently, oldest first within the same
+  // priority level — see PRODUCT.md "Priority-Based Dispatch".
+  const declinedIds = await getDeclinedRequestIdsForDriver(driverId);
+  const availableSnapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("status", "==", "available")
+    .orderBy("priorityRank", "asc")
+    .orderBy("requestedAt", "asc")
+    .limit(25)
+    .get();
+  const available = availableSnapshot.docs.map((doc) =>
+    toWaterRequest(doc.id, doc.data()),
+  );
 
-    for (const doc of availableSnapshot.docs) {
-      if (declinedIds.has(doc.id)) continue;
-      candidate = toWaterRequest(doc.id, doc.data());
-      break;
-    }
-  }
+  const candidate = selectNextDispatchCandidate({
+    pendingOffer: pendingPair,
+    holds,
+    available,
+    declinedRequestIds: declinedIds,
+    driverId,
+    now,
+  });
 
   if (!candidate) return null;
 
