@@ -35,8 +35,11 @@ export default async function ResidentPortalPage() {
     profileComplete ? getRequestsForCustomer(uid) : [],
   ]);
 
-  // Lazy check: if the active request is "delivered", see if the confirmation
-  // window has expired (transitions to "delivered_unconfirmed").
+  // Lazy check: if the active request is "delivered", see if the
+  // confirmation window has expired — if so it is auto-confirmed here so
+  // the resident is never blocked from a new request merely because
+  // nobody opened this page in time (see PRODUCT.md "Delivery
+  // Confirmation").
   const activeRequest =
     rawActiveRequest?.status === "delivered"
       ? await checkDeliveryConfirmationTimeout(rawActiveRequest.id)

@@ -613,9 +613,15 @@ The exact implementation may use additional internal states if needed, but the r
 
 # Delivery Confirmation
 
-After delivering water, the driver marks the request as delivered.
+After delivering water, the driver marks the request as delivered. At
+that moment the driver's assignment is complete: the driver stays
+online and eligible, receives no cooldown from this, and can
+immediately be offered another request — see "Dispatch Offers (One
+Request at a Time)" above. **Customer confirmation never affects driver
+availability.**
 
-The customer is then asked to confirm receipt.
+The customer then has a configurable window — **24 hours** by default
+— to confirm receipt or report a problem.
 
 Customer options:
 
@@ -630,11 +636,23 @@ If rejected:
 
 `DELIVERED → DISPUTED`
 
-If the customer does not respond within a configurable period, the request may become:
+If the customer does not respond within the confirmation window, the
+request is **automatically confirmed**:
 
-`DELIVERED_UNCONFIRMED`
+`DELIVERED → CONFIRMED` (system timeout, not a customer action)
 
-The system must preserve the driver's delivery timestamp and customer's confirmation timestamp separately.
+There is no separate "delivered but unconfirmed" status — a request is
+either still `DELIVERED` (within its confirmation window, or
+occasionally just past it and not yet touched by any operational
+workflow), or it has become `CONFIRMED`, whether the resident responded
+or the window simply expired. The audit trail always distinguishes an
+automatic confirmation from an actual customer confirmation — see
+"Auditability" below.
+
+The system must preserve the driver's delivery timestamp and the
+confirmation timestamp separately, and must record whether a
+confirmation was a genuine customer response, a staff action on behalf
+of an unregistered customer, or an automatic timeout.
 
 ## Unregistered customers
 
@@ -820,7 +838,8 @@ The underlying data must support at minimum:
 - Preferred-driver requests successfully claimed by that driver
 - Preferred-driver requests that expired into the open queue
 - Disputed deliveries
-- Delivered but unconfirmed requests
+- Requests currently awaiting customer confirmation (delivered, within
+  the confirmation window)
 - Driver online/offline activity where useful
 - Dispatch offers sent, accepted, and declined, and acceptance rate
 - Requests by source (submitted online vs entered by staff)

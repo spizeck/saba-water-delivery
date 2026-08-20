@@ -24,7 +24,7 @@ interface Props {
   requestId: string;
   status: WaterRequestStatus;
   eligibleDrivers: EligibleDriverOption[];
-  /** True when this is an unregistered customer's delivered/unconfirmed request. */
+  /** True when this is an unregistered customer's delivered (awaiting confirmation) request. */
   canConfirmUnregisteredDelivery: boolean;
   currentPriority: DispatchPriority;
 }

@@ -20,7 +20,6 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   claimed: "Driver assigned",
   delivered: "Delivery marked complete",
   confirmed: "Confirmed",
-  delivered_unconfirmed: "Awaiting your confirmation",
   disputed: "Delivery issue reported",
   cancelled: "Cancelled",
 };
@@ -32,7 +31,6 @@ const STATUS_COLORS: Record<WaterRequestStatus, string> = {
   claimed: "bg-indigo-50 text-indigo-800",
   delivered: "bg-green-50 text-green-800",
   confirmed: "bg-green-50 text-green-800",
-  delivered_unconfirmed: "bg-amber-50 text-amber-800",
   disputed: "bg-red-50 text-red-800",
   cancelled: "bg-slate-100 text-slate-600",
 };
@@ -47,8 +45,7 @@ interface Props {
 const initialState: DeliveryResponseState = { status: "idle" };
 
 export function ActiveRequest({ request, preferredDriverName }: Props) {
-  const showConfirmation =
-    request.status === "delivered" || request.status === "delivered_unconfirmed";
+  const showConfirmation = request.status === "delivered";
 
   return (
     <Card>
@@ -125,6 +122,10 @@ function DeliveryConfirmation({ requestId }: { requestId: string }) {
     <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
       <p className="text-sm font-semibold text-blue-900">
         Did you receive your 1,000-gallon delivery?
+      </p>
+      <p className="mt-1 text-xs text-blue-800">
+        If you don&apos;t respond within 24 hours, this delivery will be
+        automatically confirmed.
       </p>
 
       {confirmState.status === "error" && (

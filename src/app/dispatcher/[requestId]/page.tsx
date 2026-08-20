@@ -8,7 +8,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getAllDriverRegistryEntries, getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
-import { getRequestEvents } from "@/lib/domain/waterRequests";
+import { checkDeliveryConfirmationTimeout, getRequestEvents } from "@/lib/domain/waterRequests";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
@@ -25,7 +25,6 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   claimed: "Claimed",
   delivered: "Delivered",
   confirmed: "Confirmed",
-  delivered_unconfirmed: "Unconfirmed",
   disputed: "DISPUTED",
   cancelled: "Cancelled",
 };
@@ -37,7 +36,6 @@ const STATUS_COLORS: Record<WaterRequestStatus, string> = {
   claimed: "bg-indigo-50 text-indigo-800",
   delivered: "bg-green-50 text-green-800",
   confirmed: "bg-green-50 text-green-700",
-  delivered_unconfirmed: "bg-amber-50 text-amber-800",
   disputed: "bg-red-100 text-red-900",
   cancelled: "bg-slate-100 text-slate-500",
 };
@@ -54,7 +52,7 @@ const EVENT_LABELS: Record<string, string> = {
   customer_confirmed: "Customer confirmed",
   delivery_confirmed_by_dispatcher: "Delivery confirmed by staff",
   customer_disputed: "Customer disputed",
-  delivery_confirmation_expired: "Confirmation window expired",
+  delivery_auto_confirmed: "Automatically confirmed (no response within window)",
   dispute_resolved_completed: "Dispute resolved (completed)",
   dispute_resolved_reopened: "Dispute resolved (reopened)",
   request_cancelled: "Request cancelled",
@@ -96,7 +94,14 @@ export default async function RequestDetailPage({ params }: PageProps) {
   const { requestId } = await params;
 
   const db = getAdminDb();
-  const requestDoc = await db.collection("waterRequests").doc(requestId).get();
+  let requestDoc = await db.collection("waterRequests").doc(requestId).get();
+
+  // Lazily auto-confirm if this "delivered" request's confirmation
+  // window has already expired — see PRODUCT.md "Delivery Confirmation".
+  if (requestDoc.exists && requestDoc.data()!.status === "delivered") {
+    await checkDeliveryConfirmationTimeout(requestId);
+    requestDoc = await db.collection("waterRequests").doc(requestId).get();
+  }
 
   if (!requestDoc.exists) {
     return (
@@ -340,9 +345,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
             requestId={requestId}
             status={status}
             eligibleDrivers={eligibleDriverOptions}
-            canConfirmUnregisteredDelivery={
-              !isRegisteredCustomer && (status === "delivered" || status === "delivered_unconfirmed")
-            }
+            canConfirmUnregisteredDelivery={!isRegisteredCustomer && status === "delivered"}
             currentPriority={(data.dispatchPriority as DispatchPriority) ?? "normal"}
           />
 

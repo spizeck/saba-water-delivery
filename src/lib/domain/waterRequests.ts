@@ -5,6 +5,7 @@ import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 
 import { appConfig } from "./config";
+import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { isDriverImmediatelyAvailable } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import type {
@@ -42,7 +43,6 @@ const ACTIVE_STATUSES: WaterRequestStatus[] = [
   "available",
   "claimed",
   "delivered",
-  "delivered_unconfirmed",
   "disputed",
 ];
 
@@ -419,6 +419,26 @@ export async function createWaterRequest(
   const initialStatus: WaterRequestStatus = willHold ? "preferred_driver_hold" : "available";
 
   const requestRef = db.collection(REQUESTS_COLLECTION).doc();
+
+  // A resident whose previous delivery's confirmation window has already
+  // expired must not stay permanently blocked just because nobody opened
+  // that old request since. Resolve it (auto-confirm) *before* the
+  // one-active-request check below, so an expired "delivered" request
+  // never counts as an active request — see PRODUCT.md "Delivery
+  // Confirmation" / TECHNICAL.md "Delivery Confirmation Timeout". This
+  // is a best-effort pre-step; the transactional duplicate check below
+  // remains the actual source of correctness.
+  if (customerId) {
+    const staleDeliveredSnapshot = await db
+      .collection(REQUESTS_COLLECTION)
+      .where("customerId", "==", customerId)
+      .where("status", "==", "delivered")
+      .limit(1)
+      .get();
+    if (!staleDeliveredSnapshot.empty) {
+      await checkDeliveryConfirmationTimeout(staleDeliveredSnapshot.docs[0].id);
+    }
+  }
 
   await db.runTransaction(async (txn) => {
     // The hard one-active-request rule only applies to registered
@@ -956,7 +976,7 @@ export async function confirmWaterDelivery(
     if (data.customerId !== customerId) {
       throw new Error("NOT_REQUEST_OWNER");
     }
-    if (data.status !== "delivered" && data.status !== "delivered_unconfirmed") {
+    if (data.status !== "delivered") {
       throw new Error("INVALID_STATUS_FOR_CONFIRM");
     }
 
@@ -1013,7 +1033,7 @@ export async function disputeWaterDelivery(
     if (data.customerId !== customerId) {
       throw new Error("NOT_REQUEST_OWNER");
     }
-    if (data.status !== "delivered" && data.status !== "delivered_unconfirmed") {
+    if (data.status !== "delivered") {
       throw new Error("INVALID_STATUS_FOR_DISPUTE");
     }
 
@@ -1080,7 +1100,7 @@ export async function confirmDeliveryByStaff(
     if (data.customerId) {
       throw new Error("REQUEST_HAS_REGISTERED_CUSTOMER");
     }
-    if (data.status !== "delivered" && data.status !== "delivered_unconfirmed") {
+    if (data.status !== "delivered") {
       throw new Error("INVALID_STATUS_FOR_CONFIRM");
     }
 
@@ -1105,15 +1125,29 @@ export async function confirmDeliveryByStaff(
 }
 
 // ---------------------------------------------------------------------------
-// Delivered-unconfirmed timeout (lazy expiration)
+// Delivery confirmation timeout (lazy auto-confirmation)
 // ---------------------------------------------------------------------------
 
 /**
- * Checks if a "delivered" request has exceeded the confirmation window and
- * lazily transitions it to "delivered_unconfirmed" if so.
+ * Checks if a "delivered" request has exceeded the resident's
+ * confirmation window and, if so, automatically confirms it.
  *
- * Call this when reading a request's status for display. Does nothing if
- * the request is not in "delivered" status or if the window hasn't passed.
+ * There is no separate "unconfirmed" status: an expired "delivered"
+ * request transitions straight to "confirmed" (`confirmedAt` set) with a
+ * distinct `delivery_auto_confirmed` audit event — never `customer_confirmed`,
+ * since no resident actually responded (see PRODUCT.md "Delivery
+ * Confirmation"). Driver availability is unaffected either way: the
+ * driver was already released from this delivery when it was marked
+ * `delivered` (see `markWaterDelivered()`), so customer confirmation
+ * (manual or automatic) never gates a driver's next assignment.
+ *
+ * This is enforced lazily — called opportunistically wherever a
+ * "delivered" request is read by an operational workflow (resident
+ * portal, dispatcher dashboard/detail, request creation) — not by a
+ * precisely-scheduled job. See TECHNICAL.md "Delivery Confirmation
+ * Timeout" for why V1 does not introduce scheduled Cloud Functions for
+ * this. Does nothing if the request is not "delivered" or the window
+ * has not yet passed.
  */
 export async function checkDeliveryConfirmationTimeout(
   requestId: string,
@@ -1132,53 +1166,32 @@ export async function checkDeliveryConfirmationTimeout(
   const deliveredAt = data.deliveredAt?.toDate?.();
   if (!deliveredAt) return toWaterRequest(requestId, data);
 
-  const windowMs = appConfig.deliveryConfirmationWindowHours * 60 * 60 * 1000;
-  const expiresAt = new Date(deliveredAt.getTime() + windowMs);
-
-  if (new Date() < expiresAt) {
+  if (!isConfirmationWindowExpired(deliveredAt)) {
     // Still within confirmation window.
     return toWaterRequest(requestId, data);
   }
 
-  // Expired — transition to delivered_unconfirmed.
+  // Expired — automatically confirm. This is a SYSTEM action, so it must
+  // never be recorded as `customer_confirmed`.
   const now = FieldValue.serverTimestamp();
   await db.runTransaction(async (txn) => {
     const freshSnap = await txn.get(requestRef);
     if (!freshSnap.exists) return;
     const freshData = freshSnap.data()!;
 
-    // Only transition if still in "delivered" (prevent double-transition race).
+    // Only transition if still in "delivered" (prevent double-transition
+    // race, e.g. the resident confirmed/disputed concurrently).
     if (freshData.status !== "delivered") return;
 
-    const assignedDriverId = freshData.assignedDriverId as string | null | undefined;
-    let registryRef: FirebaseFirestore.DocumentReference | null = null;
-    if (assignedDriverId) {
-      const driverQuery = db
-        .collection("driverRegistry")
-        .where("linkedUserId", "==", assignedDriverId)
-        .limit(1);
-      const driverSnap = await txn.get(driverQuery);
-      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
-        registryRef = driverSnap.docs[0].ref;
-      }
-    }
-
     txn.update(requestRef, {
-      status: "delivered_unconfirmed",
+      status: "confirmed",
+      confirmedAt: now,
       updatedAt: now,
     });
 
-    if (registryRef) {
-      txn.update(registryRef, {
-        activeRequestId: null,
-        updatedAt: now,
-        updatedBy: null,
-      });
-    }
-
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
-      type: "delivery_confirmation_expired",
+      type: "delivery_auto_confirmed",
       actorId: null,
       actorRole: null,
       createdAt: now,

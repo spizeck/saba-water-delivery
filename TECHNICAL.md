@@ -274,7 +274,6 @@ referencing driver IDs inconsistently.
     | "claimed"
     | "delivered"
     | "confirmed"
-    | "delivered_unconfirmed"
     | "disputed"
     | "cancelled"
 
@@ -432,6 +431,7 @@ marked_delivered
 customer_confirmed
 delivery_confirmed_by_dispatcher
 customer_disputed
+delivery_auto_confirmed
 request_cancelled
 request_priority_changed
 preferred_driver_bypassed_for_priority
@@ -775,8 +775,8 @@ No driver-facing code branches on `source`.
 ## Staff confirmation for unregistered customers
 
 `confirmDeliveryByStaff()` lets dispatcher/admin staff close out a
-`delivered`/`delivered_unconfirmed` request on behalf of an unregistered
-customer, who has no authenticated portal to confirm through themselves.
+`delivered` request on behalf of an unregistered customer, who has no
+authenticated portal to confirm through themselves.
 It is scoped to `customerId === null` requests only — it throws
 `REQUEST_HAS_REGISTERED_CUSTOMER` if called against a registered
 resident's request, which must go through their own
@@ -784,6 +784,9 @@ resident's request, which must go through their own
 dispute-resolution tools) instead. It records
 `delivery_confirmed_by_dispatcher`, never `customer_confirmed`, so the
 audit trail never misrepresents a staff action as the customer's own.
+Both accept only `status === "delivered"` — there is no separate
+"unconfirmed" status to also accept (see "Delivery Confirmation
+Timeout" below).
 
 ## Future account linking
 
@@ -792,6 +795,99 @@ later be associated with a registered account, but this must be a
 deliberate, staff-initiated, auditable action — never an automatic
 background match by name alone. Do not build this until explicitly
 requested.
+
+---
+
+# Delivery Confirmation Timeout
+
+See PRODUCT.md "Delivery Confirmation" for the product rules. This
+section is the implementation reference.
+
+## One active delivery vs. customer confirmation
+
+These are deliberately independent concerns:
+
+- **One active delivery per driver** — a driver's operational
+  responsibility for dispatch purposes ends the moment they mark a
+  request `delivered`. `markWaterDelivered()` clears
+  `driverRegistry.activeRequestId` in the same transaction that sets
+  `status: "delivered"`, so the driver can immediately receive another
+  offer (see "Request Claiming" above and "Dispatch Offers").
+- **Customer confirmation** — a separate, resident-facing 24-hour
+  window (`appConfig.deliveryConfirmationWindowHours`,
+  `src/lib/domain/config.ts`) during which the resident may confirm or
+  dispute the delivery. Nothing about this window ever touches driver
+  availability or `activeRequestId` — confirming, disputing, or the
+  window silently expiring all happen entirely on the request document.
+
+## No separate "unconfirmed" status
+
+There is no `delivered_unconfirmed` status. `WaterRequestStatus` has
+exactly `"delivered"` and `"confirmed"` for this part of the lifecycle.
+A delivered request that has not yet been confirmed is simply
+`status === "delivered"`; whether it is "genuinely still waiting" or
+"past its deadline and about to auto-resolve" is a computed, not
+persisted, distinction (`isConfirmationWindowExpired()` in
+`src/lib/domain/deliveryConfirmation.ts`). Display code should use this
+computation (see `SummaryMetrics.awaitingConfirmation` in
+`statistics.ts`) rather than introducing a new persisted status.
+
+## Auto-confirmation
+
+`checkDeliveryConfirmationTimeout()` (`src/lib/domain/waterRequests.ts`)
+is the single place this rule is enforced:
+
+1. If the request is not `"delivered"`, or `deliveredAt` is missing, or
+   the window has not yet expired, it is a no-op.
+2. If the window has expired, a transaction re-checks the request is
+   still `"delivered"` (in case the resident just confirmed/disputed
+   concurrently) and, if so, atomically sets `status: "confirmed"` and
+   `confirmedAt`, recording a `delivery_auto_confirmed` event with
+   `actorId: null, actorRole: null` — the same "system-generated" event
+   shape already used for `preferred_driver_expired`. This is never
+   recorded as `customer_confirmed`, so the audit trail always
+   distinguishes an actual resident confirmation from a timeout.
+
+`confirmWaterDelivery()`, `disputeWaterDelivery()`, and
+`confirmDeliveryByStaff()` all only accept `status === "delivered"` —
+once auto-confirmed, the request is `"confirmed"` and these correctly
+reject further action on it (`INVALID_STATUS_FOR_CONFIRM` /
+`INVALID_STATUS_FOR_DISPUTE`).
+
+## Lazy enforcement, not a scheduled job
+
+V1 does **not** introduce a scheduled Cloud Function for this. Per
+DEVIN.md "Do Not Overbuild", `checkDeliveryConfirmationTimeout()` is
+called opportunistically wherever a `"delivered"` request is read by an
+operational workflow:
+
+- Resident portal (`src/app/resident/page.tsx`) — the resident's own
+  active request.
+- Dispatcher dashboard (`src/app/dispatcher/page.tsx`) — every currently
+  `"delivered"` request whose window has expired, before rendering.
+- Dispatcher request detail (`src/app/dispatcher/[requestId]/page.tsx`).
+- `createWaterRequest()` — see "Resident Duplicate Protection" below.
+
+This means auto-confirmation is **not guaranteed to happen at exactly
+24 hours** — it happens the next time any of the above touches that
+request. Do not claim exact-time execution in product communication;
+the guarantee is "confirmed automatically no later than the next
+relevant system access," which for an actively-used dispatcher
+dashboard is effectively immediate in practice.
+
+## Resident duplicate protection after timeout
+
+`createWaterRequest()` must not permanently block a resident from
+requesting again merely because an old delivered request's confirmation
+window expired and nobody happened to open it. Before the one-active-
+request transactional check runs, `createWaterRequest()` looks up the
+resident's `"delivered"` request (if any) and calls
+`checkDeliveryConfirmationTimeout()` on it first. If that request's
+window has expired, it is auto-confirmed right there, so the subsequent
+duplicate check (which only treats `"delivered"` as active, not
+`"confirmed"`) no longer sees it as blocking. If the window has not yet
+expired, the request is still legitimately active and the existing
+`DUPLICATE_ACTIVE_REQUEST` behavior is unchanged.
 
 ---
 
@@ -807,6 +903,7 @@ claimWaterRequest()
 markWaterDelivered()
 confirmWaterDelivery()
 disputeWaterDelivery()
+checkDeliveryConfirmationTimeout()
 cancelWaterRequest()
 expirePreferredDriverHold()
 getNextOfferForDriver()
@@ -819,6 +916,14 @@ getActiveCustomerIds()
 confirmDeliveryByStaff()
 changeRequestPriority()
 reevaluatePreferredDriverHoldForPriority()
+```
+
+`src/lib/domain/deliveryConfirmation.ts` (pure, no Firestore access —
+see "Delivery Confirmation Timeout" above):
+
+```text
+confirmationDeadline()
+isConfirmationWindowExpired()
 ```
 
 `src/lib/domain/priority.ts` (pure, no Firestore access):
@@ -1085,9 +1190,9 @@ remains a proper absolute instant. Only two things are Saba-local:
 
 **Elapsed durations are unaffected and need nothing from this module** —
 "2h ago," the 1-hour decline cooldown, the 24-hour preferred-driver
-window, and the 48-hour confirmation window are plain millisecond
-differences, not calendar-anchored, so they are correct in any timezone
-by construction.
+window, and the 24-hour delivery confirmation window are plain
+millisecond differences, not calendar-anchored, so they are correct in
+any timezone by construction.
 
 Do not hard-code a `-4` (or any) hour offset anywhere else in the
 codebase. If a new feature needs Saba-local display or a new calendar

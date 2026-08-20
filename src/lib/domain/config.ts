@@ -22,10 +22,15 @@ export const appConfig = {
   preferredDriverWindowHours: 24,
 
   /**
-   * Hours after a delivery is marked `delivered` before it is considered
-   * `delivered_unconfirmed` if the resident has not responded.
+   * Hours a resident has, after a delivery is marked `delivered`, to
+   * confirm receipt or report a problem before the delivery is
+   * automatically confirmed (see `src/lib/domain/deliveryConfirmation.ts`
+   * and PRODUCT.md "Delivery Confirmation"). Automatic confirmation is
+   * enforced lazily — the next time the request is read by any
+   * operational workflow — not by a precisely-scheduled job. See
+   * TECHNICAL.md "Delivery Confirmation Timeout".
    */
-  deliveryConfirmationWindowHours: 48,
+  deliveryConfirmationWindowHours: 24,
 
   /**
    * Default dispatch (single-offer) settings. These are the seed values

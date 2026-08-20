@@ -22,7 +22,6 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   claimed: "Claimed",
   delivered: "Delivered",
   confirmed: "Confirmed",
-  delivered_unconfirmed: "Unconfirmed",
   disputed: "DISPUTED",
   cancelled: "Cancelled",
 };
@@ -34,7 +33,6 @@ const STATUS_COLORS: Record<WaterRequestStatus, string> = {
   claimed: "bg-indigo-50 text-indigo-800",
   delivered: "bg-green-50 text-green-800",
   confirmed: "bg-green-50 text-green-700",
-  delivered_unconfirmed: "bg-amber-50 text-amber-800",
   disputed: "bg-red-100 text-red-900 font-bold",
   cancelled: "bg-slate-100 text-slate-500",
 };
@@ -93,6 +91,11 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[req.status]}`}>
                         {STATUS_LABELS[req.status]}
                       </span>
+                      {req.status === "delivered" && (
+                        <span className="ml-1.5 text-[10px] font-medium text-slate-500">
+                          awaiting confirmation
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-3">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[req.dispatchPriority]}`}>

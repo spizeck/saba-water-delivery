@@ -35,6 +35,16 @@ export type DriverAvailabilityStatus = "online" | "offline";
  * Resident-facing statuses stay simple. Internal implementation details
  * (e.g. additional bookkeeping states) may be added later without
  * changing what is shown to residents.
+ *
+ * There is deliberately no separate "delivered but unconfirmed" status.
+ * A `"delivered"` request that receives no resident response within the
+ * confirmation window is automatically transitioned straight to
+ * `"confirmed"` — see PRODUCT.md "Delivery Confirmation" and
+ * TECHNICAL.md "Delivery Confirmation Timeout". Display code that wants
+ * to distinguish "delivered, awaiting confirmation" from "delivered and
+ * confirmed" should compute that from `status === "delivered"` plus the
+ * confirmation deadline (`src/lib/domain/deliveryConfirmation.ts`),
+ * never from a separate persisted status.
  */
 export type WaterRequestStatus =
   | "requested"
@@ -43,7 +53,6 @@ export type WaterRequestStatus =
   | "claimed"
   | "delivered"
   | "confirmed"
-  | "delivered_unconfirmed"
   | "disputed"
   | "cancelled";
 
@@ -264,7 +273,7 @@ export type WaterRequestEventType =
   | "customer_confirmed"
   | "delivery_confirmed_by_dispatcher"
   | "customer_disputed"
-  | "delivery_confirmation_expired"
+  | "delivery_auto_confirmed"
   | "dispute_resolved_completed"
   | "dispute_resolved_reopened"
   | "request_cancelled"

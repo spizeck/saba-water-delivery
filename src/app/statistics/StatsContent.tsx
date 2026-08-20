@@ -65,9 +65,8 @@ export function StatsContent({ stats }: StatsContentProps) {
           color="green"
         />
         <MetricCard
-          label="Delivered"
-          value={stats.summary.deliveredUnconfirmed}
-          sublabel="unconfirmed"
+          label="Awaiting Confirmation"
+          value={stats.summary.awaitingConfirmation}
         />
         <MetricCard
           label="Disputed"

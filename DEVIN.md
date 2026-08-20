@@ -207,7 +207,12 @@ enforces this server-side: an already-claimed request prevents new offers
 and blocks a second claim, even through stale browser tabs or direct
 server-action calls. The driver stays online and remains eligible;
 accepting a delivery only makes them temporarily unavailable for another
-assignment until the current one is marked delivered.
+assignment until the current one is marked delivered — at that exact
+moment the driver's assignment is complete and they may immediately
+receive another offer. The resident's separate 24-hour delivery
+confirmation window (see PRODUCT.md / TECHNICAL.md "Delivery
+Confirmation Timeout") never delays this — customer confirmation and
+driver availability are independent.
 
 Drivers never browse a full list of open requests — see PRODUCT.md /
 TECHNICAL.md "Dispatch Offers". Declining too many offers in a day
@@ -227,7 +232,7 @@ A dispatcher should quickly see:
 - Preferred-driver holds
 - Claimed requests
 - Aging requests
-- Delivered/unconfirmed requests
+- Delivered requests awaiting customer confirmation
 - Disputes
 - Ineligible drivers
 
@@ -518,7 +523,7 @@ staff. Accessible via "View Statistics" links in both portals.
 
 ## Metric sections
 
-- **Summary cards:** Total requests, confirmed, unconfirmed, disputed, cancelled, gallons.
+- **Summary cards:** Total requests, confirmed, awaiting confirmation, disputed, cancelled, gallons.
 - **Current operations:** Open requests, aging (>24h, >48h), unresolved disputes, oldest.
 - **Average times:** Request→Claim, Request→Delivery, Claim→Delivery, Delivery→Confirm.
 - **Request volume:** Bar chart (daily for short periods, monthly for year/all).

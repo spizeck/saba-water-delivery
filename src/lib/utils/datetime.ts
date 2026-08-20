@@ -20,8 +20,8 @@
  * a government user in any timezone sees genuine Saba operational time.
  *
  * Elapsed-duration displays ("2h ago", a 1-hour cooldown, a 24-hour
- * preferred-driver window, a 48-hour confirmation window) are NOT
- * timezone-sensitive — they are computed as plain millisecond
+ * preferred-driver window, a 24-hour delivery confirmation window) are
+ * NOT timezone-sensitive — they are computed as plain millisecond
  * differences and do not need anything from this module.
  */
 

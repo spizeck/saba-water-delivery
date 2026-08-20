@@ -4,11 +4,12 @@ import Link from "next/link";
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
+import { isConfirmationWindowExpired } from "@/lib/domain/deliveryConfirmation";
 import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { priorityRankFor } from "@/lib/domain/priority";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
-import { getAllRequests } from "@/lib/domain/waterRequests";
+import { checkDeliveryConfirmationTimeout, getAllRequests } from "@/lib/domain/waterRequests";
 
 import { DriverList } from "./DriverList";
 import { RequestList } from "./RequestList";
@@ -20,23 +21,39 @@ export const metadata: Metadata = {
 /** Priority ordering for the operational queue. Lower = higher priority. */
 const STATUS_PRIORITY: Record<WaterRequestStatus, number> = {
   disputed: 0,
-  delivered_unconfirmed: 1,
-  delivered: 2,
-  available: 3,
-  preferred_driver_hold: 4,
-  claimed: 5,
-  requested: 6,
-  confirmed: 7,
-  cancelled: 8,
+  delivered: 1,
+  available: 2,
+  preferred_driver_hold: 3,
+  claimed: 4,
+  requested: 5,
+  confirmed: 6,
+  cancelled: 7,
 };
 
 export default async function DispatcherPortalPage() {
   const { profile } = await requireRole(["dispatcher", "admin"]);
 
-  const [allRequests, allDrivers] = await Promise.all([
+  const [initialRequests, allDrivers] = await Promise.all([
     getAllRequests(),
     getAllDriverRegistryEntries(),
   ]);
+
+  // Lazily auto-confirm any "delivered" request whose confirmation
+  // window has already expired, so the dashboard never keeps showing a
+  // stale "delivered" request that should have resolved on its own —
+  // see PRODUCT.md "Delivery Confirmation".
+  const expiredDeliveredIds = initialRequests
+    .filter(
+      (r) =>
+        r.status === "delivered" &&
+        r.deliveredAt &&
+        isConfirmationWindowExpired(new Date(r.deliveredAt)),
+    )
+    .map((r) => r.id);
+  if (expiredDeliveredIds.length > 0) {
+    await Promise.all(expiredDeliveredIds.map((id) => checkDeliveryConfirmationTimeout(id)));
+  }
+  const allRequests = expiredDeliveredIds.length > 0 ? await getAllRequests() : initialRequests;
 
   // Sort by operational status group first (disputes/unconfirmed need
   // staff attention regardless of dispatch priority), then by dispatch

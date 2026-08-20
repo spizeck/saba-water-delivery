@@ -21,7 +21,6 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   claimed: "Claimed",
   delivered: "Delivered",
   confirmed: "Confirmed",
-  delivered_unconfirmed: "Unconfirmed",
   disputed: "DISPUTED",
   cancelled: "Cancelled",
 };
@@ -32,7 +31,6 @@ const OPEN_STATUSES: WaterRequestStatus[] = [
   "available",
   "claimed",
   "delivered",
-  "delivered_unconfirmed",
   "disputed",
 ];
 

@@ -7,6 +7,7 @@ import { sabaCalendarDateKey, startOfSabaMonth, startOfSabaYear } from "@/lib/ut
 
 import type { DispatchPriority, WaterRequestSource, WaterRequestStatus } from "./types";
 import { appConfig } from "./config";
+import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { getOfferAggregate } from "./driverOffers";
 
 /** Fixed display order for priority breakdowns — not derived from the
@@ -28,7 +29,11 @@ const PRIORITY_LEVELS: DispatchPriority[] = ["critical", "urgent", "normal"];
  *
  * Methodology notes:
  * - "Gallons delivered" counts requests that reached delivered/confirmed/
- *   delivered_unconfirmed status (actual delivery occurred).
+ *   disputed status (actual delivery occurred). There is no separate
+ *   "delivered_unconfirmed" status — see PRODUCT.md "Delivery
+ *   Confirmation": an unresolved "delivered" request either still has an
+ *   open confirmation window ("Awaiting Confirmation") or has already
+ *   been auto-confirmed, in which case its status is "confirmed".
  * - Driver attribution uses audit events (driver_claimed, dispatcher_assigned,
  *   dispatcher_reassigned) to correctly credit the delivering driver even if
  *   reassignment occurred.
@@ -52,7 +57,11 @@ export type StatsPeriod = "7d" | "30d" | "month" | "year" | "all";
 export interface SummaryMetrics {
   totalRequests: number;
   confirmedDeliveries: number;
-  deliveredUnconfirmed: number;
+  /** status === "delivered" AND the confirmation window has not yet
+   * expired — i.e. genuinely still waiting on the resident. Once the
+   * window expires the request is auto-confirmed (see PRODUCT.md
+   * "Delivery Confirmation"), so this never grows unbounded. */
+  awaitingConfirmation: number;
   disputed: number;
   cancelled: number;
   gallonsDelivered: number;
@@ -200,12 +209,7 @@ function formatDateKey(date: Date, monthly: boolean): string {
 // ---------------------------------------------------------------------------
 
 /** Statuses that count as "delivered" (actual delivery occurred). */
-const DELIVERED_STATUSES: WaterRequestStatus[] = [
-  "delivered",
-  "confirmed",
-  "delivered_unconfirmed",
-  "disputed",
-];
+const DELIVERED_STATUSES: WaterRequestStatus[] = ["delivered", "confirmed", "disputed"];
 
 /** Statuses that mean the request is still open/active. */
 const OPEN_STATUSES: WaterRequestStatus[] = [
@@ -214,7 +218,6 @@ const OPEN_STATUSES: WaterRequestStatus[] = [
   "available",
   "claimed",
   "delivered",
-  "delivered_unconfirmed",
   "disputed",
 ];
 
@@ -272,11 +275,12 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   // ---------------------------------------------------------------------------
   // Summary metrics
   // ---------------------------------------------------------------------------
+  const now = new Date();
   const summary: SummaryMetrics = {
     totalRequests: requests.length,
     confirmedDeliveries: requests.filter((r) => r.status === "confirmed").length,
-    deliveredUnconfirmed: requests.filter(
-      (r) => r.status === "delivered_unconfirmed" || r.status === "delivered",
+    awaitingConfirmation: requests.filter(
+      (r) => r.status === "delivered" && r.deliveredAt && !isConfirmationWindowExpired(r.deliveredAt, now),
     ).length,
     disputed: requests.filter((r) => r.status === "disputed").length,
     cancelled: requests.filter((r) => r.status === "cancelled").length,
@@ -307,7 +311,6 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     };
   });
 
-  const now = new Date();
   const openRequests = allRequests.filter((r) => OPEN_STATUSES.includes(r.status));
   const h24 = 24 * 60 * 60 * 1000;
   const h48 = 48 * 60 * 60 * 1000;

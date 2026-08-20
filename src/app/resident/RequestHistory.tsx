@@ -9,7 +9,6 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   claimed: "Driver assigned",
   delivered: "Delivery marked complete",
   confirmed: "Confirmed",
-  delivered_unconfirmed: "Awaiting confirmation",
   disputed: "Issue reported",
   cancelled: "Cancelled",
 };
