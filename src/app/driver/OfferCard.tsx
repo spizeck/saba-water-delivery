@@ -106,10 +106,10 @@ export function OfferCard({ offer, request, customer }: Props) {
         </p>
       )}
 
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:gap-4">
         <form action={acceptAction} className="sm:flex-1">
           <input type="hidden" name="offerId" value={offer.id} />
-          <Button type="submit" size="lg" disabled={pending} className="w-full">
+          <Button type="submit" size="lg" disabled={pending} className="w-full sm:!w-full">
             {acceptPending ? "Accepting\u2026" : "Accept Delivery"}
           </Button>
         </form>
@@ -120,7 +120,7 @@ export function OfferCard({ offer, request, customer }: Props) {
             variant="outline"
             size="lg"
             disabled={pending}
-            className="w-full"
+            className="w-full sm:!w-full"
           >
             {declinePending ? "Declining\u2026" : "Decline"}
           </Button>
