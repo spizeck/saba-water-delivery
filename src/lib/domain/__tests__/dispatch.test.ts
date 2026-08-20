@@ -84,6 +84,7 @@ describe("dispatch selection", () => {
     const requestB = makeRequest("req-b", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [],
       available: [requestB],
@@ -107,6 +108,7 @@ describe("dispatch selection", () => {
     const requestC = makeRequest("req-c", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [],
       available: [requestC],
@@ -118,11 +120,52 @@ describe("dispatch selection", () => {
     expect(result).toEqual(requestC);
   });
 
+  it("does not offer a new request while the driver has an active claimed delivery", () => {
+    const activeDelivery = makeRequest("req-active", "claimed", {
+      assignedDriverId: driverId,
+      claimedAt: baseTime.toISOString(),
+    });
+    const requestB = makeRequest("req-b", "available");
+
+    const result = selectNextDispatchCandidate({
+      activeDelivery,
+      pendingOffer: null,
+      holds: [],
+      available: [requestB],
+      declinedRequestIds: new Set(),
+      driverId,
+      now: baseTime,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("does not reuse a pending offer while the driver has an active claimed delivery", () => {
+    const activeDelivery = makeRequest("req-active", "claimed", {
+      assignedDriverId: driverId,
+      claimedAt: baseTime.toISOString(),
+    });
+    const pendingRequest = makeRequest("req-pending", "available");
+
+    const result = selectNextDispatchCandidate({
+      activeDelivery,
+      pendingOffer: makePendingOffer(pendingRequest),
+      holds: [],
+      available: [],
+      declinedRequestIds: new Set(),
+      driverId,
+      now: baseTime,
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("excludes recently-declined requests but still offers other available requests", () => {
     const requestA = makeRequest("req-a", "available");
     const requestB = makeRequest("req-b", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [],
       available: [requestA, requestB],
@@ -138,6 +181,7 @@ describe("dispatch selection", () => {
     const requestA = makeRequest("req-a", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [],
       available: [requestA],
@@ -164,6 +208,7 @@ describe("dispatch selection", () => {
     });
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [],
       available: [normal, urgent, critical].sort(byPriorityThenAge),
@@ -184,6 +229,7 @@ describe("dispatch selection", () => {
     });
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [],
       available: [older, newer],
@@ -203,6 +249,7 @@ describe("dispatch selection", () => {
     const available = makeRequest("req-available", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [hold],
       available: [available],
@@ -222,6 +269,7 @@ describe("dispatch selection", () => {
     const available = makeRequest("req-available", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [hold],
       available: [available],
@@ -241,6 +289,7 @@ describe("dispatch selection", () => {
     const available = makeRequest("req-available", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: null,
       holds: [hold],
       available: [available],
@@ -256,6 +305,7 @@ describe("dispatch selection", () => {
     const request = makeRequest("req-pending", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: makePendingOffer(request),
       holds: [],
       available: [makeRequest("req-other", "available")],
@@ -275,6 +325,7 @@ describe("dispatch selection", () => {
     const available = makeRequest("req-available", "available");
 
     const result = selectNextDispatchCandidate({
+      activeDelivery: null,
       pendingOffer: makePendingOffer(stalePending),
       holds: [],
       available: [available],

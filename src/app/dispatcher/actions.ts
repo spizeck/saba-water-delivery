@@ -192,6 +192,11 @@ export async function assignRequest(
         case "REQUEST_NOT_ASSIGNABLE": return { status: "error", message: "Request is not in an assignable state." };
         case "DRIVER_NOT_FOUND": return { status: "error", message: "Driver not found." };
         case "DRIVER_INELIGIBLE": return { status: "error", message: "Selected driver is not eligible." };
+        case "DRIVER_HAS_ACTIVE_DELIVERY":
+          return {
+            status: "error",
+            message: "Selected driver already has an active delivery.",
+          };
         default: throw err;
       }
     }
@@ -224,6 +229,11 @@ export async function reassignRequest(
         case "REQUEST_NOT_CLAIMED": return { status: "error", message: "Request is not currently claimed." };
         case "DRIVER_NOT_FOUND": return { status: "error", message: "Driver not found." };
         case "DRIVER_INELIGIBLE": return { status: "error", message: "Selected driver is not eligible." };
+        case "DRIVER_HAS_ACTIVE_DELIVERY":
+          return {
+            status: "error",
+            message: "Selected driver already has an active delivery.",
+          };
         default: throw err;
       }
     }

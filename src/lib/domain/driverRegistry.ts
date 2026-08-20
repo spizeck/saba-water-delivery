@@ -47,6 +47,7 @@ function toDriverRegistryEntry(id: string, data: DocumentData): DriverRegistryEn
     restrictedAt: data.restrictedAt?.toDate?.().toISOString() ?? null,
     restrictedBy: data.restrictedBy ?? null,
     cooldownUntil: data.cooldownUntil?.toDate?.().toISOString() ?? null,
+    activeRequestId: data.activeRequestId ?? null,
     createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     createdBy: data.createdBy ?? "",
     updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
@@ -106,6 +107,7 @@ export async function isDriverImmediatelyAvailable(userId: string): Promise<bool
   if (entry.eligibilityStatus !== "eligible") return false;
   if (entry.availabilityStatus !== "online") return false;
   if (entry.cooldownUntil && new Date(entry.cooldownUntil) > new Date()) return false;
+  if (entry.activeRequestId) return false;
   return true;
 }
 
@@ -164,6 +166,7 @@ export async function createDriver(input: CreateDriverInput): Promise<DriverRegi
     restrictedAt: null,
     restrictedBy: null,
     cooldownUntil: null,
+    activeRequestId: null,
     createdAt: now,
     createdBy: actorId,
     updatedAt: now,

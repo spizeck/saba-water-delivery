@@ -612,6 +612,7 @@ export async function claimWaterRequest(
       throw new Error("DRIVER_NOT_FOUND");
     }
     const drvData = driverQuerySnap.docs[0].data();
+    const registryRef = driverQuerySnap.docs[0].ref;
 
     if (drvData.eligibilityStatus !== "eligible") {
       throw new Error("DRIVER_INELIGIBLE");
@@ -620,12 +621,42 @@ export async function claimWaterRequest(
       throw new Error("DRIVER_OFFLINE");
     }
 
+    // One-active-delivery invariant: a driver may only claim another request
+    // if they have no active claimed delivery. Reading/writing this on the
+    // registry document serializes concurrent claims so the invariant holds
+    // even with stale offers or direct server-action calls.
+    const activeRequestId = drvData.activeRequestId ?? null;
+    if (!activeRequestId) {
+      // Defensive fallback for registry entries created before the
+      // activeRequestId field existed. A missing field is treated as no
+      // lock only if there is no other claimed request for this driver.
+      const activeClaimSnap = await txn.get(
+        db
+          .collection(REQUESTS_COLLECTION)
+          .where("assignedDriverId", "==", driverId)
+          .where("status", "==", "claimed")
+          .limit(1),
+      );
+      if (!activeClaimSnap.empty) {
+        throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+      }
+    }
+    if (activeRequestId && activeRequestId !== requestId) {
+      throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+    }
+
     // --- Perform the claim ---
     txn.update(requestRef, {
       assignedDriverId: driverId,
       status: "claimed",
       claimedAt: now,
       updatedAt: now,
+    });
+
+    txn.update(registryRef, {
+      activeRequestId: requestId,
+      updatedAt: now,
+      updatedBy: driverId,
     });
 
     // Audit event
@@ -840,10 +871,17 @@ export async function markWaterDelivered(
   const { requestId, driverId } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const driverQuery = db
+    .collection("driverRegistry")
+    .where("linkedUserId", "==", driverId)
+    .limit(1);
   const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (txn) => {
-    const snap = await txn.get(requestRef);
+    const [snap, driverQuerySnap] = await Promise.all([
+      txn.get(requestRef),
+      txn.get(driverQuery),
+    ]);
     if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
 
     const data = snap.data()!;
@@ -860,6 +898,17 @@ export async function markWaterDelivered(
       deliveredAt: now,
       updatedAt: now,
     });
+
+    // Clear the driver's active delivery lock so they can receive the next
+    // offer immediately.
+    if (!driverQuerySnap.empty) {
+      const registryRef = driverQuerySnap.docs[0].ref;
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: driverId,
+      });
+    }
 
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
@@ -1101,10 +1150,31 @@ export async function checkDeliveryConfirmationTimeout(
     // Only transition if still in "delivered" (prevent double-transition race).
     if (freshData.status !== "delivered") return;
 
+    const assignedDriverId = freshData.assignedDriverId as string | null | undefined;
+    let registryRef: FirebaseFirestore.DocumentReference | null = null;
+    if (assignedDriverId) {
+      const driverQuery = db
+        .collection("driverRegistry")
+        .where("linkedUserId", "==", assignedDriverId)
+        .limit(1);
+      const driverSnap = await txn.get(driverQuery);
+      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
+        registryRef = driverSnap.docs[0].ref;
+      }
+    }
+
     txn.update(requestRef, {
       status: "delivered_unconfirmed",
       updatedAt: now,
     });
+
+    if (registryRef) {
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: null,
+      });
+    }
 
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
@@ -1199,10 +1269,34 @@ export async function cancelWaterRequest(
       throw new Error("REQUEST_ALREADY_RESOLVED");
     }
 
+    const assignedDriverId = data.assignedDriverId as string | null | undefined;
+    let registryRef: FirebaseFirestore.DocumentReference | null = null;
+    if (data.status === "claimed" && assignedDriverId) {
+      const driverQuery = db
+        .collection("driverRegistry")
+        .where("linkedUserId", "==", assignedDriverId)
+        .limit(1);
+      const driverSnap = await txn.get(driverQuery);
+      if (!driverSnap.empty) {
+        const driverData = driverSnap.docs[0].data();
+        if (driverData.activeRequestId === requestId) {
+          registryRef = driverSnap.docs[0].ref;
+        }
+      }
+    }
+
     txn.update(requestRef, {
       status: "cancelled",
       updatedAt: now,
     });
+
+    if (registryRef) {
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
+    }
 
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
@@ -1249,11 +1343,32 @@ export async function resolveDisputeCompleted(
       throw new Error("REQUEST_NOT_DISPUTED");
     }
 
+    const assignedDriverId = data.assignedDriverId as string | null | undefined;
+    let registryRef: FirebaseFirestore.DocumentReference | null = null;
+    if (assignedDriverId) {
+      const driverQuery = db
+        .collection("driverRegistry")
+        .where("linkedUserId", "==", assignedDriverId)
+        .limit(1);
+      const driverSnap = await txn.get(driverQuery);
+      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
+        registryRef = driverSnap.docs[0].ref;
+      }
+    }
+
     txn.update(requestRef, {
       status: "confirmed",
       confirmedAt: now,
       updatedAt: now,
     });
+
+    if (registryRef) {
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
+    }
 
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
@@ -1297,6 +1412,19 @@ export async function resolveDisputeReopened(
       throw new Error("REQUEST_NOT_DISPUTED");
     }
 
+    const assignedDriverId = data.assignedDriverId as string | null | undefined;
+    let registryRef: FirebaseFirestore.DocumentReference | null = null;
+    if (assignedDriverId) {
+      const driverQuery = db
+        .collection("driverRegistry")
+        .where("linkedUserId", "==", assignedDriverId)
+        .limit(1);
+      const driverSnap = await txn.get(driverQuery);
+      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
+        registryRef = driverSnap.docs[0].ref;
+      }
+    }
+
     txn.update(requestRef, {
       status: "available",
       assignedDriverId: null,
@@ -1306,6 +1434,14 @@ export async function resolveDisputeReopened(
       availableAt: now,
       updatedAt: now,
     });
+
+    if (registryRef) {
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
+    }
 
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
@@ -1364,8 +1500,27 @@ export async function dispatcherAssign(
 
     if (driverQuerySnap.empty) throw new Error("DRIVER_NOT_FOUND");
     const drvData = driverQuerySnap.docs[0].data();
+    const registryRef = driverQuerySnap.docs[0].ref;
     if (drvData.eligibilityStatus !== "eligible") {
       throw new Error("DRIVER_INELIGIBLE");
+    }
+
+    // One-active-delivery invariant: dispatchers may not stack assignments.
+    const activeRequestId = drvData.activeRequestId ?? null;
+    if (!activeRequestId) {
+      const activeClaimSnap = await txn.get(
+        db
+          .collection(REQUESTS_COLLECTION)
+          .where("assignedDriverId", "==", driverId)
+          .where("status", "==", "claimed")
+          .limit(1),
+      );
+      if (!activeClaimSnap.empty) {
+        throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+      }
+    }
+    if (activeRequestId && activeRequestId !== requestId) {
+      throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
     }
 
     txn.update(requestRef, {
@@ -1373,6 +1528,12 @@ export async function dispatcherAssign(
       status: "claimed",
       claimedAt: now,
       updatedAt: now,
+    });
+
+    txn.update(registryRef, {
+      activeRequestId: requestId,
+      updatedAt: now,
+      updatedBy: actorId,
     });
 
     const eventRef = requestRef.collection("events").doc();
@@ -1410,16 +1571,16 @@ export async function dispatcherReassign(
   const { requestId, newDriverId, actorId, reason } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  const driverQuery = db
+  const newDriverQuery = db
     .collection("driverRegistry")
     .where("linkedUserId", "==", newDriverId)
     .limit(1);
   const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (txn) => {
-    const [requestSnap, driverQuerySnap] = await Promise.all([
+    const [requestSnap, newDriverQuerySnap] = await Promise.all([
       txn.get(requestRef),
-      txn.get(driverQuery),
+      txn.get(newDriverQuery),
     ]);
 
     if (!requestSnap.exists) throw new Error("REQUEST_NOT_FOUND");
@@ -1429,19 +1590,68 @@ export async function dispatcherReassign(
       throw new Error("REQUEST_NOT_CLAIMED");
     }
 
-    if (driverQuerySnap.empty) throw new Error("DRIVER_NOT_FOUND");
-    const drvData = driverQuerySnap.docs[0].data();
-    if (drvData.eligibilityStatus !== "eligible") {
+    if (newDriverQuerySnap.empty) throw new Error("DRIVER_NOT_FOUND");
+    const newDrvData = newDriverQuerySnap.docs[0].data();
+    const newRegistryRef = newDriverQuerySnap.docs[0].ref;
+    if (newDrvData.eligibilityStatus !== "eligible") {
       throw new Error("DRIVER_INELIGIBLE");
     }
 
     const previousDriverId = reqData.assignedDriverId;
+
+    // One-active-delivery invariant: target driver must not already have a
+    // different active delivery. If the target is already assigned to this
+    // request, the reassignment is a no-op assignment-wise.
+    const activeRequestId = newDrvData.activeRequestId ?? null;
+    if (!activeRequestId) {
+      const activeClaimSnap = await txn.get(
+        db
+          .collection(REQUESTS_COLLECTION)
+          .where("assignedDriverId", "==", newDriverId)
+          .where("status", "==", "claimed")
+          .limit(1),
+      );
+      if (!activeClaimSnap.empty) {
+        throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+      }
+    }
+    if (activeRequestId && activeRequestId !== requestId) {
+      throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+    }
+
+    // Load the previous driver's registry record so we can clear their active
+    // delivery lock, if any.
+    let previousRegistryRef: FirebaseFirestore.DocumentReference | null = null;
+    if (previousDriverId && previousDriverId !== newDriverId) {
+      const previousDriverQuery = db
+        .collection("driverRegistry")
+        .where("linkedUserId", "==", previousDriverId)
+        .limit(1);
+      const previousDriverSnap = await txn.get(previousDriverQuery);
+      if (!previousDriverSnap.empty) {
+        previousRegistryRef = previousDriverSnap.docs[0].ref;
+      }
+    }
 
     txn.update(requestRef, {
       assignedDriverId: newDriverId,
       claimedAt: now,
       updatedAt: now,
     });
+
+    txn.update(newRegistryRef, {
+      activeRequestId: requestId,
+      updatedAt: now,
+      updatedBy: actorId,
+    });
+
+    if (previousRegistryRef) {
+      txn.update(previousRegistryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
+    }
 
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {

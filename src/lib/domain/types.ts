@@ -349,6 +349,14 @@ export interface DriverRegistryEntry {
   /** Temporary dispatch-offer decline cooldown (future timestamp). */
   cooldownUntil: string | null;
 
+  /**
+   * Operational lock for the one-active-delivery invariant. Set to the
+   * water request ID currently claimed by this driver; null when no
+   * active delivery is assigned. This is the authoritative source for
+   * whether a driver can be assigned another request atomically.
+   */
+  activeRequestId: string | null;
+
   createdAt: string;
   createdBy: string;
   updatedAt: string;

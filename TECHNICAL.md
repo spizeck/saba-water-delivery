@@ -129,6 +129,12 @@ Role changes are recorded here for audit. These are admin-only operations.
 
   cooldownUntil: Timestamp | null
 
+  // Operational lock for the one-active-delivery invariant. Set to the
+  // currently claimed waterRequest ID; null when the driver has no
+  // active delivery. Updated atomically inside the same Firestore
+  // transactions that assign or complete a delivery.
+  activeRequestId: string | null
+
   createdAt: Timestamp
   createdBy: string
   updatedAt: Timestamp
@@ -463,6 +469,7 @@ The transaction must verify:
 - Request has no assigned driver.
 - Driver is authorized.
 - Driver is eligible for the request.
+- Driver does not already have a different active claimed delivery.
 - Preferred-driver restrictions, if active, are satisfied.
 
 Then atomically:
@@ -470,9 +477,17 @@ Then atomically:
 - Set `assignedDriverId`.
 - Set status to `claimed`.
 - Set `claimedAt`.
+- Set `driverRegistry.activeRequestId` to this request ID.
 - Record necessary assignment information.
 
 Only one concurrent driver may succeed.
+
+A query inside the request transaction is not enough to prevent two
+concurrent claims by the same driver (Firestore queries do not guarantee
+absence of phantoms). Therefore the driver registry maintains an
+`activeRequestId` field that is read and written in the same transaction as
+the claim. This single-document lock serializes all assignment and release
+operations for a driver.
 
 `claimWaterRequest()` remains the single source of atomic-claim
 correctness. The dispatch offer workflow below is a UI/bookkeeping layer
@@ -491,19 +506,22 @@ cherry-picking (see PRODUCT.md "Dispatch Offers").
 
 ## Selection algorithm
 
-1. If the driver has a pending (unanswered) offer whose underlying
+1. If the driver already has a request in `claimed` status, return no
+   offer. They are online but temporarily unavailable for a second
+   delivery until the current one is marked delivered.
+2. If the driver has a pending (unanswered) offer whose underlying
    request is still valid to offer to them, reuse it — reloading the
    driver portal must not manufacture a new offer while one is pending.
    Otherwise mark the stale offer `"expired"`.
-2. Otherwise, opportunistically expire any preferred-driver holds whose
-   window has passed (mirrors the previous lazy-expiration behavior, so
-   the general queue stays healthy without a scheduled job).
-3. Select a candidate:
+3. Opportunistically expire any preferred-driver holds whose window has
+   passed (mirrors the previous lazy-expiration behavior, so the general
+   queue stays healthy without a scheduled job).
+4. Select a candidate:
    - A `preferred_driver_hold` addressed to this driver, if not expired.
    - Otherwise, the oldest `available` request this driver has not
      already declined (`getDeclinedRequestIdsForDriver()`), preserving
      fairness by request age.
-4. Create a `driverOffers` document for the candidate and return it.
+5. Create a `driverOffers` document for the candidate and return it.
 
 ## Accept / decline
 

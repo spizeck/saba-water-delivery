@@ -200,6 +200,14 @@ Primary driver workflow:
 4. View customer/location details for an accepted delivery.
 5. Deliver water.
 6. Mark delivered.
+7. Receive the next offer when available.
+
+A driver may have only one active claimed delivery at a time. The system
+enforces this server-side: an already-claimed request prevents new offers
+and blocks a second claim, even through stale browser tabs or direct
+server-action calls. The driver stays online and remains eligible;
+accepting a delivery only makes them temporarily unavailable for another
+assignment until the current one is marked delivered.
 
 Drivers never browse a full list of open requests — see PRODUCT.md /
 TECHNICAL.md "Dispatch Offers". Declining too many offers in a day

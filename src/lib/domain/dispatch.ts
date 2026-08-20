@@ -20,6 +20,7 @@ import {
 import {
   claimWaterRequest,
   expirePreferredDriverHold,
+  getClaimedRequestsForDriver,
   getWaterRequestById,
   toWaterRequest,
 } from "./waterRequests";
@@ -75,6 +76,12 @@ export interface NextOffer {
 export async function getNextOfferForDriver(driverId: string): Promise<NextOffer | null> {
   const db = getAdminDb();
   const now = new Date();
+
+  // Load the driver's current claimed delivery (if any). This is used both to
+  // enforce the one-active-delivery rule and to avoid issuing a duplicate
+  // offer while a delivery is in progress.
+  const activeDeliveries = await getClaimedRequestsForDriver(driverId);
+  const activeDelivery = activeDeliveries[0] ?? null;
 
   // Reuse an existing pending offer so reloading the page doesn't
   // manufacture a new offer while one is awaiting a response.
@@ -134,6 +141,7 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
   );
 
   const candidate = selectNextDispatchCandidate({
+    activeDelivery,
     pendingOffer: pendingPair,
     holds,
     available,

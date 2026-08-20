@@ -96,6 +96,11 @@ export async function acceptOffer(
           return { status: "error", message: "You are not currently eligible to claim requests." };
         case "DRIVER_OFFLINE":
           return { status: "error", message: "You must be online to claim requests." };
+        case "DRIVER_HAS_ACTIVE_DELIVERY":
+          return {
+            status: "error",
+            message: "Complete your current delivery before accepting another.",
+          };
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver profile not found." };
         case "OFFER_NOT_FOUND":

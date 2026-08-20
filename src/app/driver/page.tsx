@@ -80,11 +80,14 @@ export default async function DriverPortalPage() {
     : null;
   const canReceiveOffers = isOnline && isEligible && !inCooldown;
 
-  // Fetch the current offer (if any) and active deliveries.
-  const [nextOffer, claimedDeliveries] = await Promise.all([
-    canReceiveOffers ? getNextOfferForDriver(uid) : null,
-    getClaimedRequestsForDriver(uid),
-  ]);
+  // Fetch the driver's active deliveries first; if they already have one,
+  // skip the offer query to avoid an unnecessary read. getNextOfferForDriver
+  // still enforces the same rule independently.
+  const claimedDeliveries = await getClaimedRequestsForDriver(uid);
+  const nextOffer =
+    canReceiveOffers && claimedDeliveries.length === 0
+      ? await getNextOfferForDriver(uid)
+      : null;
 
   // Fetch customer info for legacy requests only (those without a
   // customer snapshot). Unregistered customers have no `users/{uid}`
@@ -197,7 +200,16 @@ export default async function DriverPortalPage() {
             />
           )}
 
-          {canReceiveOffers && !nextOffer && (
+          {canReceiveOffers && !nextOffer && claimedDeliveries.length > 0 && (
+            <Card>
+              <h2 className="text-lg font-bold text-slate-900">Next Delivery</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Complete your current delivery to receive the next request.
+              </p>
+            </Card>
+          )}
+
+          {canReceiveOffers && !nextOffer && claimedDeliveries.length === 0 && (
             <Card>
               <h2 className="text-lg font-bold text-slate-900">Next Delivery</h2>
               <p className="mt-2 text-sm text-slate-600">

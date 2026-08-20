@@ -481,10 +481,11 @@ water emergency. Concretely:
   store the expiration; release to the general queue when it passes.
 - **Urgent/Critical request**: the preference does not get to create an
   unreasonable delay. If the preferred driver is immediately eligible,
-  linked, online, and not in cooldown, they still get first offer. If
-  they are offline, ineligible, unlinked, or in cooldown, the hold is
-  skipped entirely and the request goes straight to the general queue —
-  it is never trapped waiting for that specific driver.
+  linked, online, not in cooldown, and has no active claimed delivery,
+  they still get first offer. If they are offline, ineligible, unlinked,
+  in cooldown, or already servicing another delivery, the hold is skipped
+  entirely and the request goes straight to the general queue — it is never
+  trapped waiting for that specific driver.
 - **Preferred driver declines**: the preference ends immediately and
   the request opens to the general queue, regardless of priority.
 - **Priority escalated while held** (e.g. dispatcher changes Normal to
@@ -508,7 +509,12 @@ Government controls whether the driver is:
 - `eligible`
 - `ineligible`
 
-An eligible, online driver can claim eligible requests.
+An eligible, online driver can claim eligible requests, but only if they do
+not already have an active claimed delivery. "Online" is the driver's chosen
+availability; "immediately available for another delivery" adds the additional
+requirement that they currently have no claimed request. Accepting a delivery
+keeps the driver online but makes them temporarily unavailable for new
+assignments until the current delivery is marked delivered.
 
 An eligible, offline driver receives no new work.
 
@@ -528,6 +534,13 @@ Rather than browsing a list of open requests, an eligible, online driver is
 offered exactly **one** claimable request at a time — similar to
 delivery-driver platforms. This reduces cherry-picking and supports equal
 access to water.
+
+A driver may have at most **one active claimed delivery** at any time. If a
+driver already has a request in `claimed` status, the system must not issue
+another offer and must not allow them to claim another request. They remain
+online and eligible; they simply cannot take on a second delivery until the
+current one is marked delivered. This rule is enforced server-side, not only
+by the UI.
 
 The driver sees:
 

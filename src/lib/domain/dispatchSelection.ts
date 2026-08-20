@@ -16,6 +16,8 @@ export function isOfferableToDriver(
 }
 
 export interface SelectNextDispatchCandidateInput {
+  /** The driver's currently claimed active delivery, if any. */
+  activeDelivery: WaterRequest | null;
   /** An existing pending offer for this driver, if any. */
   pendingOffer: { offer: DriverOffer; request: WaterRequest } | null;
   /** Preferred-driver holds addressed to this driver (already ordered). */
@@ -38,7 +40,12 @@ export interface SelectNextDispatchCandidateInput {
 export function selectNextDispatchCandidate(
   input: SelectNextDispatchCandidateInput,
 ): WaterRequest | null {
-  const { pendingOffer, holds, available, declinedRequestIds, driverId, now } = input;
+  const { activeDelivery, pendingOffer, holds, available, declinedRequestIds, driverId, now } =
+    input;
+
+  // One-active-delivery invariant: a driver already servicing a delivery
+  // cannot be offered another until that delivery leaves "claimed" status.
+  if (activeDelivery) return null;
 
   if (pendingOffer && isOfferableToDriver(pendingOffer.request, driverId, now)) {
     return pendingOffer.request;
