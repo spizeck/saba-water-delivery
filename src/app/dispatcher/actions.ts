@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
+import { generateContinuityReportData } from "@/lib/domain/continuityReport";
 import { restrictDriver as restrictDriverEntry, restoreDriver as restoreDriverEntry } from "@/lib/domain/driverRegistry";
 import { isValidDispatchPriority } from "@/lib/domain/priority";
 import type { DispatchPriority } from "@/lib/domain/types";
@@ -19,6 +20,8 @@ import {
   resolveDisputeReopened,
 } from "@/lib/domain/waterRequests";
 import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm";
+import { sendContinuityReportEmail } from "@/lib/email/continuityReportEmail";
+import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
 
 /** Shared, user-facing messages for water-situation validation errors. */
 const WATER_SITUATION_ERROR_MESSAGES: Record<string, string> = {
@@ -488,4 +491,47 @@ export async function changePriority(
 
   revalidatePath("/dispatcher");
   return { status: "success", message: "Priority updated." };
+}
+
+// ---------------------------------------------------------------------------
+// Continuity report — manual "Send Now"
+// ---------------------------------------------------------------------------
+
+export interface SendContinuityReportState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+/**
+ * Staff-only "Send Continuity Report Now" — immediately emails the
+ * current continuity snapshot using the exact same report-generation,
+ * PDF-rendering, and email-sending functions as the nightly cron job
+ * (`src/app/api/cron/continuity-report/route.ts`) and the manual
+ * download route — no duplicate report logic. Distinct from "Generate
+ * Continuity Report," which only downloads the PDF and never emails
+ * anything. See PRODUCT.md / TECHNICAL.md "Operational Continuity
+ * Snapshot".
+ */
+export async function sendContinuityReportNow(
+  _prevState: SendContinuityReportState,
+  _formData: FormData,
+): Promise<SendContinuityReportState> {
+  await requireStaff();
+
+  const data = await generateContinuityReportData();
+  const pdfBuffer = await renderContinuityReportPdf(data);
+  const result = await sendContinuityReportEmail(pdfBuffer, data);
+
+  if (!result.ok) {
+    console.error("[continuity-report] manual send failed:", result.error);
+    return {
+      status: "error",
+      message: result.error ?? "Failed to send the continuity report email.",
+    };
+  }
+
+  return {
+    status: "success",
+    message: `Continuity report sent (${data.unassigned.length} unassigned, ${data.assigned.length} assigned).`,
+  };
 }

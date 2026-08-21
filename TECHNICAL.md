@@ -1528,14 +1528,30 @@ tested without Firestore or network access:
   driver registry entries (`getAllDriverRegistryEntries()`), builds a
   `linkedUserId -> displayName` map, and calls
   `buildContinuityReportData()`. Read-only — never writes anything.
+- `src/lib/reports/continuityReportFilename.ts` — **pure**.
+  `continuityReportPdfFilename(generatedAt)` builds the PDF filename
+  (e.g. `saba-water-delivery-snapshot-2026-08-21.pdf`) using the Saba
+  LOCAL calendar date, never the server/UTC date — the nightly report
+  generates at 8:00 PM Saba time, which is midnight UTC, so the UTC
+  calendar date is a day ahead of the Saba calendar date at that exact
+  moment. Contains no customer data. Re-exported from
+  `continuityReportPdf.ts` for callers.
 - `src/lib/reports/continuityReportPdf.ts` — `renderContinuityReportPdf(data)`
   renders the report to a PDF `Buffer` using `pdfkit`. One
-  implementation, shared by both the nightly job and the manual action
+  implementation, shared by both the nightly job and the manual actions
   (see DEVIN.md "Do Not Overbuild" — no duplicate PDF code, no templating
   engine, no report-management platform).
-- `src/lib/email/continuityReportEmail.ts` — `sendContinuityReportEmail(pdfBuffer, data)`
-  emails the PDF via SMTP (`nodemailer`). Returns `{ ok, error? }` and
-  never throws — see "Reliability" below.
+- `src/lib/email/continuityReportEmailContent.ts` — **pure**, no
+  `server-only`, no Resend SDK import. `parseRecipientList()`,
+  `getContinuityReportEmailConfig()`, and
+  `buildContinuityReportEmailPayload(pdfBuffer, data, config)` (the
+  exact object passed to Resend) are all unit tested directly without
+  mocking the Resend SDK or making a network call.
+- `src/lib/email/continuityReportEmail.ts` — thin `server-only` wrapper.
+  `sendContinuityReportEmail(pdfBuffer, data)` reads config, builds the
+  payload via the pure module above, and calls Resend's
+  `emails.send()`. Returns `{ ok, error? }` and never throws — see
+  "Reliability" below.
 
 ## Report contents
 
@@ -1584,28 +1600,61 @@ recommended and documented in `.env.example`.
 
 ## Email delivery
 
-No email infrastructure existed in this project before this feature.
-Generic SMTP (`nodemailer`) was chosen over a commercial provider SDK
-(e.g. Resend, SendGrid) so it works with whatever mail system government
-IT already operates (Google Workspace, Microsoft 365, or an SMTP relay
-in front of any provider) without a new vendor dependency. Configuration
-is entirely environment-variable-driven (see `.env.example`):
-`CONTINUITY_REPORT_SMTP_HOST/PORT/SECURE/USER/PASSWORD`,
-`CONTINUITY_REPORT_EMAIL_FROM`, `CONTINUITY_REPORT_EMAIL_TO`. The
-recipient is configurable, never hard-coded. If any required variable is
-missing, `getContinuityReportEmailConfig()` returns `null` and
-`sendContinuityReportEmail()` returns a clear, non-crashing error
-instead of silently pretending to send.
+Email is sent via **Resend** (https://resend.com). Resend replaced an
+earlier generic-SMTP (`nodemailer`) implementation — Resend's Node SDK
+is simpler to configure correctly (a single API key, no transporter/
+host/port/TLS settings to get right) and has first-class attachment and
+error-result support. Configuration is entirely environment-variable-
+driven (see `.env.example`):
 
-## Manual generation
+- `RESEND_API_KEY` — server-only secret (never `NEXT_PUBLIC_`-prefixed;
+  never sent to the client). Create it in the Resend dashboard under
+  API Keys.
+- `CONTINUITY_REPORT_EMAIL_FROM` — sender address. **Must be on a
+  domain verified in Resend** (Resend > Domains) once real government
+  email is used; until then, Resend's own test sender
+  (`onboarding@resend.dev`) can be used for initial testing only. Never
+  hard-code a personal address.
+- `CONTINUITY_REPORT_EMAIL_TO` — comma-separated recipient list, parsed
+  and trimmed by `parseRecipientList()` (e.g.
+  `"a@example.com, b@example.com"` -> `["a@example.com",
+  "b@example.com"]`).
 
-`src/app/api/reports/continuity-snapshot/route.ts` is a `dispatcher`/
-`admin`-only (`requireRole`, same session-cookie authorization as the
-rest of those portals) GET route that calls
-`generateContinuityReportData()` and `renderContinuityReportPdf()` — the
-identical functions the nightly job uses — and streams the PDF directly
-to the browser as an attachment. A "Generate Continuity Report" link is
-available on the dispatcher dashboard (`src/app/dispatcher/page.tsx`).
+If any of the three is missing, `getContinuityReportEmailConfig()`
+returns `null` and `sendContinuityReportEmail()` returns a clear,
+non-crashing error instead of silently pretending to send. Manual PDF
+generation/download works regardless of whether email is configured —
+see "Manual generation" below.
+
+Subject: `Saba Water Delivery - Outstanding Delivery Snapshot
+(<Saba-local date>)`. Body is a short plain-text message (see
+`buildContinuityReportEmailPayload()`); the PDF is attached with the
+Saba-local-dated filename from `continuityReportFilename.ts`.
+
+## Manual generation and manual send
+
+Two distinct staff-only actions, deliberately not merged into one,
+because "let me see the current queue" and "email this out right now"
+are different intents:
+
+- **Generate Continuity Report** (download-only, no email) —
+  `src/app/api/reports/continuity-snapshot/route.ts`, a `dispatcher`/
+  `admin`-only (`requireRole`, same session-cookie authorization as the
+  rest of those portals) GET route that calls
+  `generateContinuityReportData()` and `renderContinuityReportPdf()` —
+  the identical functions the nightly job uses — and streams the PDF
+  directly to the browser as an attachment. Never sends email. Linked
+  from the dispatcher dashboard (`src/app/dispatcher/page.tsx`).
+- **Send Continuity Report Now** (email immediately) —
+  `sendContinuityReportNow()` server action
+  (`src/app/dispatcher/actions.ts`), `requireRole(["dispatcher",
+  "admin"])`, rendered as a button by
+  `src/app/dispatcher/SendContinuityReportButton.tsx`. Calls the exact
+  same `generateContinuityReportData()` / `renderContinuityReportPdf()`
+  / `sendContinuityReportEmail()` functions as the nightly cron job —
+  no duplicate report-generation or email-sending logic. Returns a
+  clear success (with unassigned/assigned counts) or error message
+  inline.
 
 ## Privacy
 
@@ -1626,16 +1675,18 @@ row-building logic and its privacy-focused unit tests.
   retried by Vercel) cannot corrupt or duplicate any dispatch state.
 - **Email failure is isolated**: `sendContinuityReportEmail()` never
   throws; a failed send returns `{ ok: false, error }`, which the cron
-  route logs (`console.error`, message only — never the SMTP
-  credentials) and reflects in its HTTP status (502) so Vercel's cron
-  dashboard shows the failure. It has no effect on `waterRequests` or
-  `driverRegistry` data.
+  route logs (`console.error`, message only — never the Resend API key)
+  and reflects in its HTTP status (502) so Vercel's cron dashboard shows
+  the failure. It has no effect on `waterRequests` or `driverRegistry`
+  data. No retry loop is implemented — Vercel Cron's own retry/monitoring
+  behavior (if any, per plan) is relied on rather than a custom retry.
 - **Generation failure is isolated**: any unexpected error during data
   fetch/PDF rendering is caught in the route handler, logged, and
   returned as a 500 — it cannot partially write anything, since nothing
   is ever written.
-- **No secrets in logs**: only generic error messages are logged, never
-  transporter configuration or credentials.
+- **No secrets in logs**: only generic error messages (e.g. Resend's
+  `error.message`) are logged, never the API key, and never full PDF
+  contents.
 
 ---
 

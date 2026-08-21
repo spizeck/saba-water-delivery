@@ -1058,11 +1058,17 @@ continue fulfilling deliveries.
   configured government operational address (see TECHNICAL.md
   "Operational Continuity Snapshot" for the scheduling/email
   implementation and required environment configuration).
-- **Manual**: a "Generate Continuity Report" action is available to
-  dispatcher/admin staff at any time — useful before planned
-  maintenance, before a storm, when internet reliability is
-  questionable, or during testing. It produces the exact same report as
-  the nightly email (same code, not a second implementation).
+- **Manual download**: a "Generate Continuity Report" action is
+  available to dispatcher/admin staff at any time — useful before
+  planned maintenance, before a storm, when internet reliability is
+  questionable, or during testing. It only downloads the PDF and never
+  sends an email.
+- **Manual send**: a separate "Send Continuity Report Now" action lets
+  dispatcher/admin staff immediately email the current snapshot (e.g.
+  to confirm delivery is working, or right before an expected outage)
+  without waiting for the nightly schedule. Both manual actions, and
+  the nightly job, produce the exact same report using the same code
+  (never a second implementation).
 
 ## Privacy
 

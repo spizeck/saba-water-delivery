@@ -185,17 +185,25 @@ Operational continuity snapshot logic — see PRODUCT.md / TECHNICAL.md
 "Operational Continuity Snapshot":
 
 ```text
-buildContinuityReportData()     — src/lib/domain/continuityReportData.ts (pure)
-generateContinuityReportData()  — src/lib/domain/continuityReport.ts (server-only)
-renderContinuityReportPdf()     — src/lib/reports/continuityReportPdf.ts
-sendContinuityReportEmail()     — src/lib/email/continuityReportEmail.ts
+buildContinuityReportData()             — src/lib/domain/continuityReportData.ts (pure)
+generateContinuityReportData()          — src/lib/domain/continuityReport.ts (server-only)
+continuityReportPdfFilename()           — src/lib/reports/continuityReportFilename.ts (pure)
+renderContinuityReportPdf()             — src/lib/reports/continuityReportPdf.ts
+parseRecipientList()                    — src/lib/email/continuityReportEmailContent.ts (pure)
+getContinuityReportEmailConfig()        — src/lib/email/continuityReportEmailContent.ts (pure)
+buildContinuityReportEmailPayload()     — src/lib/email/continuityReportEmailContent.ts (pure)
+sendContinuityReportEmail()             — src/lib/email/continuityReportEmail.ts (server-only; Resend)
 ```
 
+Email is sent via **Resend** (`RESEND_API_KEY`, `CONTINUITY_REPORT_EMAIL_FROM`,
+`CONTINUITY_REPORT_EMAIL_TO` — see .env.example), not SMTP.
+
 Invoked by `src/app/api/cron/continuity-report/route.ts` (nightly, 8:00
-PM Saba time via Vercel Cron — see `vercel.json`) and
+PM Saba time via Vercel Cron — see `vercel.json`),
 `src/app/api/reports/continuity-snapshot/route.ts` (staff-only manual
-download, dispatcher dashboard) — both call the same generation/PDF
-code, never duplicated.
+download, no email), and `sendContinuityReportNow()`
+(`src/app/dispatcher/actions.ts`, staff-only manual immediate send) —
+all three call the same generation/PDF/email code, never duplicated.
 
 ---
 

@@ -21,6 +21,8 @@ import type {
 } from "@/lib/domain/continuityReport";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
+export { continuityReportPdfFilename } from "./continuityReportFilename";
+
 const PRIORITY_LABEL: Record<string, string> = {
   critical: "CRITICAL",
   urgent: "Urgent",

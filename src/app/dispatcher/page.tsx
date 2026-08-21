@@ -13,6 +13,7 @@ import { checkDeliveryConfirmationTimeout, getAllRequests } from "@/lib/domain/w
 
 import { DriverList } from "./DriverList";
 import { RequestList } from "./RequestList";
+import { SendContinuityReportButton } from "./SendContinuityReportButton";
 
 export const metadata: Metadata = {
   title: "Dispatcher — Saba Water Delivery",
@@ -131,13 +132,14 @@ export default async function DispatcherPortalPage() {
             >
               + Create Water Request
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <a
                 href="/api/reports/continuity-snapshot"
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Generate Continuity Report
               </a>
+              <SendContinuityReportButton />
               <Link
                 href="/statistics"
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"

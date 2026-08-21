@@ -1,6 +1,9 @@
 import { requireRole } from "@/lib/auth/session";
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
-import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
+import {
+  continuityReportPdfFilename,
+  renderContinuityReportPdf,
+} from "@/lib/reports/continuityReportPdf";
 
 /**
  * Staff-only manual "Generate Continuity Report" download — see
@@ -22,7 +25,7 @@ export async function GET() {
 
   const data = await generateContinuityReportData();
   const pdfBuffer = await renderContinuityReportPdf(data);
-  const filename = `saba-water-continuity-snapshot-${data.generatedAt.slice(0, 10)}.pdf`;
+  const filename = continuityReportPdfFilename(data.generatedAt);
 
   return new Response(new Uint8Array(pdfBuffer), {
     headers: {
