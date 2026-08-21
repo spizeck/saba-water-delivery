@@ -1666,6 +1666,31 @@ include `waterSituation` fields (vulnerable circumstances, persons
 affected, Critical explanation) — see `continuityReportData.ts`'s
 row-building logic and its privacy-focused unit tests.
 
+## Vercel deployment: pdfkit font data must be explicitly traced
+
+`pdfkit` loads its built-in font metrics (`Helvetica.afm`, etc., under
+`node_modules/pdfkit/js/data/`) via a runtime `fs.readFileSync(path.join(__dirname,
+"data", ...))` call rather than a static `import`/`require`. Next.js's
+Output File Tracing (which determines exactly which files Vercel bundles
+into each serverless function) only follows static `import`/`require`/
+`fs` calls it can analyze at build time — it cannot see this dynamic
+path — so without explicit configuration, PDF generation works locally
+(where `node_modules` is fully present on disk) but fails in production
+on Vercel with `ENOENT: no such file or directory, open
+'/var/task/.../data/Helvetica.afm'`.
+
+Fixed via `outputFileTracingIncludes` in `next.config.ts`, which forces
+`node_modules/pdfkit/js/data/**/*` into the trace for every route whose
+server bundle can reach `renderContinuityReportPdf()`: the two
+dedicated API routes (`/api/cron/continuity-report`,
+`/api/reports/continuity-snapshot`) and `/dispatcher` (which imports the
+"Send Continuity Report Now" server action). Verified by inspecting the
+build's `.next/server/app/**/*.nft.json` trace files after `npm run
+build` and confirming `Helvetica.afm` (and the rest of the data
+directory) is listed for all three. If a new route or server action is
+added that can call `renderContinuityReportPdf()`, add its route path to
+this same `outputFileTracingIncludes` map.
+
 ## Reliability
 
 - **Read-only**: `generateContinuityReportData()` and everything it
