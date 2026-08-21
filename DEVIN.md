@@ -58,6 +58,19 @@ Follow current Next.js App Router conventions.
 
 Default to Node.js runtime unless there is a concrete reason to use another runtime.
 
+## Bundler: webpack, not Turbopack
+
+Next.js 16 defaults `next dev`/`next build` to Turbopack. This project's
+`npm run dev` / `npm run build` scripts explicitly pass `--webpack`
+because Turbopack cannot currently bundle `fontkit` (a transitive
+dependency of `pdfkit`, used by the continuity report PDF — see
+TECHNICAL.md "Operational Continuity Snapshot"): it fails with `Export
+applyDecoratedDescriptor doesn't exist in target module` from
+`@swc/helpers`. Do not remove `--webpack` from these scripts, and do not
+add a dependency that only works under Turbopack, without first
+confirming `npm run build` (the exact command Vercel's deployment runs)
+still succeeds.
+
 ---
 
 # Authentication
