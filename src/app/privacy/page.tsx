@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { Footer } from "@/components/layout/Footer";
 import { SiteHeader } from "@/components/layout/SiteHeader";
@@ -77,6 +78,13 @@ export default function PrivacyPage() {
                 <h2 className="text-lg font-semibold text-slate-900">Your rights and contact</h2>
                 <p className="mt-2 text-slate-600">
                   For questions, corrections, or concerns about your information, please contact the Water Delivery Office. A formal contact and review process is being finalized by the government.
+                </p>
+                <p className="mt-2 text-slate-600">
+                  To request deletion of personal data associated with your account, see the{" "}
+                  <Link href="/data-deletion" className="font-medium text-blue-700 hover:underline">
+                    Data Deletion
+                  </Link>{" "}
+                  page.
                 </p>
               </section>
 

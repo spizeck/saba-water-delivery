@@ -4,6 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
+import { waterOfficeContact } from "@/lib/siteContact";
 
 export const metadata: Metadata = {
   title: "Terms of Use | Saba Water Delivery",
@@ -76,7 +77,8 @@ export default function TermsPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Contact and support</h2>
                 <p className="mt-2 text-slate-600">
-                  For help, contact the Water Delivery Office. WhatsApp support is available at +599 416 5363.
+                  For help, contact the Water Delivery Office. WhatsApp support is available at{" "}
+                  {waterOfficeContact.whatsappNumber}.
                 </p>
               </section>
 

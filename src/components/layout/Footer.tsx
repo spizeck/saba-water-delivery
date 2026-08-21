@@ -11,7 +11,7 @@ export function Footer() {
         <p className="text-sm text-slate-600">
           &copy; {year} Public Entity Saba — Water Delivery
         </p>
-        <nav className="flex items-center gap-4 text-sm">
+        <nav className="flex flex-wrap items-center justify-center gap-4 text-sm">
           <Link
             href="/privacy"
             className="text-slate-600 hover:text-slate-900 hover:underline"
@@ -24,6 +24,13 @@ export function Footer() {
             className="text-slate-600 hover:text-slate-900 hover:underline"
           >
             Terms of Use
+          </Link>
+          <span className="text-slate-300">|</span>
+          <Link
+            href="/data-deletion"
+            className="text-slate-600 hover:text-slate-900 hover:underline"
+          >
+            Data Deletion
           </Link>
         </nav>
       </Container>

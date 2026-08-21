@@ -6,6 +6,7 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { LinkButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
+import { waterOfficeContact } from "@/lib/siteContact";
 
 export const metadata: Metadata = {
   title: "Saba Water Delivery",
@@ -14,8 +15,7 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  const whatsappNumber = "+599 416 5363";
-  const whatsappHref = "https://wa.me/5994165363";
+  const { whatsappNumber, whatsappHref } = waterOfficeContact;
 
   return (
     <>

@@ -677,7 +677,25 @@ Before making a significant architectural decision:
 - `/` — public homepage with the PES logo, resident/driver login buttons, Need Help card, and footer.
 - `/privacy` — Privacy Policy, marked as a draft pending government approval.
 - `/terms` — Terms of Use, marked as a draft pending government approval.
-- `Footer` is shown on public pages (`/`, `/login`, `/access-denied`, `/privacy`, `/terms`).
+- `/data-deletion` — User Data Deletion instructions, required for the
+  Facebook Login / Meta app configuration's "Data Deletion Instructions
+  URL" field. Publicly accessible without authentication, like
+  `/privacy` and `/terms`. Explains how to request deletion of personal
+  data via the Water Delivery Office, the government-record-retention
+  qualification, and how removing Facebook authorization is distinct
+  from requesting data deletion. Does NOT implement any automatic
+  deletion (Firestore, Firebase Auth, or Facebook Graph API) — see
+  PRODUCT.md/TECHNICAL.md "Out of Scope" if such automation is ever
+  requested later; this page satisfies the "instructions URL"
+  requirement, not a machine-to-machine "data deletion callback".
+- `Footer` (`src/components/layout/Footer.tsx`) links to Privacy
+  Policy, Terms of Use, and Data Deletion, and is shown on public pages
+  (`/`, `/login`, `/access-denied`, `/privacy`, `/terms`,
+  `/data-deletion`).
+- The Water Delivery Office's public WhatsApp contact
+  (`waterOfficeContact` in `src/lib/siteContact.ts`) is centralized so
+  the homepage, Terms of Use, and Data Deletion page never show
+  different numbers.
 - Logo appears in `SiteHeader` and `PortalHeader` for authenticated pages.
 
 ---
