@@ -131,12 +131,20 @@ export default async function DispatcherPortalPage() {
             >
               + Create Water Request
             </Link>
-            <Link
-              href="/statistics"
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              View Statistics
-            </Link>
+            <div className="flex items-center gap-2">
+              <a
+                href="/api/reports/continuity-snapshot"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Generate Continuity Report
+              </a>
+              <Link
+                href="/statistics"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                View Statistics
+              </Link>
+            </div>
           </div>
           <RequestList
             requests={sortedRequests}

@@ -96,19 +96,33 @@ export interface WaterRequestCustomerSnapshot {
  * Structured vulnerable-person / critical-circumstance options. This is
  * intentionally NOT a medical intake form — see PRODUCT.md "Vulnerable
  * Persons / Critical Circumstances".
+ *
+ * NOTE: "essential_services_commercial_business" and
+ * "hotel_or_restaurant" overlap materially (a hotel or restaurant IS an
+ * essential/commercial business). Both are kept as distinct canonical
+ * options at government's explicit request rather than silently merged
+ * or renamed — see PRODUCT.md "Vulnerable Persons / Critical
+ * Circumstances" for the flagged policy note.
  */
 export type VulnerableCircumstance =
   | "elderly"
   | "infant_or_young_child"
   | "medical_need"
   | "essential_services_commercial_business"
+  | "hotel_or_restaurant"
   | "none";
 
-/** The resident's own characterization of urgency. See PRODUCT.md
- * "Resident-Reported Urgency". This is captured separately from the
- * operational `dispatchPriority` — see "Do Not Blindly Trust
- * Self-Declared Priority" below. */
-export type ReportedUrgency = "normal" | "urgent" | "critical";
+/**
+ * The resident's own characterization of urgency. See PRODUCT.md
+ * "Resident-Reported Urgency". Deliberately only two options —
+ * "Urgent" was removed from the resident-facing form after government
+ * testing found it caused subjective debate; residents now choose only
+ * Normal or Critical. This is captured separately from the operational
+ * `DispatchPriority` (below), which still supports `"urgent"` for
+ * dispatcher/admin use — see "Do Not Conflate Reported Urgency With
+ * Dispatch Priority" in PRODUCT.md.
+ */
+export type ReportedUrgency = "normal" | "critical";
 
 /**
  * A snapshot of the resident's reported water situation at the time the
@@ -126,6 +140,13 @@ export interface WaterSituationSnapshot {
   availableStorageCapacity: string | null;
   /** The resident's own characterization of urgency. */
   reportedUrgency: ReportedUrgency;
+  /**
+   * Required explanation when `reportedUrgency === "critical"`. Null
+   * whenever `reportedUrgency` is `"normal"` — never retains stale text
+   * from a Critical selection the resident backed away from before
+   * submitting. See PRODUCT.md "Critical Explanation".
+   */
+  criticalExplanation: string | null;
 }
 
 /**

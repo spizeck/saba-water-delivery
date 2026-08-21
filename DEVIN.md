@@ -159,6 +159,22 @@ setMeterAssignment
 
 These functions should be reusable later by non-web interfaces such as WhatsApp.
 
+Operational continuity snapshot logic — see PRODUCT.md / TECHNICAL.md
+"Operational Continuity Snapshot":
+
+```text
+buildContinuityReportData()     — src/lib/domain/continuityReportData.ts (pure)
+generateContinuityReportData()  — src/lib/domain/continuityReport.ts (server-only)
+renderContinuityReportPdf()     — src/lib/reports/continuityReportPdf.ts
+sendContinuityReportEmail()     — src/lib/email/continuityReportEmail.ts
+```
+
+Invoked by `src/app/api/cron/continuity-report/route.ts` (nightly, 8:00
+PM Saba time via Vercel Cron — see `vercel.json`) and
+`src/app/api/reports/continuity-snapshot/route.ts` (staff-only manual
+download, dispatcher dashboard) — both call the same generation/PDF
+code, never duplicated.
+
 ---
 
 # Concurrency

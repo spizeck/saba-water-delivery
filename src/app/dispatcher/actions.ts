@@ -23,6 +23,7 @@ import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm
 /** Shared, user-facing messages for water-situation validation errors. */
 const WATER_SITUATION_ERROR_MESSAGES: Record<string, string> = {
   INVALID_PERSONS_AFFECTED: "Number of people must be a positive whole number.",
+  CRITICAL_EXPLANATION_REQUIRED: "Please explain why this request is critical.",
 };
 
 // ---------------------------------------------------------------------------

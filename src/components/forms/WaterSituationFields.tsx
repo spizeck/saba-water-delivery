@@ -17,6 +17,8 @@ export interface WaterSituationValue {
   availableStorageCapacity: string;
   vulnerableCircumstances: VulnerableCircumstance[];
   reportedUrgency: ReportedUrgency | "";
+  /** Required explanation shown/collected only when `reportedUrgency === "critical"`. */
+  criticalExplanation: string;
 }
 
 export const EMPTY_WATER_SITUATION: WaterSituationValue = {
@@ -24,10 +26,13 @@ export const EMPTY_WATER_SITUATION: WaterSituationValue = {
   availableStorageCapacity: "",
   vulnerableCircumstances: [],
   reportedUrgency: "",
+  criticalExplanation: "",
 };
 
 export function isWaterSituationComplete(value: WaterSituationValue): boolean {
-  return Boolean(value.reportedUrgency);
+  if (!value.reportedUrgency) return false;
+  if (value.reportedUrgency === "critical") return value.criticalExplanation.trim().length > 0;
+  return true;
 }
 
 const VULNERABLE_OPTIONS: { value: VulnerableCircumstance; label: string }[] = [
@@ -35,25 +40,19 @@ const VULNERABLE_OPTIONS: { value: VulnerableCircumstance; label: string }[] = [
   { value: "infant_or_young_child", label: "Infant or young child" },
   { value: "medical_need", label: "Medical need" },
   { value: "essential_services_commercial_business", label: "Essential services (Commercial/business)" },
+  { value: "hotel_or_restaurant", label: "Hotel or Restaurant" },
 ];
 
-const URGENCY_OPTIONS: { value: ReportedUrgency; label: string; description: string }[] = [
-  {
-    value: "normal",
-    label: "Normal",
-    description: "I still have enough water for more than 2 days.",
-  },
-  {
-    value: "urgent",
-    label: "Urgent",
-    description: "I expect to run out within 1\u20132 days.",
-  },
-  {
-    value: "critical",
-    label: "Critical",
-    description:
-      "I am out of water, expect to run out within 24 hours, or there are critical circumstances.",
-  },
+/**
+ * Resident-facing urgency choices — deliberately just Normal/Critical
+ * (no explanatory supply estimate) after government testing found the
+ * three-way Normal/Urgent/Critical choice, and the days/feet/water-
+ * remaining explanations, caused subjective debate. See PRODUCT.md
+ * "Resident-Reported Urgency" / "Critical Explanation".
+ */
+const URGENCY_OPTIONS: { value: ReportedUrgency; label: string }[] = [
+  { value: "normal", label: "Normal" },
+  { value: "critical", label: "Critical" },
 ];
 
 interface Props {
@@ -140,16 +139,34 @@ export function WaterSituationFields({ value, onChange }: Props) {
               name="reportedUrgencyChoice"
               className="mt-0.5"
               checked={value.reportedUrgency === opt.value}
-              onChange={() => onChange({ ...value, reportedUrgency: opt.value })}
+              onChange={() =>
+                onChange({
+                  ...value,
+                  reportedUrgency: opt.value,
+                  // Never retain stale Critical explanation text if the
+                  // resident switches back to Normal before submitting.
+                  criticalExplanation: opt.value === "critical" ? value.criticalExplanation : "",
+                })
+              }
               required
             />
-            <span>
-              <span className="font-medium text-slate-900">{opt.label}</span>
-              <span className="block text-xs text-slate-500">{opt.description}</span>
-            </span>
+            <span className="font-medium text-slate-900">{opt.label}</span>
           </label>
         ))}
       </fieldset>
+
+      {value.reportedUrgency === "critical" && (
+        <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+          Please explain why this request is critical.
+          <textarea
+            value={value.criticalExplanation}
+            onChange={(e) => onChange({ ...value, criticalExplanation: e.target.value })}
+            rows={3}
+            required
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-blue-600 focus:outline-none"
+          />
+        </label>
+      )}
     </div>
   );
 }
@@ -164,6 +181,11 @@ export function WaterSituationHiddenFields({ value }: { value: WaterSituationVal
       <input type="hidden" name="personsAffected" value={value.personsAffected} />
       <input type="hidden" name="availableStorageCapacity" value={value.availableStorageCapacity} />
       <input type="hidden" name="reportedUrgency" value={value.reportedUrgency} />
+      <input
+        type="hidden"
+        name="criticalExplanation"
+        value={value.reportedUrgency === "critical" ? value.criticalExplanation : ""}
+      />
       {(value.vulnerableCircumstances.length > 0 ? value.vulnerableCircumstances : ["none"]).map(
         (c) => (
           <input key={c} type="hidden" name="vulnerableCircumstances" value={c} />

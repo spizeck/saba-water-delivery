@@ -285,10 +285,22 @@ referencing driver IDs inconsistently.
   waterSituation: {
     personsAffected: number | null
     vulnerableCircumstances: Array<
-      "elderly" | "infant_or_young_child" | "medical_need" | "essential_services_commercial_business" | "none"
+      | "elderly"
+      | "infant_or_young_child"
+      | "medical_need"
+      | "essential_services_commercial_business"
+      | "hotel_or_restaurant"
+      | "none"
     >
     availableStorageCapacity: string | null
-    reportedUrgency: "normal" | "urgent" | "critical"
+    // Resident-facing choice is deliberately just Normal/Critical — see
+    // PRODUCT.md "Resident-Reported Urgency". Distinct from
+    // `dispatchPriority` below, which still supports "urgent".
+    reportedUrgency: "normal" | "critical"
+    // Required (non-blank, trimmed) when reportedUrgency === "critical";
+    // always null when reportedUrgency === "normal" — see
+    // `buildWaterSituationSnapshot()` in `waterSituation.ts`.
+    criticalExplanation: string | null
   } | null
 
   // Attestation captured before request creation.
@@ -598,6 +610,29 @@ decision tree, not a scoring model — see the function's doc comment for
 the exact rule order. `createWaterRequest()` calls it once, at creation
 time, and stores the result plus the human-readable `priorityReason`
 directly on the request.
+
+Current rule (see PRODUCT.md "Resident-Reported Urgency" / "Dispatch
+priority is not the same as reported urgency" for the product
+rationale):
+
+1. **Critical** — any vulnerable/critical circumstance is selected
+   (elderly, infant/young child, medical need, essential services
+   (commercial/business), or hotel/restaurant), **or**
+2. **Critical** — the resident self-reports "Critical" urgency. This is
+   only reachable with the required, non-blank `criticalExplanation`
+   (validated in `buildWaterSituationSnapshot()`,
+   `src/lib/domain/waterSituation.ts`, throwing
+   `CRITICAL_EXPLANATION_REQUIRED` otherwise) — a resident can no longer
+   reach an initial Critical priority with a bare, unexplained click.
+3. **Normal** — everything else.
+
+`"urgent"` is never assigned by this function — it remains a fully
+valid `DispatchPriority` that only a dispatcher/admin override
+(`changeRequestPriority()`) can set. This is a deliberate simplification
+from the previous rule, which capped a bare "Critical" self-report at
+Urgent pending staff review; that cap is no longer needed now that every
+Critical self-report carries a specific, staff-reviewable written
+explanation.
 
 ## Priority ranking for Firestore ordering
 
@@ -916,6 +951,7 @@ getActiveCustomerIds()
 confirmDeliveryByStaff()
 changeRequestPriority()
 reevaluatePreferredDriverHoldForPriority()
+getOutstandingRequestsForContinuityReport()
 ```
 
 `src/lib/domain/deliveryConfirmation.ts` (pure, no Firestore access —
@@ -932,6 +968,27 @@ isConfirmationWindowExpired()
 determineInitialDispatchPriority()
 priorityRankFor()
 isValidDispatchPriority()
+```
+
+`src/lib/domain/waterSituation.ts` (pure, no Firestore access — factored
+out of `waterRequests.ts` so it can be unit tested without a Firestore/
+Admin SDK context, same pattern as `dispatchSelection.ts`):
+
+```text
+buildWaterSituationSnapshot()
+```
+
+`src/lib/domain/continuityReportData.ts` (pure, no Firestore access —
+see "Operational Continuity Snapshot" above):
+
+```text
+buildContinuityReportData()
+```
+
+`src/lib/domain/continuityReport.ts` (`server-only` orchestrator):
+
+```text
+generateContinuityReportData()
 ```
 
 Driver Registry operations live in `src/lib/domain/driverRegistry.ts`:
@@ -1255,6 +1312,148 @@ village, so priority statistics can never be used to rank individual
 residents or villages by urgency (see PRODUCT.md "Privacy").
 
 Design indexes intentionally as query patterns become clear.
+
+---
+
+# Operational Continuity Snapshot
+
+See PRODUCT.md "Operational Continuity Snapshot" for the product
+rationale. This is the implementation reference.
+
+## Architecture
+
+Data selection/transformation is deliberately split from delivery
+infrastructure (PDF rendering, email) so the report content can be unit
+tested without Firestore or network access:
+
+- `src/lib/domain/continuityReportData.ts` — **pure**, no Firestore, no
+  `server-only`. `buildContinuityReportData(requests, driverNamesByUserId,
+  generatedAt)` filters/sorts/transforms already-fetched requests into
+  `{ generatedAt, unassigned: UnassignedReportRow[], assigned:
+  AssignedReportRow[] }`. Unassigned = `requested` /
+  `preferred_driver_hold` / `available`; assigned = `claimed`; everything
+  else (`delivered`, `confirmed`, `cancelled`) is excluded. Sorted by
+  `priorityRank` then `requestedAt`, same convention as dispatch
+  ordering. Never copies `waterSituation` onto a row — see "Privacy"
+  below. Unit tested in
+  `src/lib/domain/__tests__/continuityReportData.test.ts`.
+- `src/lib/domain/continuityReport.ts` — `server-only` orchestrator.
+  `generateContinuityReportData()` fetches outstanding requests
+  (`getOutstandingRequestsForContinuityReport()` in `waterRequests.ts`,
+  which queries `status in ["requested", "preferred_driver_hold",
+  "available", "claimed"]` — reuses the existing `status ASC,
+  requestedAt ASC` composite index, no new index required) and all
+  driver registry entries (`getAllDriverRegistryEntries()`), builds a
+  `linkedUserId -> displayName` map, and calls
+  `buildContinuityReportData()`. Read-only — never writes anything.
+- `src/lib/reports/continuityReportPdf.ts` — `renderContinuityReportPdf(data)`
+  renders the report to a PDF `Buffer` using `pdfkit`. One
+  implementation, shared by both the nightly job and the manual action
+  (see DEVIN.md "Do Not Overbuild" — no duplicate PDF code, no templating
+  engine, no report-management platform).
+- `src/lib/email/continuityReportEmail.ts` — `sendContinuityReportEmail(pdfBuffer, data)`
+  emails the PDF via SMTP (`nodemailer`). Returns `{ ok, error? }` and
+  never throws — see "Reliability" below.
+
+## Report contents
+
+**Unassigned Loads**: priority, customer name, phone, village, delivery
+directions, requested time (Saba local), age (elapsed since
+`requestedAt`), preferred driver name (if any), gallons.
+
+**Assigned Loads**: priority, customer name, phone, village, delivery
+directions, assigned driver name, requested time, claimed time, gallons.
+
+A "delivered, awaiting confirmation" section was considered but not
+built for V1 — those deliveries have already physically occurred, so
+they are not outstanding driver work during an outage (see PRODUCT.md).
+
+## Scheduling
+
+Desired time is 8:00 PM Saba time
+(`appConfig.operationalTimezone`, `America/Puerto_Rico`, a fixed UTC-4
+with no daylight saving — see "Saba Operational Timezone"). Because the
+offset never changes, 8:00 PM Saba time is always exactly midnight UTC,
+so `vercel.json`'s cron schedule (`"0 0 * * *"`, evaluated in UTC by
+Vercel) requires no runtime timezone conversion or DST handling:
+
+```json
+{ "crons": [{ "path": "/api/cron/continuity-report", "schedule": "0 0 * * *" }] }
+```
+
+**Deployment verification required**: Vercel Cron Jobs are available on
+the Hobby plan, but Hobby-plan cron jobs are limited to at most **2 per
+day per project** and Vercel does not guarantee exact-minute execution
+on Hobby (invocation may occur anytime within the scheduled hour). Pro
+plan is required for cron jobs with second/minute-level scheduling
+guarantees and no per-project frequency floor. Confirm the project's
+actual Vercel plan and cron limits in the Vercel dashboard before
+relying on the schedule for a real continuity guarantee — this cannot
+be verified from the repository alone.
+
+`src/app/api/cron/continuity-report/route.ts` is the invoked endpoint.
+It is protected by an optional `CRON_SECRET` environment variable —
+when set, Vercel automatically sends `Authorization: Bearer
+$CRON_SECRET`, and the route rejects any request without a matching
+header. If `CRON_SECRET` is unset, the endpoint is unauthenticated
+(acceptable only if the path itself is not discoverable/relied upon as
+a security boundary) — setting `CRON_SECRET` in production is strongly
+recommended and documented in `.env.example`.
+
+## Email delivery
+
+No email infrastructure existed in this project before this feature.
+Generic SMTP (`nodemailer`) was chosen over a commercial provider SDK
+(e.g. Resend, SendGrid) so it works with whatever mail system government
+IT already operates (Google Workspace, Microsoft 365, or an SMTP relay
+in front of any provider) without a new vendor dependency. Configuration
+is entirely environment-variable-driven (see `.env.example`):
+`CONTINUITY_REPORT_SMTP_HOST/PORT/SECURE/USER/PASSWORD`,
+`CONTINUITY_REPORT_EMAIL_FROM`, `CONTINUITY_REPORT_EMAIL_TO`. The
+recipient is configurable, never hard-coded. If any required variable is
+missing, `getContinuityReportEmailConfig()` returns `null` and
+`sendContinuityReportEmail()` returns a clear, non-crashing error
+instead of silently pretending to send.
+
+## Manual generation
+
+`src/app/api/reports/continuity-snapshot/route.ts` is a `dispatcher`/
+`admin`-only (`requireRole`, same session-cookie authorization as the
+rest of those portals) GET route that calls
+`generateContinuityReportData()` and `renderContinuityReportPdf()` — the
+identical functions the nightly job uses — and streams the PDF directly
+to the browser as an attachment. A "Generate Continuity Report" link is
+available on the dispatcher dashboard (`src/app/dispatcher/page.tsx`).
+
+## Privacy
+
+The PDF is generated on demand and streamed directly to an authenticated
+session, or emailed to a private configured address — it is never
+written to public storage or served from a guessable public URL (no new
+Firebase Storage usage was needed for this feature). Report rows never
+include `waterSituation` fields (vulnerable circumstances, persons
+affected, Critical explanation) — see `continuityReportData.ts`'s
+row-building logic and its privacy-focused unit tests.
+
+## Reliability
+
+- **Read-only**: `generateContinuityReportData()` and everything it
+  calls only reads Firestore. It never mutates a request or driver
+  document, so generation is inherently idempotent and safe to retry —
+  a retry (nightly re-invocation, a manual click, a failed cron attempt
+  retried by Vercel) cannot corrupt or duplicate any dispatch state.
+- **Email failure is isolated**: `sendContinuityReportEmail()` never
+  throws; a failed send returns `{ ok: false, error }`, which the cron
+  route logs (`console.error`, message only — never the SMTP
+  credentials) and reflects in its HTTP status (502) so Vercel's cron
+  dashboard shows the failure. It has no effect on `waterRequests` or
+  `driverRegistry` data.
+- **Generation failure is isolated**: any unexpected error during data
+  fetch/PDF rendering is caught in the route handler, logged, and
+  returned as a 500 — it cannot partially write anything, since nothing
+  is ever written.
+- **No secrets in logs**: only generic error messages are logged, never
+  transporter configuration or credentials.
 
 ---
 

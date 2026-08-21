@@ -80,6 +80,7 @@ const VULNERABLE_LABELS: Record<string, string> = {
   infant_or_young_child: "Infant or young child",
   medical_need: "Medical need",
   essential_services_commercial_business: "Essential services (Commercial/business)",
+  hotel_or_restaurant: "Hotel or Restaurant",
   none: "None",
 };
 
@@ -306,6 +307,14 @@ export default async function RequestDetailPage({ params }: PageProps) {
                       .join(", ")}
                   </dd>
                 </div>
+                {data.waterSituation.reportedUrgency === "critical" && (
+                  <div className="sm:col-span-2">
+                    <dt className="font-medium text-slate-500">Critical explanation</dt>
+                    <dd className="text-slate-900">
+                      {data.waterSituation.criticalExplanation ?? "Not provided"}
+                    </dd>
+                  </div>
+                )}
               </dl>
               {data.priorityReason && (
                 <p className="mt-3 text-xs text-slate-500">

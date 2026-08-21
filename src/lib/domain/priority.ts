@@ -1,17 +1,28 @@
 /**
  * Centralized dispatch-priority domain logic.
  *
- * See PRODUCT.md "Additional Water Request Information" / "Do Not
- * Blindly Trust Self-Declared Priority" / "Initial Priority Rules" and
- * TECHNICAL.md "Dispatch Priority" for the full policy this module
- * implements.
+ * See PRODUCT.md "Additional Water Request Information" / "Initial
+ * Priority Rules" and TECHNICAL.md "Dispatch Priority" for the full
+ * policy this module implements.
  *
  * Design goals (deliberately simple, not a scoring model):
  *   - A single, documented function decides the INITIAL priority of a
  *     new request from structured answers only.
- *   - The resident's own self-reported urgency is one input, but never
- *     by itself produces the highest priority — a resident selecting
- *     "Critical" must not be an unrestricted queue-jump mechanism.
+ *   - The resident-facing form only offers Normal/Critical (see
+ *     `ReportedUrgency` in types.ts) — "Urgent" is no longer a resident
+ *     choice, following government testing feedback that it caused
+ *     subjective debate. A resident can still reach an initial Critical
+ *     priority, but only by also providing a required written
+ *     explanation (`WaterSituationSnapshot.criticalExplanation`,
+ *     enforced in `waterRequests.ts`), which is a meaningfully stronger
+ *     signal than a bare urgency radio button — so, unlike the previous
+ *     policy, a validated Critical self-report is no longer capped at
+ *     Urgent.
+ *   - `"urgent"` remains a fully valid `DispatchPriority` value — it is
+ *     just no longer something the SYSTEM assigns automatically from a
+ *     resident's own report. Government staff can still assign or
+ *     escalate any request to Urgent through the existing dispatcher
+ *     override (`changeRequestPriority`).
  *   - Government staff can always see and override the result (see
  *     `changeRequestPriority` in waterRequests.ts) with a required
  *     reason, which is audited.
@@ -75,15 +86,18 @@ export interface PriorityDetermination {
  *
  * Rules, applied in order:
  *   1. CRITICAL — the resident reports a vulnerable-person or critical
- *      circumstance (elderly, infant or young child, medical need, or
- *      essential services (commercial/business)).
- *   2. URGENT — the resident self-reported "Urgent" or "Critical"
- *      urgency but no vulnerable/critical circumstance was reported.
- *      A bare "Critical" self-report is capped at Urgent so it cannot
- *      alone create an unrestricted queue-jump; dispatcher/admin staff
- *      can review and escalate to Critical if warranted.
+ *      circumstance (elderly, infant or young child, medical need,
+ *      essential services (commercial/business), or hotel/restaurant).
+ *   2. CRITICAL — the resident self-reported "Critical" urgency. This
+ *      is only reachable with a required written explanation (validated
+ *      in `waterRequests.ts` before this function is ever called), so a
+ *      bare, casual self-report cannot reach this branch.
  *   3. NORMAL — everything else ("Normal" self-report and no vulnerable
  *      or critical circumstance).
+ *
+ * "Urgent" is deliberately never assigned here — see the module-level
+ * doc comment above. It remains fully valid as a `DispatchPriority`
+ * that dispatcher/admin staff may assign via `changeRequestPriority`.
  */
 export function determineInitialDispatchPriority(
   waterSituation: WaterSituationForPriority,
@@ -99,20 +113,12 @@ export function determineInitialDispatchPriority(
     };
   }
 
-  if (waterSituation.reportedUrgency === "urgent") {
-    return {
-      priority: "urgent",
-      reason: 'Resident self-reported "Urgent" priority with no vulnerable or critical circumstance.',
-    };
-  }
-
   if (waterSituation.reportedUrgency === "critical") {
     return {
-      priority: "urgent",
-      reason:
-        'Resident self-reported "Critical" urgency without a corroborating vulnerable or critical circumstance; treated as Urgent pending staff review.',
+      priority: "critical",
+      reason: 'Resident self-reported "Critical" urgency with a required explanation.',
     };
   }
 
-  return { priority: "normal", reason: "No urgent or critical indicators reported." };
+  return { priority: "normal", reason: "No critical indicators reported." };
 }

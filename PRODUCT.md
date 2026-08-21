@@ -294,20 +294,59 @@ Every request — resident-submitted or dispatcher-created — captures:
   integer).
 - **Vulnerable persons or critical circumstances**: Elderly person /
   Infant or young child / Medical need / Essential services
-  (Commercial/business) / None. This is deliberately NOT a medical
-  intake form — enough information to assess urgency, never a detailed
-  health record. The generic "Other critical circumstance" option has
-  been removed.
+  (Commercial/business) / Hotel or Restaurant / None. This is
+  deliberately NOT a medical intake form — enough information to assess
+  urgency, never a detailed health record. The generic "Other critical
+  circumstance" option has been removed.
+  - **Note (flagged, not resolved):** "Essential services
+    (Commercial/business)" and "Hotel or Restaurant" overlap
+    materially — a hotel or restaurant is itself a commercial business.
+    Government testing asked specifically for a distinct "Hotel or
+    Restaurant" option without removing or renaming "Essential services
+    (Commercial/business)", so both remain as separate canonical
+    options. This is a deliberate government decision, not an oversight
+    — a future consolidation of these two options should be a
+    deliberate government/product decision, not something inferred by
+    engineering.
 - **Available cistern/storage capacity**, as free-form text the resident
   or caller can describe in their own words (e.g. "1500", "About 2,000
   gallons", "Unknown"). It is not parsed into a number and does not
   affect priority.
-- **Resident-reported urgency**: Normal / Urgent / Critical, in plain
-  language (see the resident-facing wording in the request form).
+- **Resident-reported urgency**: Normal / Critical only (see "Resident-
+  Reported Urgency" below — "Urgent" was removed from this choice after
+  government testing).
 
 The earlier "How much water remains?" question has been removed.
 Urgency is now the primary water-situation indicator, together with
 vulnerable/critical circumstances.
+
+## Resident-Reported Urgency
+
+Government testing ahead of the next round found that the original
+three-way Normal / Urgent / Critical choice, together with the
+days/feet/water-remaining explanatory text shown under each option,
+caused subjective debate rather than a clear signal. The resident-facing
+form was simplified in response:
+
+- The resident now chooses only **Normal** or **Critical** —
+  "Urgent" is no longer a resident-facing choice.
+- **Normal** is shown with no supply-estimate explanation text (it is
+  simply "Normal").
+- **Critical** requires the resident (or the dispatcher recording a
+  caller's report) to fill in a required explanation — "Please explain
+  why this request is critical." — before the request can be submitted.
+  A blank or whitespace-only explanation is rejected, both in the form
+  and server-side (`CRITICAL_EXPLANATION_REQUIRED`).
+- Switching back to Normal before submitting discards any explanation
+  text already typed — it is never silently retained or submitted.
+
+This resident-reported urgency (`reportedUrgency: "normal" |
+"critical"`) is a distinct concept from the operational
+`dispatchPriority` below, which still supports `normal` / `urgent` /
+`critical` — see "Dispatch priority is not the same as reported
+urgency". Government staff can still assign or escalate any request to
+Urgent through the existing dispatcher override; residents simply no
+longer choose it themselves.
 
 This information is a **snapshot** — it describes the circumstances at
 the moment the request was made and is never overwritten by later
@@ -335,20 +374,33 @@ only on the confirmation screen after the attestation is checked.
 
 ## Dispatch priority is not the same as reported urgency
 
-A resident selecting "Critical" does **not** automatically grant an
-unrestricted queue-jump. The system tracks two separate things:
+The system tracks two separate things, and they must never be conflated:
 
-- `reportedUrgency` — the resident's own characterization.
+- `reportedUrgency` (`normal` / `critical`) — the resident's own
+  characterization, captured on the request form. See "Resident-
+  Reported Urgency" above.
 - `dispatchPriority` (`normal` / `urgent` / `critical`) — the actual
   operational priority used for dispatch ordering, together with who
   set it (`prioritySource`: `system` or `dispatcher`), why
   (`priorityReason`), and — for staff overrides — who and when.
 
+Selecting "Critical" is no longer a casual radio-button choice — it
+requires a required written explanation (see "Critical Explanation"
+above) before the request can even be submitted. Because of that
+stronger signal, a validated Critical self-report now reaches Critical
+`dispatchPriority` directly (previously it was capped at Urgent pending
+staff review; that cap is no longer necessary now that Critical always
+carries a specific, staff-reviewable reason). `dispatchPriority` never
+reaches Urgent through the resident's own report — Urgent is only
+ever set by dispatcher/admin override (see below), which residents
+cannot trigger themselves.
+
 The initial `dispatchPriority` is set by a short, documented,
 deterministic rule (see TECHNICAL.md "Initial Priority Rules") based on
 the structured water-situation answers, not an opaque score. Government
-staff can always see the full water situation and override the priority
-with a required reason; every override is audited
+staff can always see the full water situation (including the Critical
+explanation) and override the priority — to Urgent, to Critical, or
+back to Normal — with a required reason; every override is audited
 (`request_priority_changed`).
 
 ## Priority-based dispatch
@@ -687,21 +739,27 @@ Residents should be able to save their normal delivery location for future reque
 # Water Situation Privacy
 
 Some of the new water-situation information is sensitive, especially
-vulnerable-person circumstances and anything medical-related. Apply
-least privilege:
+vulnerable-person circumstances, the required Critical explanation, and
+anything medical-related. Apply least privilege:
 
 - **Drivers** may need to know a delivery is Urgent/Critical to
   understand why it was offered ahead of others, but do NOT need — and
   are never shown — the underlying vulnerable-circumstance details,
-  persons-affected count, or available-storage figures.
-- **Dispatcher/admin** staff see the full water situation, because they
-  need it to assess and, if necessary, override priority.
+  persons-affected count, available-storage figures, or the resident's
+  Critical explanation.
+- **Dispatcher/admin** staff see the full water situation, including the
+  Critical explanation, because they need it to assess and, if
+  necessary, override priority.
 - **Viewer** (read-only oversight) sees the dispatch priority level
   (operational, not sensitive) but not the underlying water-situation
   detail, consistent with the existing Viewer privacy posture (see
   "Viewer Privacy" above).
 - **Statistics** never break priority data down by individual resident,
   village, or driver — aggregate counts and timings only.
+- **Operational continuity snapshot** (see "Operational Continuity
+  Snapshot" below) includes only what staff need to manually complete
+  deliveries during an outage — never the vulnerable-circumstance
+  details or Critical explanation.
 
 ---
 
@@ -857,6 +915,72 @@ Because every completed request represents 1,000 gallons:
 `completed deliveries × 1,000 = gallons distributed`
 
 Preserve raw events and timestamps rather than only storing aggregate statistics.
+
+---
+
+# Operational Continuity Snapshot
+
+Government raised a continuity question ahead of the next testing round:
+what happens to outstanding deliveries if the application becomes
+unavailable — internet outage, website outage, planned maintenance, a
+Vercel outage, or a Firebase/application issue? Drivers and dispatchers
+need a way to keep working from the last known state even if the system
+itself is temporarily unreachable.
+
+## What it is
+
+A nightly (and on-demand) snapshot PDF of the outstanding delivery
+queue at the moment it is generated:
+
+- **Unassigned Loads** — requests not yet claimed by a driver
+  (`available`, `preferred_driver_hold`, and any legacy `requested`
+  state), each with: priority, customer/requestor name, phone, village,
+  delivery directions, requested time, age, preferred driver (if any),
+  and gallons.
+- **Assigned Loads** — requests currently `claimed` by a driver, each
+  with: priority, customer/requestor name, phone, village, delivery
+  directions, assigned driver, requested time, claimed time, and
+  gallons.
+
+`delivered`/`confirmed`/`cancelled` requests are excluded — a delivered
+request's physical delivery has already occurred, so it is not
+outstanding driver work. This is a deliberately simple V1 (see DEVIN.md
+"Do Not Overbuild"); a separate "delivered, awaiting confirmation"
+section was considered but not built, since it would not help a driver
+or dispatcher continue delivering water during an outage — it can be
+added later if a genuine operational need for it appears.
+
+The snapshot never includes the resident's vulnerable-circumstance
+details, persons-affected count, or Critical explanation — see "Water
+Situation Privacy" above. It contains only what staff need to manually
+continue fulfilling deliveries.
+
+## Delivery
+
+- **Nightly**: emailed automatically at **8:00 PM Saba time** to a
+  configured government operational address (see TECHNICAL.md
+  "Operational Continuity Snapshot" for the scheduling/email
+  implementation and required environment configuration).
+- **Manual**: a "Generate Continuity Report" action is available to
+  dispatcher/admin staff at any time — useful before planned
+  maintenance, before a storm, when internet reliability is
+  questionable, or during testing. It produces the exact same report as
+  the nightly email (same code, not a second implementation).
+
+## Privacy
+
+The report contains operational/customer information (names, phone
+numbers, delivery directions) and must never be publicly accessible. It
+is generated on demand and streamed directly to an authorized
+dispatcher/admin session, or emailed to a private, configured address —
+it is never published at a guessable public URL.
+
+## Not a replacement for the system
+
+This is a backup/continuity aid, not a parallel dispatch system. It does
+not let drivers claim or update requests offline, and generating it
+never changes any request's or driver's state — see TECHNICAL.md
+"Reliability" for why this must remain a strictly read-only operation.
 
 ---
 

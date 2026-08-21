@@ -24,7 +24,6 @@ interface Props {
 
 const URGENCY_LABEL: Record<string, string> = {
   normal: "Normal",
-  urgent: "Urgent",
   critical: "Critical",
 };
 
@@ -33,6 +32,7 @@ const VULNERABLE_LABEL: Record<string, string> = {
   infant_or_young_child: "Infant or young child",
   medical_need: "Medical need",
   essential_services_commercial_business: "Essential services (Commercial/business)",
+  hotel_or_restaurant: "Hotel or Restaurant",
 };
 
 export function WaterRequestForm({
@@ -143,6 +143,12 @@ export function WaterRequestForm({
             <dd className="text-slate-900">
               <span className="font-medium">Available storage:</span> {" "}
               {waterSituation.availableStorageCapacity}
+            </dd>
+          )}
+          {waterSituation.reportedUrgency === "critical" && (
+            <dd className="text-slate-900">
+              <span className="font-medium">Critical explanation:</span> {" "}
+              {waterSituation.criticalExplanation}
             </dd>
           )}
         </div>

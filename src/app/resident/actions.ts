@@ -15,6 +15,7 @@ import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm
  * used by both the resident and dispatcher actions. */
 const WATER_SITUATION_ERROR_MESSAGES: Record<string, string> = {
   INVALID_PERSONS_AFFECTED: "Number of people must be a positive whole number.",
+  CRITICAL_EXPLANATION_REQUIRED: "Please explain why this request is critical.",
 };
 
 // ---------------------------------------------------------------------------

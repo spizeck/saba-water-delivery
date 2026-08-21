@@ -27,6 +27,8 @@ export function parseWaterSituationFromFormData(
   const availableStorageCapacity =
     String(formData.get("availableStorageCapacity") ?? "").trim() || null;
 
+  const criticalExplanation = String(formData.get("criticalExplanation") ?? "").trim() || null;
+
   const vulnerableCircumstances = formData
     .getAll("vulnerableCircumstances")
     .map((v) => String(v)) as VulnerableCircumstance[];
@@ -36,5 +38,6 @@ export function parseWaterSituationFromFormData(
     vulnerableCircumstances,
     availableStorageCapacity,
     reportedUrgency,
+    criticalExplanation,
   };
 }

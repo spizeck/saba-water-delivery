@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/continuity-report",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

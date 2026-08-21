@@ -16,9 +16,13 @@ import type {
   WaterRequestCustomerSnapshot,
   WaterRequestSource,
   WaterRequestStatus,
-  WaterSituationSnapshot,
 } from "./types";
 import { getUserProfile } from "./users";
+import { buildWaterSituationSnapshot } from "./waterSituation";
+import type { WaterSituationInput } from "./waterSituation";
+
+export { buildWaterSituationSnapshot } from "./waterSituation";
+export type { WaterSituationInput } from "./waterSituation";
 
 /**
  * Domain/service layer for water request operations.
@@ -83,6 +87,8 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
           availableStorageCapacity:
             (data.waterSituation.availableStorageCapacity as string | undefined) ?? null,
           reportedUrgency: (data.waterSituation.reportedUrgency as ReportedUrgency) ?? "normal",
+          criticalExplanation:
+            (data.waterSituation.criticalExplanation as string | undefined) ?? null,
         }
       : null,
     attestationAccepted: data.attestationAccepted ?? null,
@@ -238,15 +244,6 @@ export async function getClaimedRequestsForDriver(
  * immutable `WaterSituationSnapshot` stored on the request is derived
  * from this in `buildWaterSituationSnapshot()` below.
  */
-export interface WaterSituationInput {
-  /** Positive integer, or null if not provided (e.g. caller unsure). */
-  personsAffected?: number | null;
-  vulnerableCircumstances?: VulnerableCircumstance[];
-  /** Resident-reported available cistern/storage capacity, as free-form text. */
-  availableStorageCapacity?: string | null;
-  reportedUrgency: ReportedUrgency;
-}
-
 export interface CreateWaterRequestInput {
   /** Firebase uid of the resident, or null for an unregistered/manual customer. */
   customerId: string | null;
@@ -282,33 +279,6 @@ export interface CreateWaterRequestInput {
    * caller — not that they personally made a citizen attestation.
    */
   attestationAccepted: boolean;
-}
-
-/**
- * Validates and normalizes raw water-situation form input into the
- * stable snapshot shape stored on the request. Throws a specific error
- * code (see callers for user-facing messages) rather than silently
- * coercing bad input.
- */
-function buildWaterSituationSnapshot(input: WaterSituationInput): WaterSituationSnapshot {
-  const vulnerableCircumstances = input.vulnerableCircumstances?.length
-    ? input.vulnerableCircumstances
-    : (["none"] as VulnerableCircumstance[]);
-
-  if (input.personsAffected != null) {
-    if (!Number.isInteger(input.personsAffected) || input.personsAffected <= 0) {
-      throw new Error("INVALID_PERSONS_AFFECTED");
-    }
-  }
-
-  const availableStorageCapacity = input.availableStorageCapacity?.trim() || null;
-
-  return {
-    personsAffected: input.personsAffected ?? null,
-    vulnerableCircumstances,
-    availableStorageCapacity,
-    reportedUrgency: input.reportedUrgency,
-  };
 }
 
 /**
@@ -1219,6 +1189,37 @@ export async function getAllRequests(): Promise<WaterRequest[]> {
   const snapshot = await db
     .collection(REQUESTS_COLLECTION)
     .orderBy("requestedAt", "desc")
+    .get();
+
+  return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+}
+
+/**
+ * Statuses that represent outstanding driver work for the nightly/manual
+ * continuity snapshot (see PRODUCT.md / TECHNICAL.md "Operational
+ * Continuity Snapshot"): unassigned loads still waiting for a driver,
+ * plus loads a driver has already claimed. Deliberately excludes
+ * "delivered" (physical delivery already occurred — see PRODUCT.md),
+ * "confirmed", and "cancelled".
+ */
+const OUTSTANDING_REQUEST_STATUSES: WaterRequestStatus[] = [
+  "requested",
+  "preferred_driver_hold",
+  "available",
+  "claimed",
+];
+
+/**
+ * Read-only query for the operational continuity snapshot — see
+ * `src/lib/domain/continuityReport.ts`. Never mutates any request or
+ * driver state.
+ */
+export async function getOutstandingRequestsForContinuityReport(): Promise<WaterRequest[]> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("status", "in", OUTSTANDING_REQUEST_STATUSES)
+    .orderBy("requestedAt", "asc")
     .get();
 
   return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));

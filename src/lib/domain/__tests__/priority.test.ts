@@ -24,6 +24,9 @@ describe("priority", () => {
   describe("isValidDispatchPriority", () => {
     it("accepts only valid priority strings", () => {
       expect(isValidDispatchPriority("critical")).toBe(true);
+      // "urgent" remains a fully valid internal DispatchPriority even
+      // though residents can no longer self-report it — dispatcher/admin
+      // staff can still assign it via changeRequestPriority().
       expect(isValidDispatchPriority("urgent")).toBe(true);
       expect(isValidDispatchPriority("normal")).toBe(true);
       expect(isValidDispatchPriority("high")).toBe(false);
@@ -49,6 +52,14 @@ describe("priority", () => {
       expect(result.priority).toBe("critical");
     });
 
+    it("critical: hotel or restaurant", () => {
+      const result = determineInitialDispatchPriority({
+        vulnerableCircumstances: ["hotel_or_restaurant"],
+        reportedUrgency: "normal",
+      });
+      expect(result.priority).toBe("critical");
+    });
+
     it("critical: multiple vulnerable circumstances", () => {
       const result = determineInitialDispatchPriority({
         vulnerableCircumstances: ["medical_need", "infant_or_young_child"],
@@ -57,23 +68,15 @@ describe("priority", () => {
       expect(result.priority).toBe("critical");
     });
 
-    it("urgent: self-reported urgent", () => {
-      const result = determineInitialDispatchPriority({
-        vulnerableCircumstances: ["none"],
-        reportedUrgency: "urgent",
-      });
-      expect(result.priority).toBe("urgent");
-    });
-
-    it("caps bare critical self-report at urgent", () => {
+    it("critical: self-reported critical urgency (explanation validated upstream)", () => {
       const result = determineInitialDispatchPriority({
         vulnerableCircumstances: ["none"],
         reportedUrgency: "critical",
       });
-      expect(result.priority).toBe("urgent");
+      expect(result.priority).toBe("critical");
     });
 
-    it("critical outranks a bare critical urgency when vulnerable", () => {
+    it("critical: vulnerable circumstance plus self-reported critical urgency", () => {
       const result = determineInitialDispatchPriority({
         vulnerableCircumstances: ["medical_need"],
         reportedUrgency: "critical",
@@ -81,7 +84,7 @@ describe("priority", () => {
       expect(result.priority).toBe("critical");
     });
 
-    it("normal: no urgent or critical indicators", () => {
+    it("normal: no critical indicators", () => {
       const result = determineInitialDispatchPriority({
         vulnerableCircumstances: ["none"],
         reportedUrgency: "normal",
