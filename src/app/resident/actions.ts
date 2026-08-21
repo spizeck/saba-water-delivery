@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
-import { updateUserProfile } from "@/lib/domain/users";
+import { confirmDeliveryProfile, updateUserProfile } from "@/lib/domain/users";
 import {
   confirmWaterDelivery,
   createWaterRequest,
@@ -60,6 +60,36 @@ export async function updateResidentProfile(
 
   revalidatePath("/resident");
   return { status: "success", message: "Profile saved." };
+}
+
+/**
+ * "Everything Is Correct" on the delivery-profile confirmation reminder
+ * (see PRODUCT.md / TECHNICAL.md "Delivery Profile Confirmation
+ * Reminder"). Records that the resident affirmatively reviewed their
+ * delivery information — never trusts a client-supplied timestamp, and
+ * only ever confirms the caller's OWN profile (`requireRole` resolves
+ * the session server-side; there is no way to pass another uid in).
+ */
+export async function confirmDeliveryProfileInfo(
+  _prevState: ProfileFormState,
+  _formData: FormData,
+): Promise<ProfileFormState> {
+  const session = await requireRole("resident");
+
+  try {
+    await confirmDeliveryProfile(session.uid);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "DELIVERY_PROFILE_INCOMPLETE") {
+      return {
+        status: "error",
+        message: "Please complete your phone, village, and delivery directions first.",
+      };
+    }
+    throw err;
+  }
+
+  revalidatePath("/resident");
+  return { status: "success", message: "Thanks for confirming your delivery information." };
 }
 
 // ---------------------------------------------------------------------------

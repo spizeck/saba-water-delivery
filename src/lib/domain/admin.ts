@@ -302,6 +302,9 @@ function toUserProfileFromDoc(uid: string, data: Record<string, unknown>): UserP
     roles,
     village: (data.village as string) ?? null,
     deliveryDirections: (data.deliveryDirections as string) ?? null,
+    deliveryProfileConfirmedAt:
+      (data.deliveryProfileConfirmedAt as { toDate?: () => Date })?.toDate?.().toISOString() ??
+      null,
     createdAt:
       (data.createdAt as { toDate?: () => Date })?.toDate?.().toISOString() ??
       new Date(0).toISOString(),

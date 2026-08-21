@@ -92,6 +92,16 @@ This is a starting model, not an instruction to blindly reproduce every field.
   village: string | null
   deliveryDirections: string | null
 
+  // When the resident last affirmatively reviewed phone/village/
+  // deliveryDirections and confirmed it was still correct — either by
+  // clicking "Everything Is Correct" on the delivery-profile reminder,
+  // or by saving a change to one of those fields. Distinct from
+  // `updatedAt` (which changes on ANY profile save). Missing on
+  // historical documents that predate this field; treated as null
+  // (never confirmed) rather than backfilled. See "Delivery Profile
+  // Confirmation Reminder" below.
+  deliveryProfileConfirmedAt: Timestamp | null
+
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -926,6 +936,164 @@ expired, the request is still legitimately active and the existing
 
 ---
 
+# Delivery Profile Confirmation Reminder
+
+See PRODUCT.md "Delivery Profile Confirmation Reminder" for the product
+rationale. This section is the implementation reference.
+
+## Decision logic (pure)
+
+`evaluateDeliveryProfileReminder()`
+(`src/lib/domain/deliveryProfileReminder.ts`, pure, no Firestore access
+— same pattern as `dispatchSelection.ts` / `continuityReportData.ts` so
+it is unit testable without a Firestore/Admin SDK context) takes:
+
+```ts
+{
+  phone: string | null;
+  village: string | null;
+  deliveryDirections: string | null;
+  deliveryProfileConfirmedAt: string | null; // ISO
+  lastConfirmedDeliveryAt: string | null;    // ISO
+  now?: Date;
+}
+```
+
+and returns `{ show: boolean; mandatory: boolean; missingFields:
+Array<"phone" | "village" | "deliveryDirections"> }`.
+
+Rules, applied in order:
+
+1. If `phone`, `village`, or `deliveryDirections` is blank/whitespace-
+   only, `show: true, mandatory: true` with the specific missing
+   field(s) — these are the same canonical `UserProfile` fields used
+   everywhere else, no duplicate fields.
+2. Otherwise compute the most recent MEANINGFUL verification as the
+   later of `deliveryProfileConfirmedAt` and `lastConfirmedDeliveryAt`.
+   If neither exists (never confirmed AND never had a completed
+   delivery), `show: true, mandatory: false` (first Resident portal
+   visit).
+3. Otherwise, `show: true` if that date is at least
+   `appConfig.deliveryProfileReminderWindowDays` (45) days old,
+   else `show: false`.
+
+Deliberately does NOT consider last login, login count, or account
+creation date alone — see PRODUCT.md "Do Not Use Login Date."
+
+## Data sources
+
+- `deliveryProfileConfirmedAt` — `UserProfile` field (see "Suggested
+  Firestore Model" `users/{uid}` above). Missing on historical documents
+  that predate this field; `toUserProfile()` (`src/lib/domain/users.ts`)
+  normalizes a missing value to `null` (never confirmed) rather than
+  backfilling a fabricated timestamp — this is a prelaunch codebase, so
+  no compatibility-layer backfill was added.
+- `lastConfirmedDeliveryAt` — the resident's most recently `"confirmed"`
+  request's `confirmedAt`, from the new
+  `getMostRecentConfirmedRequest(customerId)`
+  (`src/lib/domain/waterRequests.ts`). Only `"confirmed"` counts — never
+  `"available"`, `"preferred_driver_hold"`, `"claimed"`, `"cancelled"`,
+  or `"disputed"`, and NOT a currently `"delivered"` (awaiting
+  confirmation) request, so a resident mid-delivery is never
+  additionally nagged by this reminder while already handling that
+  delivery. This includes deliveries auto-confirmed after the 24-hour
+  window (`checkDeliveryConfirmationTimeout()`) — both a genuine
+  customer confirmation and an auto-confirmation write the same
+  `status: "confirmed"` / `confirmedAt` fields, so they are
+  indistinguishable (and equally valid) at this query layer.
+
+### Query efficiency
+
+`getMostRecentConfirmedRequest()` is a targeted, indexed query
+(`customerId ==`, `status ==`, `orderBy confirmedAt desc`, `limit 1`) —
+it does not scan `getRequestsForCustomer()`'s full history on every
+Resident portal visit. This requires a new composite index (none of the
+existing `waterRequests` indexes cover `customerId + status +
+confirmedAt`):
+
+```json
+{
+  "collectionGroup": "waterRequests",
+  "fields": [
+    { "fieldPath": "customerId", "order": "ASCENDING" },
+    { "fieldPath": "status", "order": "ASCENDING" },
+    { "fieldPath": "confirmedAt", "order": "DESCENDING" },
+    { "fieldPath": "__name__", "order": "DESCENDING" }
+  ]
+}
+```
+
+Added to `firestore.indexes.json` — **this must be deployed** (`firebase
+deploy --only firestore:indexes`) before this feature can rely on the
+query succeeding in production; Firestore rejects a composite query
+without a matching index at runtime rather than silently scanning.
+
+`src/app/resident/page.tsx` only calls this query when the required
+delivery-profile fields are already complete — if any are missing, the
+reminder is mandatory regardless, so the extra read is skipped entirely.
+
+## Refreshing the confirmation
+
+`updateUserProfile()` (`src/lib/domain/users.ts`) compares the
+incoming phone/village/deliveryDirections against the currently stored
+values before writing. If any of them actually changed, it also sets
+`deliveryProfileConfirmedAt` to the server timestamp in the same write —
+saving a real change to delivery-relevant information is itself an
+active review, so the resident is not required to separately return to
+the reminder modal and click "Everything Is Correct" right after. Saving
+unrelated fields only (e.g. display name) does not refresh it.
+
+`confirmDeliveryProfile(uid)` (`src/lib/domain/users.ts`) is the
+"Everything Is Correct" operation. It:
+
+- Never trusts a client-provided timestamp — always writes
+  `FieldValue.serverTimestamp()`.
+- Re-validates server-side that phone/village/deliveryDirections are all
+  non-blank before writing, throwing `DELIVERY_PROFILE_INCOMPLETE`
+  otherwise — this mirrors the UI (which never offers "Everything Is
+  Correct" when required fields are missing) but must not depend on the
+  UI alone (see DEVIN.md "Never rely on UI visibility for access
+  control").
+- Only ever confirms the calling resident's own profile —
+  `confirmDeliveryProfileInfo()` (`src/app/resident/actions.ts`) resolves
+  the uid from `requireRole("resident")`'s server-verified session, never
+  from client input.
+
+## UI
+
+`src/app/resident/DeliveryProfileReminderModal.tsx` (client component)
+is rendered by `src/app/resident/page.tsx` only when
+`evaluateDeliveryProfileReminder(...).show` is true — the decision is
+made server-side before the component ever mounts, so a multi-role user
+on `/driver` or `/dispatcher` never evaluates or renders this at all
+(it is not part of any shared portal layout).
+
+- **Mandatory** (missing required fields): no close (`X`)/backdrop
+  dismissal, no "Everything Is Correct" button; only "Review My
+  Information," which scrolls to the existing `ProfileForm` (anchored
+  via `#delivery-profile-form` on the same page) — no second profile
+  editor was built for this modal.
+- **Periodic** (complete but stale): both "Review My Information" and
+  "Everything Is Correct" are offered; the resident may also dismiss via
+  `X`/backdrop. Dismissal is purely local UI state — it never calls the
+  confirm action, so the reminder reappears on the resident's next
+  portal visit exactly as before, per PRODUCT.md.
+- The modal displays the resident's current phone/village/delivery
+  directions so confirmation is meaningful.
+
+## Firestore rules
+
+No `firestore.rules` change was required. `users/{userId}` writes are
+already restricted to the owning uid and already permit updating
+arbitrary non-`roles` fields on self (see "Suggested Firestore Model" /
+existing `users/{userId}` rule) — the same posture already governing
+phone/village/deliveryDirections. All application writes to
+`deliveryProfileConfirmedAt` go through `src/lib/domain/users.ts` via
+the Admin SDK using `FieldValue.serverTimestamp()`, exactly like every
+other profile field.
+
+---
+
 # Domain Logic
 
 Do not bury important business logic directly inside React components.
@@ -952,6 +1120,20 @@ confirmDeliveryByStaff()
 changeRequestPriority()
 reevaluatePreferredDriverHoldForPriority()
 getOutstandingRequestsForContinuityReport()
+getMostRecentConfirmedRequest()
+```
+
+`src/lib/domain/deliveryProfileReminder.ts` (pure, no Firestore access —
+see "Delivery Profile Confirmation Reminder" above):
+
+```text
+evaluateDeliveryProfileReminder()
+```
+
+`src/lib/domain/users.ts` additions for this feature:
+
+```text
+confirmDeliveryProfile()
 ```
 
 `src/lib/domain/deliveryConfirmation.ts` (pure, no Firestore access —

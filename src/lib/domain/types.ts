@@ -24,6 +24,20 @@ export interface UserProfile {
   village: string | null;
   deliveryDirections: string | null;
 
+  /**
+   * When the resident last affirmatively reviewed their delivery
+   * information (phone/village/deliveryDirections) and confirmed it was
+   * still correct — either by explicitly clicking "Everything Is
+   * Correct" on the delivery-profile reminder, or by saving a change to
+   * one of those fields (which is itself a fresh review). Distinct from
+   * `updatedAt`, which changes on ANY profile save (e.g. display name
+   * only). Null means never confirmed — see PRODUCT.md / TECHNICAL.md
+   * "Delivery Profile Confirmation Reminder". Missing on historical
+   * documents that predate this field; treated as null (never
+   * confirmed), never backfilled.
+   */
+  deliveryProfileConfirmedAt: string | null;
+
   createdAt: string;
   updatedAt: string;
 }

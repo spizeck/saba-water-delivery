@@ -4,15 +4,18 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
+import { evaluateDeliveryProfileReminder } from "@/lib/domain/deliveryProfileReminder";
 import { getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
 import { getUserProfile } from "@/lib/domain/users";
 import {
   checkDeliveryConfirmationTimeout,
   getActiveRequestForCustomer,
+  getMostRecentConfirmedRequest,
   getRequestsForCustomer,
 } from "@/lib/domain/waterRequests";
 
 import { ActiveRequest } from "./ActiveRequest";
+import { DeliveryProfileReminderModal } from "./DeliveryProfileReminderModal";
 import { ProfileForm } from "./ProfileForm";
 import { RequestHistory } from "./RequestHistory";
 import { WaterRequestForm } from "./WaterRequestForm";
@@ -28,12 +31,36 @@ export default async function ResidentPortalPage() {
     profile.village?.trim() && profile.deliveryDirections?.trim(),
   );
 
-  // Fetch active request and eligible drivers in parallel.
-  const [rawActiveRequest, eligibleDrivers, allRequests] = await Promise.all([
-    profileComplete ? getActiveRequestForCustomer(uid) : null,
-    profileComplete ? getEligibleDriverOptions() : [],
-    profileComplete ? getRequestsForCustomer(uid) : [],
-  ]);
+  // Required fields for the delivery-profile confirmation reminder
+  // additionally include phone (see PRODUCT.md "Delivery Profile
+  // Confirmation Reminder") — deliberately separate from `profileComplete`
+  // above, which continues to gate water-request eligibility exactly as
+  // before and is NOT changed by this feature.
+  const deliveryProfileFieldsComplete = Boolean(
+    profile.phone?.trim() && profile.village?.trim() && profile.deliveryDirections?.trim(),
+  );
+
+  // Fetch active request and eligible drivers in parallel. The most
+  // recent confirmed delivery is only needed when required fields are
+  // already complete — if anything is missing the reminder is mandatory
+  // regardless, so skip this extra read (see TECHNICAL.md "Delivery
+  // Profile Confirmation Reminder" — avoid scanning request history on
+  // every login).
+  const [rawActiveRequest, eligibleDrivers, allRequests, mostRecentConfirmedRequest] =
+    await Promise.all([
+      profileComplete ? getActiveRequestForCustomer(uid) : null,
+      profileComplete ? getEligibleDriverOptions() : [],
+      profileComplete ? getRequestsForCustomer(uid) : [],
+      deliveryProfileFieldsComplete ? getMostRecentConfirmedRequest(uid) : null,
+    ]);
+
+  const deliveryProfileReminder = evaluateDeliveryProfileReminder({
+    phone: profile.phone,
+    village: profile.village,
+    deliveryDirections: profile.deliveryDirections,
+    deliveryProfileConfirmedAt: profile.deliveryProfileConfirmedAt,
+    lastConfirmedDeliveryAt: mostRecentConfirmedRequest?.confirmedAt ?? null,
+  });
 
   // Lazy check: if the active request is "delivered", see if the
   // confirmation window has expired — if so it is auto-confirmed here so
@@ -101,9 +128,18 @@ export default async function ResidentPortalPage() {
             <RequestHistory requests={historyRequests} />
           )}
 
-          <ProfileForm profile={profile} />
+          <div id="delivery-profile-form">
+            <ProfileForm profile={profile} />
+          </div>
         </Container>
       </main>
+      {deliveryProfileReminder.show && (
+        <DeliveryProfileReminderModal
+          profile={profile}
+          mandatory={deliveryProfileReminder.mandatory}
+          missingFields={deliveryProfileReminder.missingFields}
+        />
+      )}
     </>
   );
 }

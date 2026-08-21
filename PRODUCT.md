@@ -736,6 +736,103 @@ Residents should be able to save their normal delivery location for future reque
 
 ---
 
+# Delivery Profile Confirmation Reminder
+
+Failed deliveries are frequently caused by an outdated phone number,
+village, or delivery directions rather than an operational problem. The
+Resident portal periodically reminds a resident to confirm this
+information is still correct — this is a data-quality safeguard, not a
+login gimmick, so it deliberately does **not** appear on every visit.
+
+## Required delivery-profile fields
+
+For this reminder, "required" means:
+
+- Phone number
+- Village
+- Delivery directions
+
+These are the same canonical profile fields used everywhere else in the
+system — no duplicate fields were introduced.
+
+## The modal
+
+Heading: **Please confirm your delivery information**
+
+The modal shows the resident's current phone, village, and delivery
+directions so confirming is meaningful — the resident can see exactly
+what they are being asked to confirm, not asked to affirm information
+they cannot see.
+
+Two possible states:
+
+- **Information complete** — the resident sees **Review My Information**
+  (goes to the existing profile editing section — there is no second,
+  duplicate profile editor built for this modal) and **Everything Is
+  Correct** (records that they reviewed and confirmed it).
+- **Information incomplete** — the modal is more forceful: it clearly
+  identifies what is missing, offers only **Review My Information**, and
+  does **not** offer "Everything Is Correct." A resident cannot confirm
+  a blank phone number or missing delivery directions. Casual dismissal
+  (closing via an X or the backdrop) is not offered in this state.
+
+For the normal periodic reminder (information already complete), the
+resident may dismiss the modal without acting on it (e.g. via a close
+control), but doing so does **not** count as a confirmation — the
+reminder simply reappears on the next Resident portal visit until the
+resident actually confirms or reviews their information.
+
+## When it appears
+
+The reminder is **not** based on login frequency, account age, or
+number of visits. It appears when:
+
+1. Required delivery information is missing, **or**
+2. The resident has not meaningfully reviewed their delivery
+   information in the last **45 days** — where "meaningfully reviewed"
+   means the later of:
+   - The resident explicitly confirming via "Everything Is Correct," or
+   - Saving an actual change to phone/village/delivery directions
+     (which is itself an active review — the resident should not have
+     to separately return to the modal right after editing), or
+   - Having a delivery reach `confirmed` status (a completed delivery is
+     strong evidence the information on file was current and usable).
+
+If a resident has never confirmed their information and has never had a
+completed delivery, the reminder appears on their first Resident portal
+visit.
+
+A completed delivery effectively restarts the 45-day period even if the
+resident never explicitly clicks "Everything Is Correct" — e.g. a
+resident who confirmed their profile, then received and confirmed a
+delivery 30 days later, will not see the reminder again until 45 days
+after that delivery.
+
+## Not a hard blocker
+
+Once required information is complete, the 45-day reminder is a UX
+nudge, not a blocker — the resident may dismiss it and continue using
+the portal. Missing required information is different: profile
+completion remains required before requesting water, exactly as
+before this feature (see "Standard Water Request" / existing profile
+requirements) — this reminder does not change that enforcement, only
+brings it to the resident's attention with specific, actionable detail.
+
+## Scope
+
+This reminder is specific to the Resident portal (`/resident`). A
+multi-role user (e.g. resident + driver) does not see it while using
+another portal — it is evaluated only when they are actually on the
+Resident portal.
+
+Property/cistern photo review is explicitly **not** part of this
+reminder yet (see PRODUCT.md "Property Photos" — planned, not built).
+The modal is deliberately structured so a future photo-review step
+could be added later without a redesign, but no placeholder photo UI
+exists today.
+
+---
+
 # Water Situation Privacy
 
 Some of the new water-situation information is sensitive, especially

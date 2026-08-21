@@ -58,6 +58,16 @@ export const appConfig = {
    * timezone.
    */
   operationalTimezone: "America/Puerto_Rico",
+
+  /**
+   * Days after which the resident delivery-profile confirmation reminder
+   * becomes due again, if not refreshed sooner by a fresh profile
+   * confirmation, a delivery-relevant profile edit, or a newly confirmed
+   * delivery (see PRODUCT.md / TECHNICAL.md "Delivery Profile
+   * Confirmation Reminder"). This is a UX safeguard against outdated
+   * phone numbers/villages/directions, not a request-blocking rule.
+   */
+  deliveryProfileReminderWindowDays: 45,
 } as const;
 
 export type AppConfig = typeof appConfig;

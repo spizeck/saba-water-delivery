@@ -149,6 +149,41 @@ export async function getRequestsForCustomer(
   return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
 }
 
+/**
+ * Returns the resident's most recently confirmed delivery, or null if
+ * they have never had one. Used by the delivery-profile confirmation
+ * reminder (see PRODUCT.md / TECHNICAL.md "Delivery Profile
+ * Confirmation Reminder") to determine whether a recent completed
+ * delivery should count as a fresh review of their delivery
+ * information — a completed delivery only ever reaches `"confirmed"`
+ * (never `"delivered"`/`"claimed"`/etc.), and this includes deliveries
+ * auto-confirmed after the 24-hour window
+ * (`checkDeliveryConfirmationTimeout`), since both write the same
+ * `status`/`confirmedAt` fields regardless of how confirmation happened.
+ *
+ * Deliberately a targeted, indexed query (`customerId` + `status` +
+ * `confirmedAt`, limit 1) rather than scanning
+ * `getRequestsForCustomer()`'s full history on every Resident portal
+ * visit — see TECHNICAL.md "Delivery Profile Confirmation Reminder" for
+ * the required composite index.
+ */
+export async function getMostRecentConfirmedRequest(
+  customerId: string,
+): Promise<WaterRequest | null> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("customerId", "==", customerId)
+    .where("status", "==", "confirmed")
+    .orderBy("confirmedAt", "desc")
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return toWaterRequest(doc.id, doc.data());
+}
+
 // ---------------------------------------------------------------------------
 // Queries — Dispatcher request creation
 // ---------------------------------------------------------------------------
