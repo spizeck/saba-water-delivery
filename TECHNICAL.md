@@ -1666,30 +1666,80 @@ include `waterSituation` fields (vulnerable circumstances, persons
 affected, Critical explanation) — see `continuityReportData.ts`'s
 row-building logic and its privacy-focused unit tests.
 
-## Vercel deployment: pdfkit font data must be explicitly traced
+## Vercel deployment: pdfkit must be externalized from the server bundle
 
-`pdfkit` loads its built-in font metrics (`Helvetica.afm`, etc., under
-`node_modules/pdfkit/js/data/`) via a runtime `fs.readFileSync(path.join(__dirname,
-"data", ...))` call rather than a static `import`/`require`. Next.js's
-Output File Tracing (which determines exactly which files Vercel bundles
-into each serverless function) only follows static `import`/`require`/
-`fs` calls it can analyze at build time — it cannot see this dynamic
-path — so without explicit configuration, PDF generation works locally
-(where `node_modules` is fully present on disk) but fails in production
-on Vercel with `ENOENT: no such file or directory, open
-'/var/task/.../data/Helvetica.afm'`.
+`pdfkit` resolves its built-in font metrics (`Helvetica.afm`, etc.,
+under `node_modules/pdfkit/js/data/`) at **runtime** using a path
+relative to its own `__dirname`
+(`path.join(__dirname, "data", "Helvetica.afm")`), not a static
+`import`/`require`.
 
-Fixed via `outputFileTracingIncludes` in `next.config.ts`, which forces
-`node_modules/pdfkit/js/data/**/*` into the trace for every route whose
-server bundle can reach `renderContinuityReportPdf()`: the two
-dedicated API routes (`/api/cron/continuity-report`,
-`/api/reports/continuity-snapshot`) and `/dispatcher` (which imports the
-"Send Continuity Report Now" server action). Verified by inspecting the
-build's `.next/server/app/**/*.nft.json` trace files after `npm run
-build` and confirming `Helvetica.afm` (and the rest of the data
-directory) is listed for all three. If a new route or server action is
-added that can call `renderContinuityReportPdf()`, add its route path to
-this same `outputFileTracingIncludes` map.
+This caused two distinct, sequential production bugs:
+
+1. **Missing data files.** Next's Output File Tracing (which determines
+   exactly which files Vercel bundles into each serverless function)
+   only follows static `import`/`require`/`fs` calls it can analyze at
+   build time — it cannot see pdfkit's dynamic `fs.readFileSync` path —
+   so the `.afm` files were missing from the deployed function,
+   producing `ENOENT: ... open '.../data/Helvetica.afm'` in production
+   even though it worked locally (where `node_modules` is fully present
+   on disk).
+2. **Wrong `__dirname` after bundling (the deeper bug).** Adding
+   `outputFileTracingIncludes` for `node_modules/pdfkit/js/data/**/*`
+   alone was **not sufficient**: because pdfkit's code was being
+   *bundled into* a webpack chunk (e.g. `.next/server/chunks/9.js`)
+   rather than kept as its own module, pdfkit's `__dirname` at runtime
+   resolved to that chunk's directory, not pdfkit's real package
+   directory — so pdfkit looked for
+   `/var/task/.next/server/chunks/data/Helvetica.afm`, which can never
+   exist no matter what the trace copies under
+   `node_modules/pdfkit/js/data/`.
+
+Fixed with **both**, together:
+
+- `serverExternalPackages: ["pdfkit"]` in `next.config.ts` — opts
+  pdfkit out of Server Component/Route Handler bundling entirely, so it
+  stays a real, unbundled `require("pdfkit")` at runtime (confirmed by
+  inspecting the built route/page bundles: they contain a literal
+  `a.exports=require("pdfkit")`, and no pdfkit source — no
+  `AFMFont`/`class PDFDocument`/etc. — appears inlined in any
+  `.next/server/chunks/*.js` file). With pdfkit unbundled, its own
+  `__dirname` is the real `node_modules/pdfkit/js` directory again, so
+  `path.join(__dirname, "data", "Helvetica.afm")` resolves correctly.
+- `outputFileTracingIncludes` for `node_modules/pdfkit/js/data/**/*` —
+  **still required** alongside `serverExternalPackages`: pdfkit's font
+  files are still read via a runtime `fs.readFileSync`, so even with
+  pdfkit now correctly traced as an external dependency (NFT
+  automatically includes `node_modules/pdfkit/js/pdfkit.js` and
+  `package.json` once it's a real `require`), the data directory still
+  needs to be listed explicitly.
+
+Both apply to every route whose server bundle can reach
+`renderContinuityReportPdf()`: the two dedicated API routes
+(`/api/cron/continuity-report`, `/api/reports/continuity-snapshot`) and
+`/dispatcher` (which imports the "Send Continuity Report Now" server
+action). If a new route or server action is added that can call
+`renderContinuityReportPdf()`, add its route path to the
+`outputFileTracingIncludes` map (no change to `serverExternalPackages`
+is needed — it already applies package-wide, not per-route).
+
+Verified after `npm run build` by inspecting
+`.next/server/app/**/*.nft.json` and the built route/page `.js` files
+directly:
+
+- No `.next/server/chunks/*.js` file contains pdfkit's source.
+- Each of the three routes' bundles contains a literal
+  `a.exports=require("pdfkit")`.
+- Each route's `.nft.json` trace includes
+  `node_modules/pdfkit/package.json`, `node_modules/pdfkit/js/pdfkit.js`
+  (pdfkit's actual — and, being a pre-bundled single-file package,
+  self-contained — entry point, picked up automatically by NFT once the
+  `require` is real), and all 15 files under
+  `node_modules/pdfkit/js/data/`.
+
+This was validated against real Vercel production deployment, not build
+traces alone — see the final report for this change for the exact
+production test results.
 
 ## Reliability
 
