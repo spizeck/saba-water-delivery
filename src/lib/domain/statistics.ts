@@ -65,8 +65,8 @@ export interface SummaryMetrics {
   disputed: number;
   cancelled: number;
   gallonsDelivered: number;
-  /** How many requests were submitted online (resident) vs entered by staff. */
-  bySource: { resident: number; dispatcher: number };
+  /** How many requests were submitted online (resident), via WhatsApp, or entered by staff. */
+  bySource: { resident: number; dispatcher: number; whatsapp: number };
   /** How many requests were created at each dispatch priority level
    * (initial or current — this reflects the CURRENT priority, including
    * any dispatcher override). Never broken down by resident/village to
@@ -290,6 +290,7 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     bySource: {
       resident: requests.filter((r) => r.source === "resident").length,
       dispatcher: requests.filter((r) => r.source === "dispatcher").length,
+      whatsapp: requests.filter((r) => r.source === "whatsapp").length,
     },
     byPriority: {
       normal: requests.filter((r) => r.dispatchPriority === "normal").length,

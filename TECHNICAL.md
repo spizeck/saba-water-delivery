@@ -1765,13 +1765,202 @@ production test results.
 
 ---
 
-# Future WhatsApp Integration
+# WhatsApp Resident Ordering
 
-WhatsApp is expected to become an important interface.
+See PRODUCT.md "WhatsApp Resident Ordering" for the product rationale.
+This is the implementation reference. **Resident** ordering is
+implemented; **driver** WhatsApp commands (see "Future WhatsApp
+Integration" below) are not.
 
-Architect V1 so WhatsApp can later trigger the same server-side operations as the web interface.
+## Architecture
 
-Potential commands/actions include:
+WhatsApp is a front end to the existing application — it calls the
+exact same domain functions and writes to the exact same
+`waterRequests` collection as the web app. No parallel requests
+collection, dispatch logic, priority logic, preferred-driver logic, or
+duplicate-protection logic was created.
+
+```text
+Meta webhook -> /api/webhooks/whatsapp -> idempotency claim
+  -> handleIncomingWhatsAppMessage() (orchestrator)
+     -> session load (whatsappSessions)
+     -> resident identity match (residentMatch.ts)
+     -> processMessage() (PURE conversation reducer)
+     -> canonical domain functions (createWaterRequest, confirmWaterDelivery,
+        disputeWaterDelivery, updateUserProfile — same as the web app)
+     -> session save
+     -> outbound WhatsApp message(s) (client.ts)
+```
+
+Split for testability (see DEVIN.md "Integration Boundaries" —
+transport / state machine / identity matching / domain operations are
+deliberately separated):
+
+- `src/lib/whatsapp/types.ts` — session/step/context/action types.
+- `src/lib/whatsapp/parsing.ts` — **pure**. Deterministic input parsing
+  only (menu numbers, CONFIRM/CANCEL, village/vulnerable-circumstance/
+  urgency menu choices, persons-affected/storage free text). No
+  AI/intent classification anywhere in this module or any other.
+- `src/lib/whatsapp/messages.ts` — **pure**. All outbound message
+  copy/templates, so exact wording is reviewable/testable in isolation.
+- `src/lib/whatsapp/phoneMatching.ts` — **pure**.
+  `normalizePhoneForMatching()` (digits-only comparison) and
+  `matchResidentByPhoneFromDirectory(rawPhone, directory)` (unique /
+  none / ambiguous — see PRODUCT.md "Resident Identity Strategy").
+- `src/lib/whatsapp/residentMatch.ts` — thin `server-only` wrapper:
+  fetches `getResidentDirectory()` (the same directory dispatcher
+  search already uses) and delegates to the pure matcher above.
+- `src/lib/whatsapp/conversationSteps.ts` — **pure**.
+  `processMessage(session, inboundText, context)` is the entire
+  deterministic state machine: given the current session/step, the raw
+  inbound text, and already-fetched context (active request, eligible
+  drivers, registered profile), it returns the next session state,
+  outbound message(s), and zero or more canonical domain
+  `actions` to perform. It never touches Firestore/network itself, so
+  it's fully unit tested (`src/lib/whatsapp/__tests__/conversationSteps.test.ts`)
+  without mocking Meta or Firestore.
+- `src/lib/whatsapp/session.ts` — `server-only` Firestore session CRUD
+  (`whatsappSessions/{id}`, doc ID = SHA-256 of the normalized phone,
+  never the raw phone number — see PRODUCT.md item 8) and lazy
+  expiration (`appConfig.whatsappSessionExpirationHours`, default 24).
+- `src/lib/whatsapp/idempotency.ts` — `server-only`.
+  `claimMessageId(messageId)` uses Firestore's `create()` (fails if the
+  doc already exists) as an atomic claim against
+  `whatsappProcessedMessages/{sha256(messageId)}` — see "Webhook
+  Idempotency" below.
+- `src/lib/whatsapp/clientConfig.ts` — **pure**.
+  `getWhatsAppClientConfig()`, `verifyWhatsAppWebhookChallenge()`
+  (GET handshake), `verifyWhatsAppWebhookSignature()`
+  (`X-Hub-Signature-256` HMAC-SHA256 verification, constant-time
+  compare). No network call, so directly unit tested.
+- `src/lib/whatsapp/client.ts` — `server-only`. Re-exports the pure
+  config/verification functions above and adds
+  `sendWhatsAppTextMessage()`, the one place that calls Meta's Graph
+  API (`POST https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages`).
+- `src/lib/whatsapp/handleIncomingMessage.ts` — `server-only`
+  orchestrator described in the diagram above. Maps canonical domain
+  error codes (e.g. `DUPLICATE_ACTIVE_REQUEST`, `CRITICAL_EXPLANATION_REQUIRED`,
+  `INVALID_STATUS_FOR_CONFIRM`) to resident-friendly text — never a raw
+  error code, stack trace, or document ID (see PRODUCT.md "Error
+  Handling").
+- `src/app/api/webhooks/whatsapp/route.ts` — the public endpoint (see
+  "Webhook Endpoint" below).
+- `src/lib/domain/villages.ts` — **pure**. New canonical
+  `SABA_VILLAGES` list, introduced specifically because no canonical
+  village list/type existed anywhere before this phase (the web
+  form/profile have always used free-text `village: string`) — see
+  PRODUCT.md "Village Selection". Does not change `UserProfile`/
+  `WaterRequest` field types.
+
+## Environment variables
+
+Server-only, never `NEXT_PUBLIC_`-prefixed (see .env.example):
+`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
+`WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`.
+`getWhatsAppClientConfig()` returns `null` (never throws) if any is
+missing; the webhook route responds `503` rather than silently no-op'ing.
+
+## Webhook endpoint
+
+`GET /api/webhooks/whatsapp` — Meta's verification handshake.
+Validates `hub.mode=subscribe` and `hub.verify_token` against
+`WHATSAPP_VERIFY_TOKEN`; echoes `hub.challenge` back on success, `403`
+otherwise.
+
+`POST /api/webhooks/whatsapp` — inbound message delivery. Reads the
+**raw** request body (`request.text()`, before any JSON parsing,
+since Meta signs the exact bytes) and verifies `X-Hub-Signature-256`
+before doing anything else — an invalid/missing signature is rejected
+with `401` and never reaches message processing. No Firebase session
+cookie is required or possible here (Meta cannot present one) — this
+route is intentionally public but signature-verified instead, unlike
+every other route in this application which uses `requireRole()`.
+
+## Webhook idempotency (launch-critical)
+
+Meta may retry webhook delivery for the same message. Every inbound
+message ID is claimed via `claimMessageId()` **before** any
+conversation processing:
+
+- First delivery: `create()` succeeds -> process the message normally.
+- Retry of the same message ID: `create()` fails (`ALREADY_EXISTS`) ->
+  skip entirely, still respond `200` (so Meta stops retrying) but never
+  call `handleIncomingWhatsAppMessage()` a second time.
+
+This makes it structurally impossible for a Meta retry to advance the
+conversation twice, create a duplicate water request, confirm/dispute a
+delivery twice, or create duplicate audit events. Tested end-to-end at
+the route level (mocking `claimMessageId`/`handleIncomingWhatsAppMessage`)
+in `src/app/api/webhooks/whatsapp/__tests__/route.test.ts`.
+
+## Webhook performance
+
+The webhook loops over inbound messages, claiming and processing each
+in turn, then returns. Per message this is: one session doc read, one
+resident-directory fetch (only once per conversation — cached on the
+session via `customerType`/`customerId` after the first message), one
+eligible-drivers query (small, indexed, bounded — same query the web
+resident/dispatcher forms already run on every page load), zero or one
+domain writes, one session doc write, and one or more outbound Meta API
+calls. No large Firestore scans, no queue — see DEVIN.md "Do Not
+Overbuild".
+
+## Firestore collections/rules
+
+`whatsappSessions/{id}` and `whatsappProcessedMessages/{id}` are
+written/read only by these server-only modules via the Admin SDK, which
+bypasses Firestore Security Rules entirely. Both collections are fully
+`allow read, write: if false` in `firestore.rules` — no client
+(resident, driver, staff, or viewer) has any direct access; there is no
+operational reason for a human to browse either collection directly. No
+new composite indexes were needed — both collections are only ever
+accessed by direct document ID lookup (session ID = SHA-256 of the
+normalized phone; processed-message ID = SHA-256 of Meta's message ID),
+never a query.
+
+## Request source and statistics
+
+`WaterRequestSource` gained `"whatsapp"` alongside `"resident"` /
+`"dispatcher"`. In `createWaterRequest()`, every branch that
+distinguishes actor type already checked specifically for
+`source === "dispatcher"` (staff-on-behalf-of-customer) with a single
+generic "else" branch for the customer's own action — `"whatsapp"`
+falls into that same "else" branch as `"resident"` with **zero code
+changes** to `createWaterRequest()` itself: `createdBy` stays `null`,
+the audit event stays the existing `request_created` (not
+`request_created_by_dispatcher`), and `actorRole` stays `"resident"`.
+This was a deliberate decision, not an oversight — a WhatsApp
+submission is self-service by the customer, exactly like a web
+submission, just over a different channel, so it did not warrant a
+third audit-event type. `src/lib/domain/statistics.ts`'s
+`SummaryMetrics.bySource` gained a `whatsapp` count alongside
+`resident`/`dispatcher`, shown on `/statistics`. The dispatcher request
+detail page (`src/app/dispatcher/[requestId]/page.tsx`) shows
+"Submitted via WhatsApp" for `source === "whatsapp"`.
+
+## Testing
+
+`processMessage()`, `parsing.ts`, `phoneMatching.ts`, and
+`clientConfig.ts` are pure and fully unit tested without mocking
+Firestore, Meta, or crypto — see
+`src/lib/whatsapp/__tests__/{conversationSteps,parsing,phoneMatching,clientConfig}.test.ts`.
+Webhook signature verification, the verify-token handshake, and
+duplicate-message-ID idempotency are tested at the route level
+(`src/app/api/webhooks/whatsapp/__tests__/route.test.ts`) by mocking
+only `claimMessageId`/`handleIncomingWhatsAppMessage`, while reusing the
+REAL pure `clientConfig.ts` functions for signature verification (see
+that test file's `vi.mock("@/lib/whatsapp/client", ...)` — it
+re-exports the actual pure implementation rather than faking it). The
+`server-only`-guarded orchestrator (`handleIncomingMessage.ts`) and
+Firestore-backed `session.ts`/`idempotency.ts` are not directly unit
+tested (no Firestore emulator in this project's test setup) — same
+precedent as `generateContinuityReportData()` — but their logic is
+intentionally thin glue around already-tested pure functions and
+already-tested canonical domain functions.
+
+## Future WhatsApp Integration (driver side — not built)
+
+Driver WhatsApp commands remain a future phase, not started:
 
 ```text
 ON
@@ -1784,9 +1973,13 @@ DELIVERED
 HELP
 ```
 
-Do not implement these during initial web development unless explicitly requested.
-
-Do not store authoritative application state inside WhatsApp conversations.
+Do not implement these until explicitly requested. As with resident
+ordering, they must call the exact same domain functions as the driver
+web portal (`getNextOfferForDriver`, `acceptDriverOffer`,
+`declineDriverOffer`, `markWaterDelivered`, etc.) — never a parallel
+implementation. Continue to never store authoritative application state
+inside a WhatsApp conversation session; `whatsappSessions` remains
+conversation scratch state only.
 
 ---
 
@@ -1802,7 +1995,8 @@ Do not implement:
 - Delivery time slots
 - Multiple water quantities
 - Native mobile apps
-- WhatsApp integration
+- Driver-side WhatsApp integration (resident WhatsApp ordering is
+  implemented — see "WhatsApp Resident Ordering" above)
 - Automated billing-based driver access restriction
 
 Build the underlying architecture so reasonable future additions remain possible without prematurely implementing them.

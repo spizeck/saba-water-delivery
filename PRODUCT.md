@@ -1015,6 +1015,211 @@ Preserve raw events and timestamps rather than only storing aggregate statistics
 
 ---
 
+# WhatsApp Resident Ordering
+
+WhatsApp is a **front end to the existing application**, not a
+parallel system. A resident can message the government Water Delivery
+WhatsApp number and, through a short guided conversation, create the
+exact same kind of 1,000-gallon water request as the web app — using
+the same domain functions, the same `waterRequests` collection, the
+same priority/preferred-driver/duplicate rules, and the same driver
+dispatch workflow. If a WhatsApp-created request ever behaved
+differently after creation from a website request, that would be a
+design error.
+
+This phase covers **resident ordering only**. Driver WhatsApp
+functionality (going online/offline, offers, ACCEPT/DECLINE, DELIVERED)
+is intentionally not built yet — see TECHNICAL.md "Future WhatsApp
+Integration" for what remains for a later phase.
+
+## Deterministic, not AI
+
+The conversation is a fixed set of numbered menus and explicit
+keywords (e.g. reply `1`, `2`, `CONFIRM`, `CANCEL`) — never free-form
+AI/LLM interpretation or intent classification. Every step recognizes a
+narrow, explicit set of replies and re-prompts on anything else. This
+is a government public service: predictability and auditability matter
+more than a clever conversational feel.
+
+## Public number vs. Cloud API number
+
+The number residents already see on the website/Terms/Privacy/Data
+Deletion pages (`+599 416 5363`) is the intended long-term public
+contact number. That does **not** automatically mean it is provisioned
+as a Meta WhatsApp Business Platform (Cloud API) number — that is a
+separate manual setup step in Meta Business Manager (see TECHNICAL.md
+"Meta Setup Required"). Do not assume the two are already the same
+number without confirming in the Meta dashboard.
+
+## Resident Identity Strategy
+
+WhatsApp messages arrive with only a sender phone number — that is
+**not** treated as proof of account ownership by itself:
+
+- **Exact unique match** — if the sender's (normalized) phone number
+  matches exactly one registered resident's saved profile phone, that
+  resident's account is used as the likely context for the
+  conversation (subject to the same review/edit step below — it is
+  never assumed silently correct).
+- **No match** — the person continues as an **unregistered/manual
+  customer**, using the exact same model as a dispatcher-created
+  unregistered request (name/phone/village/directions, no Firebase Auth
+  account created).
+- **Multiple matches** — the system does **not** guess. It tells the
+  resident their account could not be identified automatically and
+  directs them to the website or the Water Delivery Office. "Check my
+  current request" is similarly only offered to a uniquely matched
+  registered resident — for an ambiguous or unregistered phone number,
+  status lookup is not offered via WhatsApp at all, to avoid ever
+  exposing one person's request to someone else who happens to share or
+  reuse a phone number.
+
+Phone comparison normalizes both sides to digits-only before comparing,
+since saved profile phones are free-text and formatted inconsistently
+(e.g. `+599 416 5363` vs `599-416-5363`).
+
+This is a V1 strategy, not a permanent identity system — see "Future
+Explicit Linking" below.
+
+## Future Explicit Linking
+
+A more robust future improvement (not built in this phase) would let a
+resident explicitly link their WhatsApp number to their account (e.g.
+`whatsappNumber: string | null`, `whatsappVerifiedAt: Timestamp | null`
+on `UserProfile`), with an actual verification step, rather than
+relying on a phone-number match against the profile's contact phone.
+This is deliberately deferred — building a full verification/linking
+workflow now would be premature for V1.
+
+## Registered resident flow
+
+For a uniquely matched resident, the conversation presents their saved
+phone/village/delivery directions and asks them to confirm they are
+still correct, or update them. An update is only ever applied to the
+saved profile after the resident explicitly confirms the full corrected
+request (the same `updateUserProfile()` used by the web Profile page —
+never a WhatsApp-specific profile-write path, and never applied from
+ambiguous free text without confirmation).
+
+## Unregistered customer flow
+
+For an unmatched phone number, the conversation collects name, village,
+delivery directions, and a contact phone (defaulting to the sending
+WhatsApp number, editable) — the same fields a dispatcher collects for
+a walk-in/phone caller. No account is created.
+
+## Request conversation
+
+Collects the same canonical information as the web form: village (a
+numbered menu — see "Village Selection" below), delivery directions,
+persons affected, vulnerable/critical circumstances (canonical options
+only — Elderly person / Infant or young child / Medical need /
+Essential services (Commercial/business) / Hotel or Restaurant / None),
+available storage capacity (free text), and resident-reported urgency
+(Normal / Critical, with a required explanation for Critical — enforced
+by the exact same `buildWaterSituationSnapshot()` validation the web
+form uses, never re-implemented). An optional preferred-driver
+selection is offered from the same eligible-driver list the web app
+uses; it remains a preference, never a guarantee, exactly as on the
+web.
+
+### Village Selection
+
+No canonical village list/type existed anywhere in the codebase before
+this phase — the web profile/request forms have always used a free-text
+village field with only placeholder guidance text. Because the
+WhatsApp conversation needs a deterministic numbered menu, a canonical
+five-village list was introduced (`src/lib/domain/villages.ts`): The
+Bottom, St. John's, Windwardside, Zion's Hill - Lower, Zion's Hill -
+Upper. A WhatsApp-selected village is written into the exact same
+free-text `village` field as any web request — this did **not** change
+the web form, `UserProfile`, or `WaterRequest` field types. Migrating
+the web forms to the same canonical list later, for village-demand
+data-quality consistency, is a reasonable future product decision but
+was out of scope here.
+
+## Attestation
+
+Before submission, the resident sees a plain-text summary (name,
+village, load, persons affected, reported priority, preferred driver)
+and must reply `CONFIRM` to submit or `CANCEL` to stop — no earlier
+"yes" in the conversation is treated as the attestation. Confirming
+records `attestationAccepted: true` / `attestationAcceptedAt`, exactly
+like the web form's final "Request Water" step.
+
+## Request source
+
+Requests created this way are tagged `source: "whatsapp"`. Like a
+resident's own web submission (and unlike a dispatcher-created
+request), a WhatsApp submission is a **self-service action by the
+customer themselves**, not a staff action taken on their behalf — so it
+deliberately reuses the existing `request_created` audit event (with
+`source: "whatsapp"` already recorded on the request document itself)
+rather than introducing a new event type. Dispatcher staff can see
+"Submitted via WhatsApp" on the request detail page, and `/statistics`
+breaks out WhatsApp alongside resident/dispatcher request counts.
+
+## Duplicate protection
+
+Exactly the same protection as the web/dispatcher workflow:
+
+- A uniquely matched **registered** resident with an existing
+  unresolved request is hard-blocked from creating a second one — they
+  are shown that request's current status instead.
+- An **unregistered** WhatsApp customer with a phone-matching
+  unresolved request is also blocked and shown that request's status.
+  Unlike the dispatcher UI, WhatsApp does **not** offer a
+  "proceed anyway" override for a soft phone match — a dispatcher can
+  apply human judgment (e.g. a shared household phone) before
+  overriding; an unattended, unauthenticated WhatsApp conversation
+  cannot, so a phone match is treated as decisive there. A resident in
+  that situation is directed to the Water Delivery Office.
+
+## Checking status and delivery confirmation/dispute
+
+"Check my current request" (registered residents only — see "Resident
+Identity Strategy" above) reports a resident-friendly status label
+(e.g. "Waiting for a driver," "Driver assigned," "Delivery marked
+complete, awaiting your confirmation," "Delivery disputed — under
+review") — never a raw status enum string. If the request is
+`delivered`, the resident can immediately confirm ("Yes, received") or
+report a problem ("No, there is a problem" + a short reason) — using
+the exact same `confirmWaterDelivery()` / `disputeWaterDelivery()`
+functions the resident web portal uses.
+
+## Session privacy and expiration
+
+An in-progress conversation is stored server-side
+(`whatsappSessions/{id}`) purely as scratch state for the current
+conversation — it is never the authoritative record of a water request,
+and no client (resident, driver, or staff) has direct read/write access
+to it; only the webhook route (via the Admin SDK) does. An incomplete
+conversation expires after 24 hours (`appConfig.whatsappSessionExpirationHours`)
+— matching WhatsApp's own 24-hour customer-service messaging window —
+after which a new message starts a completely fresh conversation rather
+than resuming stale draft answers.
+
+## Error handling
+
+Every failure path (duplicate request, invalid village/number, expired
+session, missing Critical explanation, a preferred driver no longer
+available, the request state changing mid-conversation, or the backend
+being temporarily unavailable) gets a short, resident-friendly message
+that directs them to try again or contact the Water Delivery Office.
+Raw Firebase errors, stack traces, document IDs, and internal enum
+names are never sent to a resident over WhatsApp.
+
+## Not yet implemented
+
+- Driver WhatsApp workflow (online/offline, offers, accept/decline,
+  delivered) — see TECHNICAL.md "Future WhatsApp Integration".
+- WhatsApp message templates / proactive outbound notifications outside
+  the resident-initiated conversation window.
+- Explicit WhatsApp-number-to-account linking/verification (see "Future
+  Explicit Linking" above).
+
+---
+
 # Operational Continuity Snapshot
 
 Government raised a continuity question ahead of the next testing round:

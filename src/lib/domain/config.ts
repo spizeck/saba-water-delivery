@@ -68,6 +68,19 @@ export const appConfig = {
    * phone numbers/villages/directions, not a request-blocking rule.
    */
   deliveryProfileReminderWindowDays: 45,
+
+  /**
+   * Hours an incomplete WhatsApp ordering conversation
+   * (`whatsappSessions/{id}`) remains valid before a new inbound
+   * message starts a fresh conversation instead of resuming stale
+   * draft data (see PRODUCT.md / TECHNICAL.md "WhatsApp Resident
+   * Ordering"). Matches WhatsApp's own 24-hour customer-service
+   * messaging window, so "the conversation is still fresh" and "we can
+   * still message this person without a template" line up. Enforced
+   * lazily on read, like the delivery-confirmation timeout — no
+   * scheduled cleanup job for V1 (see DEVIN.md "Do Not Overbuild").
+   */
+  whatsappSessionExpirationHours: 24,
 } as const;
 
 export type AppConfig = typeof appConfig;

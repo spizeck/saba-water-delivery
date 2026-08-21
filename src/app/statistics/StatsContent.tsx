@@ -89,6 +89,7 @@ export function StatsContent({ stats }: StatsContentProps) {
       {/* Request source breakdown */}
       <p className="text-xs text-slate-500">
         {stats.summary.bySource.resident.toLocaleString()} submitted online &middot;{" "}
+        {stats.summary.bySource.whatsapp.toLocaleString()} via WhatsApp &middot;{" "}
         {stats.summary.bySource.dispatcher.toLocaleString()} entered by staff
       </p>
 

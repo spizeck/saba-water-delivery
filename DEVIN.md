@@ -362,13 +362,45 @@ Operational Timezone".
 
 # WhatsApp
 
-WhatsApp integration is planned.
+Resident WhatsApp ordering is implemented — see PRODUCT.md /
+TECHNICAL.md "WhatsApp Resident Ordering". Driver WhatsApp
+functionality (online/offline, offers, ACCEPT/DECLINE, DELIVERED) is
+**not** implemented yet — see TECHNICAL.md "Future WhatsApp
+Integration (driver side)". Do not start it without being explicitly
+asked.
 
-Do **not** implement it during the initial web build.
+WhatsApp is a front end to the existing application — it calls the same
+domain operations used by the web application
+(`createWaterRequest`, `confirmWaterDelivery`, `disputeWaterDelivery`,
+`updateUserProfile`), never a parallel implementation:
 
-However, avoid architecture that would require rewriting core business logic when WhatsApp is added.
+```text
+processMessage()                    — src/lib/whatsapp/conversationSteps.ts (pure)
+matchResidentByPhoneFromDirectory() — src/lib/whatsapp/phoneMatching.ts (pure)
+matchResidentByPhone()              — src/lib/whatsapp/residentMatch.ts (server-only)
+getOrCreateSession() / saveSession()— src/lib/whatsapp/session.ts (server-only)
+claimMessageId()                    — src/lib/whatsapp/idempotency.ts (server-only)
+getWhatsAppClientConfig() / verifyWhatsAppWebhookChallenge() /
+  verifyWhatsAppWebhookSignature()  — src/lib/whatsapp/clientConfig.ts (pure)
+sendWhatsAppTextMessage()           — src/lib/whatsapp/client.ts (server-only; Meta Graph API)
+handleIncomingWhatsAppMessage()     — src/lib/whatsapp/handleIncomingMessage.ts (server-only orchestrator)
+```
 
-WhatsApp should eventually invoke the same domain operations used by the web application.
+Invoked by `src/app/api/webhooks/whatsapp/route.ts` (public, but
+`X-Hub-Signature-256`-verified rather than `requireRole()`-protected,
+since Meta cannot present a Firebase session cookie). Every inbound
+message ID is claimed via `claimMessageId()` before any processing —
+this is what makes Meta's webhook retries safe (see TECHNICAL.md
+"Webhook Idempotency").
+
+No canonical village list/type existed before this feature — see
+`src/lib/domain/villages.ts` (`SABA_VILLAGES`) and PRODUCT.md "Village
+Selection" for why it was introduced and what it deliberately did NOT
+change (the web form/profile still use free-text `village: string`).
+
+`WaterRequestSource` gained `"whatsapp"` (`src/lib/domain/types.ts`) —
+see TECHNICAL.md "Request source and statistics" for why this required
+no changes to `createWaterRequest()`'s audit-event logic.
 
 ---
 

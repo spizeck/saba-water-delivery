@@ -200,7 +200,11 @@ export default async function RequestDetailPage({ params }: PageProps) {
                   {PRIORITY_LABELS[data.dispatchPriority ?? "normal"]} priority
                 </span>
                 <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                  {data.source === "dispatcher" ? "Entered by staff" : "Submitted online"}
+                  {data.source === "dispatcher"
+                    ? "Entered by staff"
+                    : data.source === "whatsapp"
+                      ? "Submitted via WhatsApp"
+                      : "Submitted online"}
                 </span>
               </div>
             </div>

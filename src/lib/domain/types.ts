@@ -80,10 +80,17 @@ export type StandardLoadGallons = 1000;
  * Who originated the request. Resident-created requests come from the
  * authenticated resident portal; dispatcher-created requests are entered
  * by government staff on behalf of a customer who called or visited the
- * office. Both sources enter the exact same delivery workflow — there is
- * no separate manual queue. See PRODUCT.md "Dispatcher-Created Requests".
+ * office; whatsapp requests come from the resident WhatsApp ordering
+ * conversation (see TECHNICAL.md "WhatsApp Resident Ordering") — like
+ * `"resident"`, this is a customer self-service channel, NOT a
+ * staff-on-behalf-of-customer channel, so it deliberately shares the
+ * same audit-event branch as `"resident"` in `createWaterRequest()`
+ * (only `"dispatcher"` is treated as staff-initiated). All three enter
+ * the exact same delivery workflow — there is no separate manual queue
+ * or parallel request system. See PRODUCT.md "Dispatcher-Created
+ * Requests".
  */
-export type WaterRequestSource = "resident" | "dispatcher";
+export type WaterRequestSource = "resident" | "dispatcher" | "whatsapp";
 
 /**
  * A snapshot of the customer's identity at request creation time,
