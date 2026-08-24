@@ -1,100 +1,73 @@
 # Saba Water Delivery
 
-Government RO water delivery request and driver dispatch system for Saba.
+A Government of Saba system for requesting and dispatching government
+RO water deliveries. It replaces the previous process where residents
+called individual drivers directly: a resident requests a standard
+1,000-gallon load, an eligible driver claims and delivers it, and
+government staff retain full operational visibility over the process.
 
-This system replaces the current process where residents contact individual
-water delivery drivers directly. Residents request a standard 1,000-gallon
-load, eligible drivers claim and deliver it, and government staff retain
-full operational visibility.
+## Interfaces
 
-See the source-of-truth project documents:
+- **Resident** (`/resident`) — request water, manage delivery
+  information, confirm or dispute deliveries.
+- **Driver** (`/driver`) — go online/offline, receive and respond to
+  one delivery offer at a time, deliver water.
+- **Dispatcher** (`/dispatcher`) — operational oversight, manual
+  requests for callers/walk-ins, assignment, dispute handling,
+  continuity reports.
+- **Admin** (`/admin`) — user roles, Driver Registry, dispatch
+  settings.
+- **Viewer** (`/viewer`) — read-only operational oversight for
+  government staff who do not need operational control.
+- **WhatsApp** — residents can also request water and manage an
+  existing request by messaging the government WhatsApp number; it is
+  a front end to the same request system, not a separate one.
 
-- [`PRODUCT.md`](./PRODUCT.md) — product requirements and business logic
-- [`TECHNICAL.md`](./TECHNICAL.md) — architecture and data model guide
-- [`DEVIN.md`](./DEVIN.md) — development guide and implementation sequence
+## Technology
 
-## Implementation status
+- Next.js (App Router) and TypeScript
+- Firebase Authentication (Google, Facebook, email/password)
+- Cloud Firestore (source of truth) and Firebase Storage
+- Vercel (hosting, cron)
+- Resend (transactional email)
+- Meta WhatsApp Business Platform / Cloud API (WhatsApp ordering)
 
-This repository currently contains the **application foundation plus the
-authenticated user and resident profile foundation** — not the full V1
-workflow. What exists today:
+## Documentation map
 
-- Next.js App Router project (TypeScript, Tailwind CSS v4), Vercel-ready.
-- Application shell: public home page, `/login`, and portal pages for
-  `/resident`, `/driver`, `/dispatcher`, and `/admin`.
-- Working sign-in at `/login` via Firebase Authentication (Google,
-  Facebook, email/password), backed by an httpOnly session cookie
-  (`/api/auth/session`) verified server-side on every request with the
-  Firebase Admin SDK — the browser is never trusted to assert its own
-  identity or role.
-- On first sign-in, a Firestore `users/{uid}` document is created with
-  role defaulted to `resident` (`src/lib/domain/users.ts`); existing
-  users' roles and saved profile data are never overwritten on
-  re-authentication.
-- Server-side route protection (`src/lib/auth/session.ts`'s
-  `requireRole`): `/resident`, `/driver`, `/dispatcher`, and `/admin` each
-  redirect unauthenticated visitors to `/login` and wrong-role visitors to
-  `/access-denied`. This is enforced on the server, not just by hiding
-  navigation.
-- Resident profile workflow at `/resident`: view/edit display name, phone,
-  village/area, and delivery directions (email shown read-only) via a
-  Server Action, plus a first-login prompt to complete the profile before
-  water requests are available.
-- Firebase client SDK (`src/lib/firebase/client.ts`) and Admin SDK
-  (`src/lib/firebase/admin.ts`) configuration, both degrading gracefully
-  (clear "not configured" states) when env vars are absent.
-- Domain types (`src/lib/domain/types.ts`) mirroring the Firestore schema
-  in `TECHNICAL.md`, centralized business configuration
-  (`src/lib/domain/config.ts`), and signature-level stubs for the water
-  request domain operations (`createWaterRequest`, `claimWaterRequest`,
-  etc.) that will be implemented next.
-- `firestore.rules` (deny-by-default, role-aware, prevents self-elevation
-  of role) and `firebase.json`.
+| Document | Contents |
+| --- | --- |
+| [`PRODUCT.md`](./PRODUCT.md) | Authoritative business rules and product behavior. |
+| [`TECHNICAL.md`](./TECHNICAL.md) | Architecture, data model, and implementation reference. |
+| [`DEVIN.md`](./DEVIN.md) | Development guide, conventions, and build philosophy. |
+| [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) | Plain-English daily operations workflow for government staff. |
+| [`docs/ADMIN_GUIDE.md`](./docs/ADMIN_GUIDE.md) | How to manage users, the Driver Registry, and dispatch settings. |
+| [`docs/DISPATCHER_GUIDE.md`](./docs/DISPATCHER_GUIDE.md) | Practical guide to the dispatcher dashboard and daily tasks. |
+| [`docs/DRIVER_GUIDE.md`](./docs/DRIVER_GUIDE.md) | Simple guide for water delivery drivers. |
+| [`docs/INCIDENT_RECOVERY.md`](./docs/INCIDENT_RECOVERY.md) | What to do during outages or a suspected security incident. |
+| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | How to reproduce and configure the production deployment. |
+| [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) | Canonical Firestore collections and their fields/relationships. |
+| [`docs/TESTING.md`](./docs/TESTING.md) | Verification commands and a manual pre-deployment smoke test. |
+| [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md) | Every external service integration in one place. |
+| [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) | Production-facing changelog going forward. |
 
-**Not yet implemented:** the water request workflow (create/claim/deliver/
-confirm), driver/dispatcher/admin dashboards beyond placeholders,
-statistics, and any staff-facing role management UI (role changes
-currently require editing Firestore directly). See `DEVIN.md` for the
-intended build order.
-
-## Local development
+## Development quick start
 
 ```bash
 npm install
 npm run dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000).
-
-Other useful commands:
+Then open [http://localhost:3000](http://localhost:3000). Without
+Firebase environment variables configured, the app still builds and
+runs, showing a clear "not configured" state instead of failing.
 
 ```bash
 npm run lint    # ESLint
-npm run build   # Production build (also runs the TypeScript compiler)
-npm run start   # Serve the production build
+npm run build   # Production build (webpack, also runs the TypeScript compiler)
+npm run test    # Vitest
 ```
 
-## Environment variables
-
-Copy `.env.example` to `.env.local` and fill in real values. Never commit
-`.env.local` or any file containing real secrets.
-
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase client SDK config |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client SDK config |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase client SDK config |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase client SDK config |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase client SDK config |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase client SDK config |
-| `FIREBASE_ADMIN_PROJECT_ID` | Firebase Admin SDK (server-only) |
-| `FIREBASE_ADMIN_CLIENT_EMAIL` | Firebase Admin SDK (server-only) |
-| `FIREBASE_ADMIN_PRIVATE_KEY` | Firebase Admin SDK (server-only) |
-
-The Firebase client variables come from **Firebase Console → Project
-settings → General → Your apps → Web app**. The Admin SDK variables come
-from a service account key generated at **Firebase Console → Project
-settings → Service accounts → Generate new private key**.
-
-Without these variables set, the app still builds and runs — the login
-page shows a clear "not configured" notice instead of failing.
+See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for environment
+variables and production setup, [`TECHNICAL.md`](./TECHNICAL.md) for
+architecture, and [`docs/TESTING.md`](./docs/TESTING.md) for the full
+verification and smoke-test process.

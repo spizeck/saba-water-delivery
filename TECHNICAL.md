@@ -587,8 +587,9 @@ online/offline preference) — see PRODUCT.md "Driver Availability" and
 ### Local-day decline counting and timezone
 
 "Per day" is defined using the local operational day for Saba, configured
-as `appConfig.operationalTimezone` (`America/Kralendijk` — Caribbean
-Netherlands, fixed UTC-4 with no daylight saving). `countDeclinesToday()`
+as `appConfig.operationalTimezone` (`America/Puerto_Rico`, a fixed
+UTC-4 offset with no daylight saving, matching Saba's actual clock —
+see "Saba Operational Timezone" below). `countDeclinesToday()`
 bounds its Firestore query with a generous 26-hour lookback and then
 filters precisely by comparing each decline's formatted local calendar
 date (`Intl.DateTimeFormat` with `timeZone`) against today's local date.
