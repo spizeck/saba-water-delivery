@@ -97,14 +97,25 @@ relying on this schedule as a strict guarantee.
 
 ## Resend
 
-1. Create a Resend account and add/verify a sending domain (Resend →
-   Domains) if using a real government address as
-   `CONTINUITY_REPORT_EMAIL_FROM`. Until a domain is verified, Resend's
-   own `onboarding@resend.dev` sender can be used for testing only.
+Production sends from a domain verified in Resend (Resend → Domains) —
+this is the expected configuration, not an interim workaround. Resend's
+own `onboarding@resend.dev` sender is only useful for local development
+before a domain has been verified, and should not be used once a
+verified domain is configured.
+
+1. Add and verify your sending domain in Resend (Resend → Domains),
+   following Resend's DNS verification instructions with your domain
+   registrar.
 2. Create an API key (Resend → API Keys) and set it as
-   `RESEND_API_KEY`.
-3. Set `CONTINUITY_REPORT_EMAIL_TO` to a distribution list or shared
-   operational inbox, not a personal address.
+   `RESEND_API_KEY` in Vercel (never commit it).
+3. Set `CONTINUITY_REPORT_EMAIL_FROM` to an address on the verified
+   domain (for example, a `waterdelivery@` address on that domain).
+4. Set `CONTINUITY_REPORT_EMAIL_TO` to a government distribution list
+   or shared operational inbox, not a personal address.
+
+For local development only, before a domain is verified,
+`onboarding@resend.dev` can stand in as `CONTINUITY_REPORT_EMAIL_FROM`
+so email sending can be tested end-to-end.
 
 ## Meta/Facebook Login
 

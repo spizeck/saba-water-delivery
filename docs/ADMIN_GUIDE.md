@@ -72,8 +72,22 @@ it when resolved. Every restriction and restoration is recorded.
 
 ### Availability
 
-Availability (`online` / `offline`) is set by the driver themselves and
-is not something an admin changes directly.
+Availability (`online` / `offline`) is set by the driver themselves —
+there is no admin control to directly toggle a driver online or
+offline. However, two admin actions force a driver offline as an
+automatic side effect, since neither leaves it meaningful for the
+driver to remain online:
+
+- **Restricting eligibility** (see above) immediately sets the driver
+  offline in addition to marking them ineligible.
+- **Unlinking an account** (see above) also immediately sets the
+  driver offline.
+
+If you need a driver to stop receiving new offers right away and
+restricting their eligibility is not appropriate, there is currently
+no lighter-weight "pause this driver" admin action — restricting
+eligibility is the only way to force a driver offline from the Admin
+portal.
 
 ### Fill station meters
 

@@ -92,9 +92,17 @@ company but not a configuration, credentials, or purpose.
   `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`,
   `WHATSAPP_VERIFY_TOKEN`; the webhook subscribed to the `messages`
   field in the Meta App Dashboard.
-- **Failure impact:** residents cannot order water over WhatsApp; the
-  website and manual dispatcher entry remain fully available. See
-  [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "WhatsApp outage."
+- **Failure impact:** if the failure is on the Meta/WhatsApp side only
+  (an outage, an expired token, or a webhook misconfiguration),
+  residents cannot order water over WhatsApp, but the website and
+  manual dispatcher entry remain fully available. This is **not**
+  symmetric: WhatsApp cannot act as a backup for a website outage,
+  because both the resident-facing website and the WhatsApp webhook run
+  as the same Vercel deployment, and both the website and WhatsApp
+  message processing depend on the same Firestore database — a
+  Firebase outage affects both channels together. See
+  [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "WhatsApp outage,"
+  "Vercel outage," and "Firebase outage."
 - **24-hour customer-service messaging window:** Meta only allows
   free-form messages to a resident within 24 hours of their last
   inbound message, which is also why WhatsApp conversation sessions in

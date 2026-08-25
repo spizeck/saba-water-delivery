@@ -83,6 +83,13 @@ website and dispatcher-created requests — there is nothing different
 for staff or drivers to do with a WhatsApp request. The request detail
 page shows "Submitted via WhatsApp" so staff know how it arrived.
 
+WhatsApp is a front end to the same underlying system, not an
+independent backup channel — it depends on the same Firestore database
+as the website. If the website is unavailable because of a Firebase
+outage, WhatsApp ordering is affected in the same way. See
+[`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) for exactly which
+outages affect which channels.
+
 ## End of day
 
 At 8:00 PM Saba time, the system automatically generates and emails an

@@ -31,11 +31,19 @@ connectivity.
 ## Firebase outage
 
 Firebase (Authentication and Firestore) is required for sign-in, and
-for any request creation, claiming, or status change. If Firebase is
-degraded or unavailable:
+for any request creation, claiming, or status change. **WhatsApp
+ordering is not an independent channel during a Firebase outage** — it
+is a front end to the same Firestore-backed system: every inbound
+WhatsApp message is first recorded in Firestore before it is even
+processed, and every request it creates or updates is the same
+Firestore data the website uses. If Firebase is degraded or
+unavailable:
 
 - Residents cannot sign in, submit new requests, or confirm/dispute
-  deliveries through the website or WhatsApp.
+  deliveries through the website, and the WhatsApp conversation cannot
+  progress either — a resident may still be able to send a WhatsApp
+  message, but the system cannot record or act on it until Firestore
+  recovers.
 - Drivers cannot receive new offers or mark deliveries complete.
 - Use the most recent continuity report to keep delivering water
   manually until service is restored.
@@ -45,18 +53,26 @@ degraded or unavailable:
 
 ## Vercel outage
 
-Vercel hosts the application and its scheduled continuity-report cron.
-If Vercel is degraded or unavailable, the effect is the same as the
-website being unavailable (see above) — Firestore data itself is
-unaffected, but the app cannot be reached until Vercel recovers.
+Vercel hosts the entire application, including both the resident-facing
+website and the WhatsApp webhook endpoint, as one deployment. If Vercel
+is degraded or unavailable, both are unreachable together — this is not
+a case where WhatsApp can act as a backup for the website, since they
+run on the same infrastructure. Firestore data itself is unaffected,
+but nothing can reach it until Vercel recovers.
 
 ## WhatsApp outage
 
-If the WhatsApp ordering channel is down (Meta outage, or a webhook
-misconfiguration), residents can still request and manage water
-through the website, or by calling/visiting the Water Delivery Office
-so a dispatcher can enter the request manually. No dispatch or delivery
-functionality depends on WhatsApp being available.
+If specifically the WhatsApp side is affected — a Meta-side outage, an
+expired access token, or a webhook misconfiguration — while the website
+and Firebase remain healthy, residents can still request and manage
+water through the website, or by calling/visiting the Water Delivery
+Office so a dispatcher can enter the request manually. No dispatch or
+delivery functionality depends on WhatsApp being available. This is the
+one outage scenario where WhatsApp is the affected channel and the
+website is not — see "Firebase outage" and "Vercel outage" above for
+why the reverse (website down, WhatsApp still working) is generally
+not true for this application, since both depend on the same hosting
+and the same Firestore data.
 
 ## Resend (email) failure
 
@@ -98,19 +114,47 @@ account. There is no single point of failure for authentication.
 
 If deliveries were coordinated manually during an outage (by phone,
 radio, or in person), reconcile them in the application once service is
-restored:
+restored. **Marking a request "delivered" is a driver action, not a
+dispatcher/admin action** — dispatcher/admin tools can reassign,
+cancel, override priority, and resolve disputes, but there is no
+dispatcher/admin control that directly sets a request to "delivered."
+Reconciliation therefore depends on whether the delivering driver has
+an account in the system:
 
-- For a request that already existed in the system before the outage,
-  update its status normally through the dispatcher dashboard (mark it
-  delivered, confirm it, or cancel it, as appropriate) so the record
-  matches what actually happened.
-- For a delivery that was arranged entirely outside the system during
-  the outage (for example, a brand-new request that was never entered
-  because the website was down), a dispatcher should enter it as a
-  manual request after the fact so it is captured in the operational
-  record and statistics, even though the actual delivery already
-  occurred.
+- **A request that already existed in the system, claimed by a driver
+  who has an account:** once the driver is back online, have them open
+  their claimed delivery and use "Mark Delivered" for the delivery they
+  already completed manually, exactly as they would for a normal
+  delivery. This puts the request into the correct state and starts the
+  resident's normal 24-hour confirmation window (or, for an
+  unregistered customer, allows a dispatcher to use "Confirm Delivery"
+  on their behalf once it shows as delivered).
+- **A request that already existed in the system but cannot be marked
+  delivered by a driver** (for example, the assigned driver is
+  unavailable, or the delivery was completed by someone without an
+  account): a dispatcher can still cancel the request so it does not
+  remain open indefinitely, and should record what actually happened
+  outside the system (for example, in the reason given for
+  cancellation). This does not produce an accurate "delivered/confirmed"
+  record for statistics — see the gap noted below.
+- **A delivery that was arranged entirely outside the system during the
+  outage** (for example, a brand-new request that was never entered
+  because the website was down): a dispatcher can enter it as a manual
+  request after the fact so the demand is captured, but the same
+  limitation applies — there is no dispatcher/admin action to record it
+  as already delivered.
+
+**Operational gap:** there is currently no dispatcher/admin workflow to
+directly record a request as delivered and confirmed when the
+delivering driver cannot (or does not) do so themselves through the
+driver portal. Today, closing out such a request accurately depends on
+the assigned driver eventually marking it delivered, or on a dispatcher
+cancelling it (which does not represent it as a completed delivery).
+This is a real limitation of the current implementation, not a
+documentation gap — if outage-driven manual reconciliation becomes a
+frequent operational need, this should be raised as a product decision
+rather than worked around informally.
 
 There is no automated reconciliation feature — this is a manual staff
-process using the existing dispatcher tools. Do not assume any
-automatic matching or backfilling happens on its own.
+process using the existing dispatcher and driver tools. Do not assume
+any automatic matching or backfilling happens on its own.

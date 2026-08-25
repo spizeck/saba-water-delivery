@@ -35,11 +35,15 @@ as "never confirmed," not backfilled.
 Audit trail of role grants/removals (`role_added` / `role_removed`,
 actor, timestamp). Admin-only, written by Admin SDK code.
 
-### `users/{uid}/propertyPhotos/{photoId}`
+### `users/{uid}/propertyPhotos/{photoId}` — planned, not implemented
 
-Metadata for resident-uploaded property photos (type, `storagePath` in
-Firebase Storage, uploader, timestamps). Not yet exposed in the UI —
-see `PRODUCT.md` "Property Photos" (planned feature).
+A TypeScript interface and Firestore/Storage security-rule scaffolding
+exist for this collection (type, `storagePath` in Firebase Storage,
+uploader, timestamps), but there is no domain logic, server action, or
+UI that reads or writes it today. Nothing in the running application
+creates, lists, or displays a property photo. Treat this as reserved
+schema for a planned feature (see `PRODUCT.md` "Property Photos"), not
+as working functionality.
 
 ## `driverRegistry/{driverId}`
 
@@ -155,11 +159,14 @@ or staff confirmation, dispute, cancellation, priority changes, and
 related system events. Every meaningful state transition is recorded
 here with actor, role, and timestamp.
 
-### `waterRequests/{requestId}/photos/{photoId}`
+### `waterRequests/{requestId}/photos/{photoId}` — planned, not implemented
 
-Metadata for driver-uploaded delivery photos (proof of delivery,
-delivery issue, access issue, other). Not yet exposed in the UI — see
-`PRODUCT.md` "Proof of Delivery" (planned feature).
+Same status as `propertyPhotos` above: a type definition and security
+rule scaffolding exist for driver-uploaded delivery photos (proof of
+delivery, delivery issue, access issue, other), but no domain logic,
+server action, or UI implements uploading, listing, or viewing them.
+Treat this as reserved schema for a planned feature (see `PRODUCT.md`
+"Proof of Delivery"), not as working functionality.
 
 ## `driverOffers/{offerId}`
 

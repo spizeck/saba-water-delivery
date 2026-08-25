@@ -50,10 +50,9 @@ Delivered** to close out your part of the job.
 ## When your next request becomes available
 
 The moment you mark a delivery complete, you are free to receive
-another offer — you do not need to wait for the resident to confirm
-they received the water. Once the driver marks the delivery complete,
-the driver is free to receive another assignment. The resident's later
-confirmation does not hold the driver.
+another offer. The resident's later confirmation is separate and does
+not hold you up — you do not need to wait for them to confirm they
+received the water before you can be offered your next delivery.
 
 You may only hold one active delivery at a time. If you already have a
 delivery in progress, you will not be offered another one until you
