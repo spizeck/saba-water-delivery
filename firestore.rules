@@ -182,6 +182,24 @@ service cloud.firestore {
       }
     }
 
+    // Batch Dispatch (dispatcher-controlled multi-load assignment — see
+    // TECHNICAL.md "Batch Dispatch"). All creation and membership
+    // changes happen through server-side domain logic
+    // (src/lib/domain/dispatchBatches.ts) using the Admin SDK, which
+    // bypasses these rules. Staff and viewers may read for operational
+    // oversight, same posture as driverRegistry; a batch document
+    // contains no resident PII beyond what staff already see on the
+    // underlying waterRequests documents.
+    match /dispatchBatches/{batchId} {
+      allow read: if isStaff() || isViewer();
+      allow write: if false;
+
+      match /events/{eventId} {
+        allow read: if isStaff() || isViewer();
+        allow write: if false;
+      }
+    }
+
     // WhatsApp conversation sessions (ephemeral conversation scratch
     // state, never the authoritative water-request record — see
     // TECHNICAL.md "WhatsApp Resident Ordering") and inbound-webhook

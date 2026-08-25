@@ -404,6 +404,39 @@ no changes to `createWaterRequest()`'s audit-event logic.
 
 ---
 
+# Batch Dispatch
+
+Batch Dispatch is implemented — see PRODUCT.md / TECHNICAL.md "Batch
+Dispatch". It is a deliberate, dispatcher-controlled EXCEPTION to the
+normal one-offer-at-a-time driver dispatch model, used to preassign
+several loads to one driver at once — for example, a driver whose
+phone/data access is unreliable — with a printable driver dispatch
+sheet. It never weakens the normal driver self-claim invariant (one
+active claimed delivery per driver). Only `dispatcher`/`admin` staff
+can create a batch or change its membership; drivers cannot create
+their own batches.
+
+```text
+sortForBatchSelection()            — src/lib/domain/dispatchBatchSelection.ts (pure)
+validateBatchSelection()           — src/lib/domain/dispatchBatchSelection.ts (pure)
+computeDispatchBatchStatus()       — src/lib/domain/dispatchBatchSelection.ts (pure)
+createDispatchBatch()              — src/lib/domain/dispatchBatches.ts (server-only)
+getDispatchBatch() / getAllDispatchBatches() / recordBatchGenerated()
+                                    — src/lib/domain/dispatchBatches.ts (server-only)
+getBatchEligibleRequests() / getRequestsForDispatchBatch() /
+  recordBatchDeliveryByStaff()     — src/lib/domain/waterRequests.ts
+buildDispatchBatchPdfData()        — src/lib/domain/dispatchBatchPdfData.ts (pure)
+renderDispatchBatchPdf()           — src/lib/reports/dispatchBatchPdf.ts
+```
+
+Do not build route optimization, map routing, GPS tracking, automatic
+batch generation, driver-created batches, or a bulk "mark entire batch
+delivered" action — see PRODUCT.md/TECHNICAL.md "Batch Dispatch" for
+exactly what this feature is (assignment + print support) and is not
+(route planning).
+
+---
+
 # Payments
 
 Payments are outside the initial application scope.

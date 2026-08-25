@@ -5,10 +5,12 @@ import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 
 import { appConfig } from "./config";
+import { BATCH_ELIGIBLE_STATUSES, computeDispatchBatchStatus } from "./dispatchBatchSelection";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { isDriverImmediatelyAvailable } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import type {
+  DispatchBatchStatus,
   DispatchPriority,
   ReportedUrgency,
   VulnerableCircumstance,
@@ -35,10 +37,52 @@ export type { WaterSituationInput } from "./waterSituation";
  */
 
 const REQUESTS_COLLECTION = "waterRequests";
+const BATCHES_COLLECTION = "dispatchBatches";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Shared helper for keeping `dispatchBatches/{batchId}.status` in sync
+ * whenever a batch member's status changes or a member leaves the
+ * batch, from WITHIN an already-open transaction. Reads every OTHER
+ * current member's status (the caller substitutes the mutating
+ * request's own about-to-be-written status, or omits it entirely if it
+ * is leaving the batch) and returns the derived status plus the batch
+ * document reference to update — the caller performs the actual write,
+ * since Firestore transactions require all reads before any writes and
+ * callers already have other writes staged by this point.
+ *
+ * Deliberately implemented with raw Firestore reads here rather than
+ * calling into `dispatchBatches.ts`, to avoid a circular module
+ * dependency (`dispatchBatches.ts` reads FROM this module to hydrate
+ * `WaterRequest`s) — see TECHNICAL.md "Batch Dispatch".
+ */
+async function readBatchMemberStatusesForSync(
+  txn: FirebaseFirestore.Transaction,
+  db: FirebaseFirestore.Firestore,
+  dispatchBatchId: string,
+  mutatingRequestId: string,
+  /** The mutating request's new status, or null if it is leaving the
+   * batch (reassigned to a different driver, or cancelled) and should
+   * be excluded from the computed member set entirely. */
+  mutatingRequestNewStatus: WaterRequestStatus | null,
+): Promise<{ batchRef: FirebaseFirestore.DocumentReference; status: DispatchBatchStatus }> {
+  const membersSnap = await txn.get(
+    db.collection(REQUESTS_COLLECTION).where("dispatchBatchId", "==", dispatchBatchId),
+  );
+  const statuses: WaterRequestStatus[] = [];
+  for (const doc of membersSnap.docs) {
+    if (doc.id === mutatingRequestId) {
+      if (mutatingRequestNewStatus) statuses.push(mutatingRequestNewStatus);
+      continue;
+    }
+    statuses.push(doc.data().status as WaterRequestStatus);
+  }
+  const batchRef = db.collection(BATCHES_COLLECTION).doc(dispatchBatchId);
+  return { batchRef, status: computeDispatchBatchStatus(statuses) };
+}
 
 /** Statuses that mean the request is still "active" (unresolved). */
 const ACTIVE_STATUSES: WaterRequestStatus[] = [
@@ -105,6 +149,8 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     confirmedAt: data.confirmedAt?.toDate?.().toISOString() ?? null,
     createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    dispatchBatchId: data.dispatchBatchId ?? null,
+    batchSequence: typeof data.batchSequence === "number" ? data.batchSequence : null,
   };
 }
 
@@ -264,6 +310,51 @@ export async function getClaimedRequestsForDriver(
     .where("assignedDriverId", "==", driverId)
     .where("status", "==", "claimed")
     .orderBy("claimedAt", "desc")
+    .get();
+
+  return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+}
+
+// ---------------------------------------------------------------------------
+// Queries — Batch Dispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns every request currently eligible for Batch Dispatch, ordered
+ * by dispatch priority then request age — the same fairness ordering
+ * used everywhere else (see `sortForBatchSelection` in
+ * `dispatchBatchSelection.ts`, which the caller should still apply for
+ * display, since this query's `orderBy` is the source of truth but
+ * kept here as a single indexed round trip). Reuses the existing
+ * `status + priorityRank + requestedAt` composite index — no new index
+ * required for this query specifically.
+ */
+export async function getBatchEligibleRequests(): Promise<WaterRequest[]> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("status", "in", BATCH_ELIGIBLE_STATUSES)
+    .orderBy("priorityRank", "asc")
+    .orderBy("requestedAt", "asc")
+    .get();
+
+  return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+}
+
+/**
+ * Returns the current members of a dispatch batch, ordered by their
+ * original run-sheet sequence. Current membership is determined by
+ * `dispatchBatchId` on the request itself (queried directly), not by
+ * `dispatchBatches.originalRequestIds` — a request can leave a batch
+ * (reassigned to a different driver, or cancelled) without that
+ * historical array being rewritten. See TECHNICAL.md "Batch Dispatch".
+ */
+export async function getRequestsForDispatchBatch(batchId: string): Promise<WaterRequest[]> {
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("dispatchBatchId", "==", batchId)
+    .orderBy("batchSequence", "asc")
     .get();
 
   return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
@@ -889,6 +980,15 @@ export interface MarkWaterDeliveredInput {
  *
  * Only the assigned driver may do this. Uses a transaction to prevent
  * race conditions.
+ *
+ * The driver's `activeRequestId` lock is cleared only if it currently
+ * points at THIS request. Before Batch Dispatch, a driver could never
+ * have more than one `"claimed"` request, so this was always true; now
+ * that a driver may hold several batch-assigned claimed requests at
+ * once (see TECHNICAL.md "Batch Dispatch"), clearing it unconditionally
+ * would incorrectly release a genuinely active self-claimed/singly-
+ * assigned delivery when a driver happens to deliver an unrelated batch
+ * load first.
  */
 export async function markWaterDelivered(
   input: MarkWaterDeliveredInput,
@@ -918,21 +1018,36 @@ export async function markWaterDelivered(
       throw new Error("NOT_ASSIGNED_DRIVER");
     }
 
+    // If this request belongs to a batch, read the batch's OTHER member
+    // statuses now (all reads must happen before any writes in a
+    // Firestore transaction) so the batch's derived status can be kept
+    // in sync in the same transaction — see TECHNICAL.md "Batch
+    // Dispatch" "Interaction with activeRequestId".
+    const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
+    const batchSync = dispatchBatchId
+      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, "delivered")
+      : null;
+
     txn.update(requestRef, {
       status: "delivered",
       deliveredAt: now,
       updatedAt: now,
     });
 
-    // Clear the driver's active delivery lock so they can receive the next
-    // offer immediately.
-    if (!driverQuerySnap.empty) {
+    // Clear the driver's active delivery lock ONLY if it currently
+    // points at this request, so an unrelated genuinely-active delivery
+    // (self-claimed, or a different batch load) is never released.
+    if (!driverQuerySnap.empty && driverQuerySnap.docs[0].data().activeRequestId === requestId) {
       const registryRef = driverQuerySnap.docs[0].ref;
       txn.update(registryRef, {
         activeRequestId: null,
         updatedAt: now,
         updatedBy: driverId,
       });
+    }
+
+    if (batchSync) {
+      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
     }
 
     const eventRef = requestRef.collection("events").doc();
@@ -942,6 +1057,103 @@ export async function markWaterDelivered(
       actorRole: "driver",
       createdAt: now,
       metadata: null,
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Batch Dispatch — staff paper-reconciliation delivery
+// ---------------------------------------------------------------------------
+
+export interface RecordBatchDeliveryByStaffInput {
+  requestId: string;
+  actorId: string;
+}
+
+/**
+ * Lets dispatcher/admin staff record a batch-assigned load as delivered
+ * on behalf of a driver who cannot (or did not) mark it delivered
+ * themselves through the driver portal — the entire premise of Batch
+ * Dispatch is supporting drivers whose phone/data access may be
+ * unreliable (see PRODUCT.md "Batch Dispatch"). This closes a
+ * previously identified operational gap (see docs/INCIDENT_RECOVERY.md
+ * "Recovery: reconciling manually handled deliveries") for exactly this
+ * use case, without introducing a general "staff can mark any delivery
+ * delivered" capability: it is deliberately scoped to requests that are
+ * currently part of a dispatch batch (`dispatchBatchId` set), throwing
+ * `NOT_BATCH_ASSIGNED` for anything else. A normal self-claimed or
+ * singly-assigned delivery must still be marked delivered by its driver
+ * (or reassigned/cancelled by staff) — this function is not a shortcut
+ * around that.
+ *
+ * Records a distinct `marked_delivered_by_dispatcher_batch` audit event
+ * rather than `marked_delivered`, so the trail never misrepresents a
+ * staff paper-reconciliation entry as the driver's own action — the
+ * same principle already used for `delivery_confirmed_by_dispatcher`
+ * vs `customer_confirmed`. From this point on, the request proceeds
+ * through the identical `delivered` -> confirmed/disputed/auto-
+ * confirmed workflow as any other delivery.
+ */
+export async function recordBatchDeliveryByStaff(
+  input: RecordBatchDeliveryByStaffInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+    const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
+    if (!dispatchBatchId) throw new Error("NOT_BATCH_ASSIGNED");
+    if (data.status !== "claimed") throw new Error("REQUEST_NOT_CLAIMABLE");
+
+    const assignedDriverId = data.assignedDriverId as string | null | undefined;
+    let registryRef: FirebaseFirestore.DocumentReference | null = null;
+    if (assignedDriverId) {
+      const driverQuery = db
+        .collection("driverRegistry")
+        .where("linkedUserId", "==", assignedDriverId)
+        .limit(1);
+      const driverSnap = await txn.get(driverQuery);
+      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
+        registryRef = driverSnap.docs[0].ref;
+      }
+    }
+
+    const batchSync = await readBatchMemberStatusesForSync(
+      txn,
+      db,
+      dispatchBatchId,
+      requestId,
+      "delivered",
+    );
+
+    txn.update(requestRef, {
+      status: "delivered",
+      deliveredAt: now,
+      updatedAt: now,
+    });
+
+    if (registryRef) {
+      txn.update(registryRef, { activeRequestId: null, updatedAt: now, updatedBy: actorId });
+    }
+
+    txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "marked_delivered_by_dispatcher_batch",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: { dispatchBatchId },
     });
   });
 
@@ -1334,9 +1546,18 @@ export async function cancelWaterRequest(
       }
     }
 
+    // Cancellation removes a batch-assigned request from its batch's
+    // current membership entirely (see TECHNICAL.md "Batch Dispatch") —
+    // read the other members' statuses now, before any writes.
+    const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
+    const batchSync = dispatchBatchId
+      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, null)
+      : null;
+
     txn.update(requestRef, {
       status: "cancelled",
       updatedAt: now,
+      ...(dispatchBatchId ? { dispatchBatchId: null, batchSequence: null } : {}),
     });
 
     if (registryRef) {
@@ -1347,14 +1568,29 @@ export async function cancelWaterRequest(
       });
     }
 
+    if (batchSync) {
+      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+    }
+
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
       type: "request_cancelled",
       actorId,
       actorRole: "dispatcher",
       createdAt: now,
-      metadata: { reason },
+      metadata: { reason, ...(dispatchBatchId ? { leftDispatchBatchId: dispatchBatchId } : {}) },
     });
+
+    if (dispatchBatchId) {
+      const batchEventRef = requestRef.collection("events").doc();
+      txn.set(batchEventRef, {
+        type: "dispatcher_batch_membership_removed",
+        actorId,
+        actorRole: "dispatcher",
+        createdAt: now,
+        metadata: { dispatchBatchId, reason: "cancelled" },
+      });
+    }
   });
 
   const updated = await requestRef.get();
@@ -1474,6 +1710,13 @@ export async function resolveDisputeReopened(
       }
     }
 
+    // Reopening returns the request to the general unassigned queue, so
+    // it is no longer part of whichever batch (if any) it belonged to —
+    // it was already `"disputed"` (not `"claimed"`), so this cannot
+    // change the batch's derived `active`/`completed` status (see
+    // `computeDispatchBatchStatus`), only its current membership.
+    const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
+
     txn.update(requestRef, {
       status: "available",
       assignedDriverId: null,
@@ -1482,6 +1725,7 @@ export async function resolveDisputeReopened(
       confirmedAt: null,
       availableAt: now,
       updatedAt: now,
+      ...(dispatchBatchId ? { dispatchBatchId: null, batchSequence: null } : {}),
     });
 
     if (registryRef) {
@@ -1489,6 +1733,17 @@ export async function resolveDisputeReopened(
         activeRequestId: null,
         updatedAt: now,
         updatedBy: actorId,
+      });
+    }
+
+    if (dispatchBatchId) {
+      const batchEventRef = requestRef.collection("events").doc();
+      txn.set(batchEventRef, {
+        type: "dispatcher_batch_membership_removed",
+        actorId,
+        actorRole: "dispatcher",
+        createdAt: now,
+        metadata: { dispatchBatchId, reason: "dispute_reopened" },
       });
     }
 
@@ -1668,8 +1923,14 @@ export async function dispatcherReassign(
       throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
     }
 
-    // Load the previous driver's registry record so we can clear their active
-    // delivery lock, if any.
+    // Load the previous driver's registry record so we can clear their
+    // active delivery lock — but ONLY if it currently points at THIS
+    // request. Before Batch Dispatch this was always true (a driver
+    // could never have more than one active claim); now that a driver
+    // may separately hold a genuine active claim AND unrelated batch
+    // loads (which never set `activeRequestId` — see TECHNICAL.md
+    // "Batch Dispatch"), an unconditional clear here could otherwise
+    // release an unrelated, still-active delivery.
     let previousRegistryRef: FirebaseFirestore.DocumentReference | null = null;
     if (previousDriverId && previousDriverId !== newDriverId) {
       const previousDriverQuery = db
@@ -1677,15 +1938,28 @@ export async function dispatcherReassign(
         .where("linkedUserId", "==", previousDriverId)
         .limit(1);
       const previousDriverSnap = await txn.get(previousDriverQuery);
-      if (!previousDriverSnap.empty) {
+      if (!previousDriverSnap.empty && previousDriverSnap.docs[0].data().activeRequestId === requestId) {
         previousRegistryRef = previousDriverSnap.docs[0].ref;
       }
     }
+
+    // Reassigning to a different driver detaches this request from
+    // whichever batch (if any) it currently belongs to — a batch run
+    // sheet reflects a specific driver's assigned loads, so moving the
+    // delivery to someone else must leave that batch's membership (see
+    // TECHNICAL.md "Batch Dispatch"). Reassigning "to" the SAME driver
+    // it is already assigned to is a no-op here and does not detach it.
+    const dispatchBatchId =
+      previousDriverId !== newDriverId ? ((reqData.dispatchBatchId as string | null) ?? null) : null;
+    const batchSync = dispatchBatchId
+      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, null)
+      : null;
 
     txn.update(requestRef, {
       assignedDriverId: newDriverId,
       claimedAt: now,
       updatedAt: now,
+      ...(dispatchBatchId ? { dispatchBatchId: null, batchSequence: null } : {}),
     });
 
     txn.update(newRegistryRef, {
@@ -1702,6 +1976,10 @@ export async function dispatcherReassign(
       });
     }
 
+    if (batchSync) {
+      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+    }
+
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
       type: "dispatcher_reassigned",
@@ -1712,8 +1990,20 @@ export async function dispatcherReassign(
         previousDriverId,
         newDriverId,
         reason,
+        ...(dispatchBatchId ? { leftDispatchBatchId: dispatchBatchId } : {}),
       },
     });
+
+    if (dispatchBatchId) {
+      const batchEventRef = requestRef.collection("events").doc();
+      txn.set(batchEventRef, {
+        type: "dispatcher_batch_membership_removed",
+        actorId,
+        actorRole: "dispatcher",
+        createdAt: now,
+        metadata: { dispatchBatchId, reason: "reassigned_to_another_driver" },
+      });
+    }
   });
 
   const updated = await requestRef.get();

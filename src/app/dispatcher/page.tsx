@@ -126,12 +126,20 @@ export default async function DispatcherPortalPage() {
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-8 max-w-5xl">
           <div className="flex items-center justify-between gap-3">
-            <Link
-              href="/dispatcher/new"
-              className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
-            >
-              + Create Water Request
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/dispatcher/new"
+                className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+              >
+                + Create Water Request
+              </Link>
+              <Link
+                href="/dispatcher/batches"
+                className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+              >
+                Batch Dispatch
+              </Link>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href="/api/reports/continuity-snapshot"

@@ -255,6 +255,20 @@ export interface WaterRequest {
 
   createdAt: string;
   updatedAt: string;
+
+  /**
+   * Set when this request is currently part of a dispatcher-created
+   * Batch Dispatch run (see TECHNICAL.md "Batch Dispatch"). Null for
+   * every normal self-claimed or single-assigned request. A request
+   * keeps this set through delivered/confirmed/disputed so the batch
+   * remains a complete, reprintable record — it is only cleared when
+   * the request is reassigned to a different driver or cancelled,
+   * which detaches it from the batch's current membership.
+   */
+  dispatchBatchId: string | null;
+  /** 1-based position within its batch's original run sheet. Null
+   * whenever `dispatchBatchId` is null. */
+  batchSequence: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,7 +337,25 @@ export type WaterRequestEventType =
   | "dispatcher_reassigned"
   | "request_priority_changed"
   | "preferred_driver_bypassed_for_priority"
-  | "preferred_driver_hold_released_for_priority";
+  | "preferred_driver_hold_released_for_priority"
+  /** See TECHNICAL.md "Batch Dispatch". Deliberately distinct from
+   * "dispatcher_assigned" so a batch assignment is never mistaken for
+   * an ordinary single dispatcher assignment in the audit trail. */
+  | "dispatcher_batch_assigned"
+  /** Recorded when a request is reassigned to a different driver or
+   * cancelled while still part of an active batch, detaching it from
+   * that batch's current membership (see TECHNICAL.md "Batch
+   * Dispatch"). The specific reassignment/cancellation is still
+   * recorded separately via the existing "dispatcher_reassigned" /
+   * "request_cancelled" event — this is additional context, not a
+   * replacement. */
+  | "dispatcher_batch_membership_removed"
+  /** Staff-recorded delivery for a batch-assigned load whose driver
+   * could not use the app (see PRODUCT.md / TECHNICAL.md "Batch
+   * Dispatch"). Deliberately distinct from "marked_delivered" (a
+   * driver's own action) so the audit trail never misrepresents a
+   * staff paper-reconciliation entry as the driver's own action. */
+  | "marked_delivered_by_dispatcher_batch";
 
 export interface WaterRequestEvent {
   id: string;
@@ -465,4 +497,67 @@ export interface DispatchSettings {
   declineCooldownHours: number;
   updatedAt: string | null;
   updatedBy: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Batch Dispatch (dispatcher-controlled multi-load assignment)
+// ---------------------------------------------------------------------------
+
+/**
+ * See PRODUCT.md / TECHNICAL.md "Batch Dispatch". This is a deliberate,
+ * dispatcher-controlled EXCEPTION to the normal one-offer-at-a-time
+ * driver dispatch model — used when staff need to preassign several
+ * loads to one driver at once (e.g. for a driver whose phone/data
+ * access is unreliable) and hand them a single printed run sheet.
+ *
+ * "active" means at least one of the batch's current member requests
+ * is still `status: "claimed"` (not yet delivered). "completed" means
+ * every current member has left "claimed" (delivered, confirmed,
+ * disputed) or the batch currently has no members left (all were
+ * reassigned/cancelled out of it). This is a maintained cache of a
+ * value that could otherwise be recomputed from the member requests
+ * themselves — see `computeDispatchBatchStatus()` in
+ * `dispatchBatchSelection.ts` — kept in sync by every domain function
+ * that can change a batch member's status or membership.
+ */
+export type DispatchBatchStatus = "active" | "completed";
+
+export interface DispatchBatch {
+  id: string;
+  /** Firebase uid of the linked driver account this batch was assigned
+   * to (never the driverRegistry document ID — see TECHNICAL.md
+   * "Canonical Driver ID"). */
+  driverId: string;
+  /** uid of the dispatcher/admin who created this batch. */
+  createdBy: string;
+  createdAt: string;
+  status: DispatchBatchStatus;
+  /**
+   * The full set of request IDs originally assigned when this batch
+   * was created, in run-sheet order. Immutable historical record for
+   * audit — NOT the live membership list. A request's CURRENT
+   * membership is determined by `WaterRequest.dispatchBatchId`
+   * pointing back at this batch (queryable directly), since a request
+   * can leave the batch (reassigned to another driver, or cancelled)
+   * without rewriting this array — see TECHNICAL.md "Batch Dispatch".
+   */
+  originalRequestIds: string[];
+  /** Last time a run sheet was generated or reprinted for this batch,
+   * or null if it has never been generated (should not normally
+   * happen, since generation is part of the creation flow). */
+  generatedAt: string | null;
+  updatedAt: string;
+}
+
+export type DispatchBatchEventType =
+  | "dispatch_batch_created"
+  | "dispatch_batch_reprinted";
+
+export interface DispatchBatchEvent {
+  id: string;
+  type: DispatchBatchEventType;
+  actorId: string | null;
+  actorRole: UserRole | null;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
 }

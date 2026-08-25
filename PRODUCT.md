@@ -638,6 +638,132 @@ the cooldown by toggling online/offline; it is enforced using server time.
 
 ---
 
+# Batch Dispatch
+
+The normal driver workflow above — one offer at a time, one active
+self-claimed delivery — remains unchanged and is the default for every
+driver, every day. **Batch Dispatch is a separate, explicit
+dispatcher-controlled exception** for situations where government
+staff need to preassign several loads to one driver at once, most
+importantly for a driver whose phone or data connection is unreliable
+and who cannot be expected to receive and respond to individual offers
+throughout the day.
+
+Do not blur the two modes:
+
+```text
+Normal driver dispatch          Dispatcher batch dispatch
+one offer at a time             staff deliberately assigns a
+one active self-claimed         defined group of loads
+delivery                        printable driver run sheet
+```
+
+Batch Dispatch never weakens the normal one-offer-at-a-time fairness
+model for any driver's ordinary self-claimed work — see TECHNICAL.md
+"Batch Dispatch" for how this is enforced.
+
+## Who can use it
+
+Only `dispatcher` and `admin` staff can create a batch, assign loads
+into it, or generate/reprint its run sheet. Drivers cannot create their
+own batches. Residents never see batch information. Viewers may see
+that a load is batch-assigned (consistent with their existing
+oversight-only access to requests and drivers) but cannot change
+anything.
+
+## Creating a batch
+
+1. A dispatcher opens **Batch Dispatch** and selects a driver.
+2. The driver must already exist in the Driver Registry, be linked to
+   an account, and be marked eligible — the same baseline required for
+   any assignment. The driver does **not** need to be online, and being
+   in a decline cooldown does not block a batch assignment either —
+   this is a deliberate staff decision, not a normal offer, and the
+   whole point may be preparing a printed run sheet for a driver who
+   cannot reliably use the app. Their online/offline and cooldown
+   status is shown to the dispatcher so the decision is informed, never
+   hidden.
+3. The dispatcher sees every outstanding request still waiting for a
+   driver (not yet claimed by anyone), by default in the same
+   fairness order used everywhere else — highest priority first,
+   oldest first within a priority level. The dispatcher may select any
+   subset, in any order, for genuine operational reasons.
+4. If a selected request is currently held for a **different**
+   resident's preferred driver, this is shown clearly and the
+   dispatcher must explicitly acknowledge overriding that preference
+   before continuing — it is never silently overridden. A hold
+   addressed to the same driver the batch is being assigned to is not
+   an override.
+5. The dispatcher reviews the full list (driver, loads, total
+   gallons, any acknowledged overrides) before confirming.
+6. On confirmation, every selected load is assigned to that driver at
+   once, and a printable run sheet is generated.
+
+Assignment is all-or-nothing: if any selected request changed state
+while the dispatcher was reviewing (for example, claimed by someone
+else in the meantime), nothing in the batch is assigned and the
+dispatcher must review and try again — see TECHNICAL.md "Batch
+Dispatch" "Atomic Assignment."
+
+There is no fixed business-policy limit on how many loads a batch may
+contain; a generous technical maximum exists only to keep a single
+batch-creation operation comfortably small (see TECHNICAL.md).
+
+## The driver dispatch sheet
+
+A compact, printable PDF titled "Driver Dispatch Sheet" lists every
+load in the batch, in order, with the customer's name, phone, village,
+1,000 gallons, delivery directions, priority, requested time and age,
+and a preferred-driver note when relevant. It includes a simple
+completion area for each load not yet delivered (a checkbox, space for
+driver initials, time, and notes) so a driver without app access can
+still be tracked on paper. It never includes the resident's vulnerable-
+circumstance details, persons-affected count, critical explanation, or
+any internal system identifiers — the same privacy posture as the
+operational continuity snapshot (see "Water Situation Privacy" above).
+
+A dispatcher can reopen an active or completed batch at any time and
+**reprint** its dispatch sheet. Reprinting never creates a new batch —
+it reflects the batch's current member loads and their current status
+(for example, a load already delivered shows as delivered instead of a
+blank completion area), always with a clear generation timestamp.
+
+## Completing batch loads
+
+Each load in a batch is still completed individually, exactly like any
+other delivery — its own delivered time, its own resident confirmation
+window, its own dispute handling, its own audit trail and statistics
+attribution. There is no single button that marks an entire batch
+delivered at once.
+
+If the driver has app access, they see each batch-assigned load in
+their normal "My deliveries" list, marked as a batch assignment, and
+mark it delivered exactly as they would any claimed delivery. If the
+driver genuinely cannot use the app, a dispatcher can record that a
+specific load was delivered on the driver's behalf, after verifying
+with the driver — see TECHNICAL.md "Batch Dispatch" "Staff delivery
+reconciliation." This is deliberately scoped to batch-assigned loads
+only; it is not a general way for staff to mark any delivery delivered
+on a driver's behalf.
+
+## Reassignment and cancellation
+
+If one load in a batch needs to be reassigned to a different driver,
+or cancelled, that is handled exactly like any other request
+reassignment or cancellation — it simply leaves that batch's current
+membership. The rest of the batch is unaffected and remains intact.
+
+## Statistics and the continuity report
+
+A batch-assigned delivery counts exactly like any other delivery for
+gallons, village demand, priority, delivery timing, driver
+attribution, and disputes — Batch Dispatch does not create a separate
+category of statistics. An outstanding batch-assigned load still
+appears in the nightly/manual continuity report's Assigned Loads
+section like any other assigned load, marked "(Batch)" for context —
+it can never be missed during an outage merely because it was assigned
+through Batch Dispatch instead of a normal claim.
+
 # Delivery Workflow
 
 Normal lifecycle:

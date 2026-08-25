@@ -115,28 +115,39 @@ account. There is no single point of failure for authentication.
 If deliveries were coordinated manually during an outage (by phone,
 radio, or in person), reconcile them in the application once service is
 restored. **Marking a request "delivered" is a driver action, not a
-dispatcher/admin action** — dispatcher/admin tools can reassign,
-cancel, override priority, and resolve disputes, but there is no
-dispatcher/admin control that directly sets a request to "delivered."
-Reconciliation therefore depends on whether the delivering driver has
-an account in the system:
+general dispatcher/admin action** — dispatcher/admin tools can
+reassign, cancel, override priority, and resolve disputes, but there is
+no general-purpose dispatcher/admin control that directly sets an
+ordinary request to "delivered." Reconciliation therefore depends on
+how the request was assigned and whether the delivering driver has an
+account in the system:
 
 - **A request that already existed in the system, claimed by a driver
-  who has an account:** once the driver is back online, have them open
-  their claimed delivery and use "Mark Delivered" for the delivery they
-  already completed manually, exactly as they would for a normal
-  delivery. This puts the request into the correct state and starts the
-  resident's normal 24-hour confirmation window (or, for an
-  unregistered customer, allows a dispatcher to use "Confirm Delivery"
-  on their behalf once it shows as delivered).
-- **A request that already existed in the system but cannot be marked
-  delivered by a driver** (for example, the assigned driver is
-  unavailable, or the delivery was completed by someone without an
-  account): a dispatcher can still cancel the request so it does not
-  remain open indefinitely, and should record what actually happened
-  outside the system (for example, in the reason given for
-  cancellation). This does not produce an accurate "delivered/confirmed"
-  record for statistics — see the gap noted below.
+  who has an account (normal assignment):** once the driver is back
+  online, have them open their claimed delivery and use "Mark
+  Delivered" for the delivery they already completed manually, exactly
+  as they would for a normal delivery. This puts the request into the
+  correct state and starts the resident's normal 24-hour confirmation
+  window (or, for an unregistered customer, allows a dispatcher to use
+  "Confirm Delivery" on their behalf once it shows as delivered).
+- **A request assigned through Batch Dispatch:** if the driver used the
+  app, the same "Mark Delivered" path above applies. If the driver
+  could not use the app (exactly the unreliable-phone scenario Batch
+  Dispatch is designed for), a dispatcher can open the batch and use
+  **Record Delivery (paper reconciliation)** on that specific load
+  after verifying with the driver that it was physically delivered —
+  see [`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) "Batch Dispatch."
+  This is the one case where staff CAN directly record a delivery on a
+  driver's behalf, and it only applies to batch-assigned loads.
+- **A request that already existed in the system but is not
+  batch-assigned and cannot be marked delivered by a driver** (for
+  example, the assigned driver is unavailable, or the delivery was
+  completed by someone without an account): a dispatcher can still
+  cancel the request so it does not remain open indefinitely, and
+  should record what actually happened outside the system (for
+  example, in the reason given for cancellation). This does not
+  produce an accurate "delivered/confirmed" record for statistics —
+  see the gap noted below.
 - **A delivery that was arranged entirely outside the system during the
   outage** (for example, a brand-new request that was never entered
   because the website was down): a dispatcher can enter it as a manual
@@ -144,16 +155,20 @@ an account in the system:
   limitation applies — there is no dispatcher/admin action to record it
   as already delivered.
 
-**Operational gap:** there is currently no dispatcher/admin workflow to
-directly record a request as delivered and confirmed when the
-delivering driver cannot (or does not) do so themselves through the
-driver portal. Today, closing out such a request accurately depends on
-the assigned driver eventually marking it delivered, or on a dispatcher
-cancelling it (which does not represent it as a completed delivery).
-This is a real limitation of the current implementation, not a
-documentation gap — if outage-driven manual reconciliation becomes a
-frequent operational need, this should be raised as a product decision
-rather than worked around informally.
+**Operational gap (normal, non-batch assignments only):** there is
+still no dispatcher/admin workflow to directly record an ORDINARY
+(non-batch) request as delivered and confirmed when the delivering
+driver cannot or does not do so themselves through the driver portal.
+Today, closing out such a request accurately depends on the assigned
+driver eventually marking it delivered, or on a dispatcher cancelling
+it (which does not represent it as a completed delivery). Batch
+Dispatch's paper-reconciliation control was deliberately scoped to
+batch-assigned loads only, rather than generalized to every delivery,
+to avoid creating a broad "staff can mark any delivery delivered"
+capability that would weaken the normal driver-completion audit trail.
+If this gap for ordinary assignments becomes a frequent operational
+need outside the batch-assignment scenario, it should be raised as its
+own product decision.
 
 There is no automated reconciliation feature — this is a manual staff
 process using the existing dispatcher and driver tools. Do not assume

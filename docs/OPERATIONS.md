@@ -54,6 +54,12 @@ preserved.
   until they mark the first one delivered. The resident's later
   confirmation does not hold the driver up — the driver is free for the
   next offer the moment they mark a delivery complete.
+- A driver may occasionally see several deliveries assigned at once,
+  each marked as a batch assignment. This means a dispatcher
+  deliberately assigned them a group of loads through Batch Dispatch —
+  it does not change how each delivery is completed, and it does not
+  affect the driver's normal one-offer-at-a-time experience the rest
+  of the time.
 
 ## Dispatcher workflow
 
@@ -64,6 +70,35 @@ preserved.
   priority (with a reason), and resolve disputes.
 - Dispatchers can enter a request for a resident who cannot use the
   website — see "Manual requests" below.
+- For a driver who needs several loads assigned at once — most often a
+  driver whose phone or data connection is unreliable — dispatchers can
+  use **Batch Dispatch** to assign a group of loads together and print
+  a driver dispatch sheet. This is a deliberate exception, separate
+  from the normal one-offer-at-a-time driver workflow above — see
+  "Batch Dispatch" below.
+
+## Batch Dispatch
+
+Batch Dispatch lets a dispatcher assign several outstanding loads to
+one driver at once, instead of the driver receiving them one at a time
+through the app. Use it when:
+
+- A driver's phone or data connection cannot be relied on for the
+  whole day, and it is more practical to hand them a printed list of
+  deliveries.
+- Staff are planning a run for a driver ahead of time.
+
+The dispatcher selects the driver and the loads, reviews the list, and
+confirms. This produces a printable "Driver Dispatch Sheet" listing
+every load with the customer's name, phone, village, directions, and a
+simple checkbox/notes area for the driver (or a dispatcher, if the
+driver cannot use the app) to mark off as each load is completed.
+
+Each load in a batch is still delivered and confirmed individually,
+exactly like any other request — Batch Dispatch does not change how a
+delivery is completed, only how it was assigned. See
+[`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) for the step-by-step
+screens.
 
 ## Manual requests
 

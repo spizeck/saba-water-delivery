@@ -45,6 +45,8 @@ function makeRequest(
     confirmedAt: null,
     createdAt: baseTime.toISOString(),
     updatedAt: baseTime.toISOString(),
+    dispatchBatchId: null,
+    batchSequence: null,
     ...overrides,
   };
 }

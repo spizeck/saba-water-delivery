@@ -92,6 +92,67 @@ marked it delivered — this is recorded as a staff confirmation, not a
 customer confirmation, so the record always reflects what actually
 happened.
 
+## Batch Dispatch
+
+Use **Batch Dispatch** (from the dispatcher dashboard) when you need to
+assign several loads to one driver at once instead of letting them
+come in one at a time through the app — most often for a driver whose
+phone or data connection is unreliable. This is a separate, deliberate
+tool from the normal driver dispatch flow; it does not change how
+individual drivers normally receive one offer at a time.
+
+### Creating a batch
+
+1. Open **Batch Dispatch** and select **+ New Batch**.
+2. **Choose a driver.** Only eligible, account-linked drivers appear.
+   The driver does not need to be online, and being in a decline
+   cooldown does not stop you from assigning them a batch — this is a
+   deliberate override of the normal offer flow. Their online/offline
+   and cooldown status, and whether they already have an active
+   delivery, are shown so you can decide with full information.
+3. **Choose loads.** The list shows every outstanding request not yet
+   claimed by anyone, in the normal fairness order (highest priority
+   first, oldest first within a priority). Check as many as you need —
+   there is a generous maximum per batch, shown on screen.
+4. If a load is held for a **different** resident's preferred driver,
+   it is clearly flagged. Selecting it requires you to check a box
+   acknowledging that you are overriding that preference — it is never
+   overridden silently.
+5. **Review** the full list, driver, and total gallons, then confirm.
+
+If anything about a selected load changed while you were reviewing it
+(for example, another driver claimed it in the meantime), the batch
+will not be created and you will need to review and try again — this
+is intentional, so a batch is never partially assigned.
+
+### The dispatch sheet
+
+Confirming a batch takes you to its detail page, where you can
+download a printable **Driver Dispatch Sheet** — a simple PDF listing
+every load in order with the customer's name, phone, village,
+directions, and a checkbox/notes area for tracking completion on
+paper. You can **reprint** it at any time; a reprint always reflects
+the batch's current state (for example, a load already delivered shows
+as delivered rather than a blank checkbox), not a frozen copy of the
+original assignment.
+
+### Completing batch loads
+
+Each load is still delivered and confirmed individually — there is no
+single button that marks a whole batch delivered. If the driver has
+app access, they mark each load delivered themselves, exactly like any
+other claimed delivery. If the driver cannot use the app, open the
+batch and use **Record Delivery (paper reconciliation)** on that
+specific load after verifying with the driver that it was actually
+delivered. This is only available for batch-assigned loads.
+
+### Reassigning or cancelling a batch load
+
+If one load in a batch needs to go to a different driver, or needs to
+be cancelled, use the same **Reassign** or **Cancel** actions you would
+use for any request from its detail page. That load simply leaves the
+batch — the rest of the batch is unaffected.
+
 ## Statistics
 
 `/statistics` (also reachable from "View Statistics") shows demand
@@ -103,7 +164,9 @@ month/year, or all time).
 
 - **Generate Continuity Report** downloads a PDF snapshot of every
   request that has not yet been delivered, for your own reference or
-  to prepare for an outage. It does not send any email.
+  to prepare for an outage. It does not send any email. This includes
+  batch-assigned loads (marked "(Batch)") alongside normal claims — a
+  batch assignment never hides a load from this report.
 - **Send Continuity Report Now** immediately emails that same snapshot
   to the configured government recipients, without waiting for the
   automatic 8:00 PM send. Use this before an expected outage or to

@@ -24,6 +24,12 @@ Vercel's deployment runs.
 Vitest covers the pure domain logic extensively, including:
 
 - Dispatch priority determination and ranking (`priority.ts`).
+- Batch Dispatch selection ordering, every validation rule (including
+  the race scenario where a request changes state before confirmation,
+  and the preferred-driver-override acknowledgment requirement), and
+  derived batch status (`dispatchBatchSelection.ts`), plus its
+  printable run-sheet data shaping and filename generation
+  (`dispatchBatchPdfData.ts`, `dispatchBatchPdfFilename.ts`).
 - Preferred-driver hold creation, expiration, and re-evaluation on
   priority change.
 - Dispatch offer selection, decline/cooldown behavior, and avoiding
@@ -67,6 +73,10 @@ any of these areas.
   pause.
 - Mark a delivery complete; confirm the next offer becomes available
   immediately, without waiting for resident confirmation.
+- Have a Batch Dispatch batch assigned to this driver; confirm each
+  load appears as its own claimed delivery with a "Batch assignment"
+  label, and that no new normal offer is made while any batch load
+  remains claimed.
 
 ### Dispatcher
 
@@ -78,6 +88,20 @@ any of these areas.
 - Reassign a claimed request to a different driver.
 - Resolve a dispute.
 - Generate a continuity report (download) and send one (email).
+- Create a Batch Dispatch batch for an eligible driver with several
+  loads; confirm the loads leave the general queue and the driver
+  shows multiple claimed deliveries.
+- Confirm a batch cannot be created if a selected load changed state
+  first (e.g. claimed by another driver) — verify nothing is
+  partially assigned.
+- Select a load held for a different resident's preferred driver and
+  confirm the override acknowledgment is required before submitting.
+- Download and reprint a batch's dispatch sheet; confirm a reprint
+  reflects current load status.
+- Use "Record Delivery (paper reconciliation)" on a batch load and
+  confirm it proceeds through the normal confirmation window.
+- Reassign one load out of an active batch and confirm the rest of the
+  batch is unaffected.
 
 ### Admin
 
@@ -109,6 +133,8 @@ any of these areas.
 
 - Generate a report from the dispatcher dashboard and confirm the PDF
   opens and lists the correct outstanding requests.
+- Confirm a batch-assigned, undelivered load appears in the Assigned
+  Loads section marked "(Batch)".
 - Send a report now and confirm the email arrives with the PDF
   attached.
 - Confirm the nightly cron route responds successfully when invoked

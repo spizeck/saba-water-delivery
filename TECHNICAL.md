@@ -606,6 +606,358 @@ loops without an unbounded read.
 
 ---
 
+# Batch Dispatch
+
+See PRODUCT.md "Batch Dispatch" for the product rationale. This is a
+deliberate, dispatcher-controlled EXCEPTION to the normal one-offer-
+at-a-time driver dispatch model (`dispatch.ts`, above) — never a
+replacement for it, and never available to residents or drivers
+themselves.
+
+```text
+/dispatcher/batches/new -> createBatch() server action
+  -> createDispatchBatch() (atomic transaction)
+  -> redirect to /dispatcher/batches/[batchId]
+  -> GET /api/dispatcher/batches/[batchId]/pdf (download/reprint)
+```
+
+## Domain logic
+
+- `src/lib/domain/dispatchBatchSelection.ts` — **pure**, no Firestore:
+  `sortForBatchSelection()` (priority-then-age ordering, same
+  convention as `dispatchSelection.ts`/continuity report),
+  `validateBatchSelection()` (every validation rule, reusable by both
+  the live transaction and unit tests), `computeDispatchBatchStatus()`,
+  and the `MAX_BATCH_SIZE` constant.
+- `src/lib/domain/dispatchBatches.ts` — `server-only` orchestrator:
+  `createDispatchBatch()`, `getDispatchBatch()`,
+  `getAllDispatchBatches()`, `getDispatchBatchEvents()`,
+  `recordBatchGenerated()`.
+- `src/lib/domain/waterRequests.ts` additions: `getBatchEligibleRequests()`,
+  `getRequestsForDispatchBatch()`, `recordBatchDeliveryByStaff()`, plus
+  batch-aware changes to `markWaterDelivered()`, `cancelWaterRequest()`,
+  `dispatcherReassign()`, and `resolveDisputeReopened()` (see
+  "Interaction with activeRequestId" below).
+- `src/lib/domain/dispatchBatchPdfData.ts` — **pure** run-sheet data
+  shaping, same pattern as `continuityReportData.ts`.
+- `src/lib/reports/dispatchBatchPdf.ts` — PDFKit rendering, and
+  `src/lib/reports/dispatchBatchPdfFilename.ts` — **pure** filename
+  helper, both following the exact conventions of
+  `continuityReportPdf.ts` / `continuityReportFilename.ts`.
+
+## Canonical batch model
+
+`dispatchBatches/{batchId}`:
+
+```ts
+{
+  driverId: string        // linked account uid, never the registry doc ID
+  createdBy: string
+  createdAt: Timestamp
+  status: "active" | "completed"
+  originalRequestIds: string[]   // immutable historical record only
+  generatedAt: Timestamp | null
+  updatedAt: Timestamp
+}
+```
+
+`originalRequestIds` is written once at creation and never mutated —
+it is audit history, NOT the live membership list. A request's CURRENT
+membership in a batch is determined by `waterRequests.dispatchBatchId`
+pointing back at the batch (queried directly via
+`getRequestsForDispatchBatch()`), because a request can leave a batch
+(reassigned to a different driver, or cancelled) without rewriting
+that array. This deliberately avoids two arrays that could drift out
+of sync — there is exactly one place membership is read from.
+
+Each `waterRequests` document gained:
+
+```ts
+dispatchBatchId: string | null
+batchSequence: number | null   // 1-based run-sheet position
+```
+
+`dispatchBatchId` stays set through `claimed -> delivered -> confirmed`
+(or `disputed`) — it is only cleared when the request is reassigned to
+a DIFFERENT driver or cancelled, which genuinely detaches it from that
+batch's current membership. This keeps a batch's detail page and
+reprinted run sheet a complete, accurate picture of everything ever
+assigned to it, including loads already resolved.
+
+## Request status for batch assignment
+
+**Chosen design: reuse the existing status enum (no new status).** A
+batch-assigned request gets `status: "claimed"`, `assignedDriverId:
+<driver>`, plus `dispatchBatchId`/`batchSequence` — the exact same
+shape as a normal claim, not a parallel lifecycle. This was chosen
+over inventing a new status because it requires zero changes to
+`markWaterDelivered()`'s core transition, `confirmWaterDelivery()`,
+`disputeWaterDelivery()`, `checkDeliveryConfirmationTimeout()`, or
+`src/lib/domain/statistics.ts` — a batch-assigned load leaves the
+general queue, cannot be claimed by anyone else, and completes through
+the identical `claimed -> delivered -> confirmed`/`disputed` pipeline
+already fully tested. `dispatchBatchId` is the only marker distinguishing
+it, purely for dispatcher visibility and continuity-report/statistics
+context — never branched on by driver-facing dispatch logic.
+
+## Interaction with activeRequestId
+
+This is the most important architectural decision in this feature.
+`driverRegistry.activeRequestId` exists to enforce the one-active-
+delivery invariant for the NORMAL self-claim/single-assignment
+workflow (`claimWaterRequest()`, `dispatcherAssign()`,
+`dispatcherReassign()`) — see "Request Claiming" above. Batch Dispatch
+must let a driver hold several simultaneously claimed loads at once,
+which is fundamentally incompatible with `activeRequestId` continuing
+to mean "the one claimed request" if every batch load tried to set it.
+
+**Chosen design: `createDispatchBatch()` never touches
+`activeRequestId` at all.** Every batch-assigned request is written
+with `status: "claimed"` while the driver's `activeRequestId` is left
+exactly as it was (typically `null`, unless the driver separately has
+a genuine self-claimed/singly-assigned active delivery, which is left
+untouched too). This works cleanly with the EXISTING code, unmodified:
+
+- `claimWaterRequest()`, `dispatcherAssign()`, and `dispatcherReassign()`
+  each already contain a defensive fallback: when `activeRequestId` is
+  unset, they query for ANY `"claimed"` request assigned to that
+  driver before allowing a new claim/assignment — originally written
+  to handle registry entries created before `activeRequestId` existed.
+  This fallback already, correctly, blocks a driver from self-claiming
+  or being singly-assigned a second request whenever they hold ANY
+  claimed request, batch-assigned or not — with zero changes needed to
+  those functions.
+- `getNextOfferForDriver()` (`dispatch.ts`) calls
+  `getClaimedRequestsForDriver()`, which queries `assignedDriverId +
+  status == "claimed"` directly — not `activeRequestId` — so a driver
+  holding batch-assigned claimed loads is already correctly offered
+  nothing further, again with zero changes needed.
+
+The one thing that DID need to change: several functions previously
+cleared `driverRegistry.activeRequestId` **unconditionally** whenever
+their request transitioned out of `"claimed"`
+(`markWaterDelivered()`), or cleared it based only on "does the
+previous driver have this field set to anything" without checking it
+actually pointed at the request in question
+(`dispatcherReassign()`'s previous-driver clear). Before Batch
+Dispatch, this was always safe, because a driver could never hold more
+than one claimed request, so `activeRequestId` (if set) always equaled
+the request being resolved. Now that a driver can separately hold a
+genuine active self-claimed delivery AND unrelated batch loads (which
+never set `activeRequestId`), an unconditional clear could incorrectly
+release a different, still-active delivery. Both were fixed to only
+clear `activeRequestId` when it currently equals the request being
+resolved — matching the equality check `cancelWaterRequest()` and
+`resolveDisputeCompleted()`/`resolveDisputeReopened()` already used.
+This is a pure correctness hardening with **zero behavior change**
+for any request outside Batch Dispatch (the equality was always true
+before this feature existed).
+
+**The invariant that remains true:** normal driver self-claim can
+never accumulate multiple active claimed requests — enforced by
+unmodified, pre-existing code. Batch Dispatch is additive, not a
+weakening of that guarantee.
+
+## Batch status derivation
+
+`DispatchBatchStatus` ("active" | "completed") is a maintained cache of
+a value that could otherwise be recomputed from the batch's member
+requests: "active" while at least one current member is still
+`"claimed"`; "completed" once none remain (including the case where
+every member has since been reassigned/cancelled out of the batch —
+see `computeDispatchBatchStatus()` in `dispatchBatchSelection.ts`,
+pure and unit tested). It is kept in sync, inside the SAME Firestore
+transaction as the triggering change, by exactly four call sites:
+`markWaterDelivered()`, `recordBatchDeliveryByStaff()`,
+`cancelWaterRequest()`, and `dispatcherReassign()` — the only places a
+batch member can leave `"claimed"` status or leave the batch's
+membership entirely. `confirmWaterDelivery()`, `disputeWaterDelivery()`,
+`resolveDisputeCompleted()`, and `checkDeliveryConfirmationTimeout()`
+never need to touch it, since none of them can change whether a member
+is still `"claimed"`. A small private helper,
+`readBatchMemberStatusesForSync()` in `waterRequests.ts`, performs the
+read (before any writes, as Firestore transactions require) and hands
+back the computed status for the caller to write alongside its other
+updates. It is implemented with raw Firestore reads rather than by
+calling into `dispatchBatches.ts`, specifically to avoid a circular
+module dependency (`dispatchBatches.ts` imports FROM `waterRequests.ts`
+to hydrate `WaterRequest`s for its return values).
+
+## Atomic assignment
+
+`createDispatchBatch()` re-validates every selected request against
+its LIVE Firestore state inside a single transaction — never trusting
+whatever the dispatcher's review screen last displayed. Reads happen
+first (the driver's registry entry, then every selected request
+document); `validateBatchSelection()` (pure) is run against those
+fresh reads; if it reports ANY issue — a request no longer exists, is
+no longer in an eligible status, is a duplicate selection, or is a
+preferred-driver hold for a different driver that was not explicitly
+acknowledged — the function throws before any writes occur, and
+Firestore transactions guarantee nothing in the batch was written.
+There is no partial-assignment recovery path to build, because partial
+assignment cannot happen: it is all-or-nothing by construction. A
+caller who hits this must re-fetch the current eligible-requests list
+and try again — this is what "fail cleanly and require refresh/review"
+means in practice here.
+
+## Preferred-driver overrides
+
+A batch-eligible request can be `"preferred_driver_hold"` for a
+resident's chosen driver. If the batch is being assigned to that SAME
+driver, this is not an override at all. If it is being assigned to a
+DIFFERENT driver, `validateBatchSelection()` requires the request's ID
+to appear in the caller-supplied
+`acknowledgedPreferredOverrideRequestIds` set, or it throws
+`PREFERRED_DRIVER_OVERRIDE_NOT_ACKNOWLEDGED:<requestId>` — the
+dispatcher UI surfaces every such conflict explicitly (with the
+preferred driver's name) and requires an affirmative checkbox before
+the review step's submit button is enabled. This mirrors the existing
+principle that a preference is never silently bypassed (see PRODUCT.md
+"Preferred Driver"), extended to a batch context where no
+existing single-assignment "override reason" mechanism existed to
+reuse.
+
+## Number of loads
+
+`MAX_BATCH_SIZE = 25` (`dispatchBatchSelection.ts`) is a documented
+technical safety bound, not a business policy: each assigned request
+costs two writes (the request update and its audit event) inside the
+creation transaction, so this keeps a full batch comfortably inside
+Firestore's per-transaction mutation limit and the review screen
+usable on a phone. Raise it only if a genuine operational need
+appears — there is no product reason for the current number.
+
+## Staff delivery reconciliation
+
+`recordBatchDeliveryByStaff()` lets dispatcher/admin staff record a
+batch-assigned load as delivered when the driver cannot (or did not)
+mark it delivered themselves — the entire premise of Batch Dispatch is
+supporting drivers whose phone/data access may be unreliable, so this
+capability is required for the feature to be operationally usable, not
+optional polish. It closes a previously identified gap (see
+docs/INCIDENT_RECOVERY.md "Recovery: reconciling manually handled
+deliveries") for exactly this scenario. It is deliberately scoped
+server-side to `dispatchBatchId != null` requests only — it throws
+`NOT_BATCH_ASSIGNED` for anything else — so it is not a general
+"staff can mark any delivery delivered" shortcut that would undermine
+the normal driver-completion audit trail. It records a distinct
+`marked_delivered_by_dispatcher_batch` event, never `marked_delivered`,
+so the audit trail never misrepresents a staff paper-reconciliation
+entry as the driver's own action (same principle as
+`delivery_confirmed_by_dispatcher` vs `customer_confirmed`). Each load
+is still recorded individually — there is no bulk "mark entire batch
+delivered" action (see DEVIN.md "Batch Dispatch" "Do Not Implement").
+
+## Reassignment and cancellation
+
+`dispatcherReassign()` now detaches a request from its current batch
+(clearing `dispatchBatchId`/`batchSequence` and recording a
+`dispatcher_batch_membership_removed` event) whenever it is reassigned
+to a genuinely DIFFERENT driver — reassigning "to" the same driver it
+is already assigned to is a no-op and does not detach it.
+`cancelWaterRequest()` does the same when cancelling a batch member.
+`resolveDisputeReopened()` clears it too, since a reopened dispute
+returns the request to the general unassigned queue. In every case the
+rest of the batch's membership and history is untouched — see
+`readBatchMemberStatusesForSync()` above for how the batch's derived
+status stays correct afterward.
+
+## Continuity report integration
+
+`AssignedReportRow` gained `isBatchAssigned: boolean`
+(`continuityReportData.ts`), set from `r.dispatchBatchId != null` — no
+other change was needed, since a batch-assigned request is already
+`status: "claimed"` and therefore already included in the report's
+existing "Assigned Loads" section
+(`getOutstandingRequestsForContinuityReport()` already includes
+`"claimed"`). `continuityReportPdf.ts` prints `(Batch)` after the
+driver's name on such rows, purely for staff context during an
+outage — see PRODUCT.md "Batch Dispatch" "Statistics and the
+continuity report."
+
+## Statistics
+
+No changes were made to `src/lib/domain/statistics.ts`. Because a
+batch-assigned request uses the exact same `status`/timestamp fields
+as any other claimed/delivered/confirmed request, it is already
+counted identically for gallons, village demand, priority, delivery
+timing, and driver attribution — `dispatchBatchId` is preserved on the
+document for potential future operational reporting, but no existing
+statistic needed to change to remain correct.
+
+## Firestore indexes and rules
+
+One new composite index was required:
+`waterRequests`: `dispatchBatchId ASC, batchSequence ASC, __name__ ASC`
+(for `getRequestsForDispatchBatch()`). `getBatchEligibleRequests()`
+reuses the existing `status + priorityRank + requestedAt` index — an
+`"in"` equality filter on the first field of an existing composite
+index does not require a new one. `getAllDispatchBatches()` uses a
+single `orderBy("createdAt")`, which needs no composite index.
+
+`dispatchBatches/{batchId}` (and its `events` subcollection) follow the
+same rules posture as `driverRegistry`: readable by `isStaff() ||
+isViewer()`, all writes `false` (Admin SDK only, via
+`dispatchBatches.ts`).
+
+## PDFKit / Vercel deployment
+
+The run sheet reuses the exact same `renderDispatchBatchPdf()` /
+PDFKit setup as the continuity report — see "Operational Continuity
+Snapshot" above for the full history of the production `Helvetica.afm`
+failure and why both `serverExternalPackages: ["pdfkit"]` AND
+`outputFileTracingIncludes` are required together. The new PDF entry
+point is `GET /api/dispatcher/batches/[batchId]/pdf`
+(`src/app/api/dispatcher/batches/[batchId]/pdf/route.ts`) — the ONLY
+route whose server bundle can reach `renderDispatchBatchPdf()` (unlike
+the continuity report, no dispatcher page or server action imports it
+directly). `next.config.ts`'s `outputFileTracingIncludes` gained:
+
+```ts
+"/api/dispatcher/batches/\\[batchId\\]/pdf": ["node_modules/pdfkit/js/data/**/*"],
+```
+
+The dynamic segment is escaped (`\\[batchId\\]`) because
+`outputFileTracingIncludes` keys are matched with picomatch, which
+would otherwise interpret `[batchId]` as a character class rather than
+a literal route segment — see the Next.js "output" config reference's
+own `/api/login/\\[\\[\\.\\.\\.slug\\]\\]` example. Verified after
+`npm run build` by inspecting
+`.next/server/app/api/dispatcher/batches/[batchId]/pdf/route.js` (a
+literal `a.exports=require("pdfkit")`, no pdfkit source inlined) and
+its `.nft.json` trace (all 15 files under `node_modules/pdfkit/js/data/`
+present) — the same verification method used for the original
+continuity-report fix. If a future route or server action is added
+that can reach `renderDispatchBatchPdf()`, add its route path here too.
+
+## Driver portal impact
+
+No driver-portal UI restructuring was needed. `getClaimedRequestsForDriver()`
+already returned an array and `ClaimedDeliveries.tsx` already rendered
+one independent card (with its own "Mark Delivered" button) per
+claimed request — both were already written generically, not assuming
+exactly one claimed delivery, even though that was the only
+possibility before this feature. The only change was a small "Batch
+assignment" badge on a card when `request.dispatchBatchId` is set, so
+a driver using the app understands why they suddenly have several
+claimed deliveries instead of the usual one.
+
+## Testing
+
+Pure logic (`dispatchBatchSelection.ts`, `dispatchBatchPdfData.ts`,
+`dispatchBatchPdfFilename.ts`) is fully unit tested without Firestore,
+covering priority/age ordering, every validation rule (including the
+race scenario — a request already claimed by someone else by the time
+of validation — and the preferred-driver-override
+acknowledgment requirement), and `computeDispatchBatchStatus()`.
+`continuityReportData.test.ts` covers `isBatchAssigned`.
+`createDispatchBatch()` itself (Firestore transactions) is not directly
+unit tested — same precedent as `generateContinuityReportData()` and
+the WhatsApp Firestore-backed modules — but its correctness rests on
+the same `validateBatchSelection()` used by fresh reads inside the
+transaction, which is directly tested.
+
 # Priority-Based Dispatch
 
 See PRODUCT.md "Water Situation & Request Priority" / "Preferred

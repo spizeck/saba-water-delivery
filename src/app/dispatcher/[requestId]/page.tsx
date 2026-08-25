@@ -61,6 +61,9 @@ const EVENT_LABELS: Record<string, string> = {
   request_priority_changed: "Priority changed",
   preferred_driver_bypassed_for_priority: "Preferred driver bypassed (priority)",
   preferred_driver_hold_released_for_priority: "Preferred driver hold released (priority)",
+  dispatcher_batch_assigned: "Assigned via Batch Dispatch",
+  dispatcher_batch_membership_removed: "Removed from batch",
+  marked_delivered_by_dispatcher_batch: "Marked delivered by staff (batch reconciliation)",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -206,6 +209,14 @@ export default async function RequestDetailPage({ params }: PageProps) {
                       ? "Submitted via WhatsApp"
                       : "Submitted online"}
                 </span>
+                {data.dispatchBatchId && (
+                  <Link
+                    href={`/dispatcher/batches/${data.dispatchBatchId}`}
+                    className="inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-800 hover:underline"
+                  >
+                    Part of a dispatch batch
+                  </Link>
+                )}
               </div>
             </div>
 

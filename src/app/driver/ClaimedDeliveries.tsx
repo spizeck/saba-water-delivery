@@ -76,6 +76,11 @@ function DeliveryCard({
         <p className="font-medium text-slate-900">
           1,000 gal &mdash; {request.village}
         </p>
+        {request.dispatchBatchId && (
+          <span className="inline-flex shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-900">
+            Batch assignment
+          </span>
+        )}
         {request.dispatchPriority === "critical" && (
           <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-900">
             Critical

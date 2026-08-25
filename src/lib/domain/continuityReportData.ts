@@ -52,6 +52,13 @@ export interface AssignedReportRow {
   /** ISO timestamp, or null if somehow missing on a claimed request. */
   claimedAt: string | null;
   gallons: number;
+  /** True when this load was assigned via Batch Dispatch (see
+   * PRODUCT.md / TECHNICAL.md "Batch Dispatch") rather than a normal
+   * driver self-claim or single dispatcher assignment. Purely
+   * informational for staff reading the continuity report during an
+   * outage — batch-assigned undelivered loads must still appear here
+   * like any other assigned load, never be hidden. */
+  isBatchAssigned: boolean;
 }
 
 export interface ContinuityReportData {
@@ -124,6 +131,7 @@ export function buildContinuityReportData(
     requestedAt: r.requestedAt,
     claimedAt: r.claimedAt,
     gallons: r.gallons,
+    isBatchAssigned: Boolean(r.dispatchBatchId),
   }));
 
   return { generatedAt: generatedAt.toISOString(), unassigned, assigned };

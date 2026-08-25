@@ -1,9 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
+import { createDispatchBatch } from "@/lib/domain/dispatchBatches";
+import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
 import { restrictDriver as restrictDriverEntry, restoreDriver as restoreDriverEntry } from "@/lib/domain/driverRegistry";
 import { isValidDispatchPriority } from "@/lib/domain/priority";
 import type { DispatchPriority } from "@/lib/domain/types";
@@ -16,6 +19,7 @@ import {
   dispatcherReassign,
   findActiveRequestsByPhone,
   getActiveRequestForCustomer,
+  recordBatchDeliveryByStaff,
   resolveDisputeCompleted,
   resolveDisputeReopened,
 } from "@/lib/domain/waterRequests";
@@ -534,4 +538,128 @@ export async function sendContinuityReportNow(
     status: "success",
     message: `Continuity report sent (${data.unassigned.length} unassigned, ${data.assigned.length} assigned).`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Batch Dispatch
+// ---------------------------------------------------------------------------
+
+export interface CreateBatchActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+/**
+ * Creates a Batch Dispatch run (see PRODUCT.md / TECHNICAL.md "Batch
+ * Dispatch") — a deliberate, dispatcher-controlled exception to the
+ * normal one-offer-at-a-time driver dispatch model, used to preassign
+ * several loads to one driver at once (e.g. for a driver whose phone/
+ * data access is unreliable). On success, redirects straight to the
+ * new batch's detail page so staff can immediately download/print its
+ * run sheet.
+ */
+export async function createBatch(
+  _prevState: CreateBatchActionState,
+  formData: FormData,
+): Promise<CreateBatchActionState> {
+  const session = await requireStaff();
+  const driverId = String(formData.get("driverId") ?? "").trim();
+  const requestIds = formData.getAll("requestIds").map((v) => String(v)).filter(Boolean);
+  const acknowledgedPreferredOverrideRequestIds = formData
+    .getAll("acknowledgedOverrideRequestIds")
+    .map((v) => String(v));
+
+  if (!driverId) return { status: "error", message: "Select a driver." };
+  if (requestIds.length === 0) {
+    return { status: "error", message: "Select at least one request for this batch." };
+  }
+
+  let batchId: string;
+  try {
+    const { batch } = await createDispatchBatch({
+      driverId,
+      requestIds,
+      actorId: session.uid,
+      acknowledgedPreferredOverrideRequestIds,
+    });
+    batchId = batch.id;
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      const [code] = err.message.split(":");
+      switch (code) {
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver not found." };
+        case "DRIVER_INELIGIBLE":
+          return { status: "error", message: "Selected driver is not eligible." };
+        case "NO_REQUESTS_SELECTED":
+          return { status: "error", message: "Select at least one request for this batch." };
+        case "TOO_MANY_REQUESTS":
+          return {
+            status: "error",
+            message: `A batch can include at most ${MAX_BATCH_SIZE} loads. Split this into more than one batch.`,
+          };
+        case "DUPLICATE_REQUEST_ID":
+        case "REQUEST_NOT_FOUND":
+        case "REQUEST_NOT_ELIGIBLE":
+          return {
+            status: "error",
+            message:
+              "One or more selected requests changed or are no longer available. Please review the list and try again.",
+          };
+        case "PREFERRED_DRIVER_OVERRIDE_NOT_ACKNOWLEDGED":
+          return {
+            status: "error",
+            message:
+              "One or more selected requests are held for a different resident-preferred driver. Acknowledge the override before confirming.",
+          };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  revalidatePath("/dispatcher/batches");
+  redirect(`/dispatcher/batches/${batchId}`);
+}
+
+/**
+ * Staff-only paper-reconciliation delivery record for a batch-assigned
+ * load whose driver could not (or did not) mark it delivered through
+ * the driver portal — see PRODUCT.md "Batch Dispatch" and
+ * docs/INCIDENT_RECOVERY.md. Deliberately scoped server-side to
+ * batch-assigned requests only (`recordBatchDeliveryByStaff` throws
+ * `NOT_BATCH_ASSIGNED` for anything else) — this is not a general
+ * "staff can mark any delivery delivered" shortcut.
+ */
+export async function recordBatchDelivery(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+
+  try {
+    await recordBatchDeliveryByStaff({ requestId, actorId: session.uid });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "NOT_BATCH_ASSIGNED":
+          return { status: "error", message: "This request is not part of a dispatch batch." };
+        case "REQUEST_NOT_CLAIMABLE":
+          return { status: "error", message: "This request is not in a deliverable state." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher/batches");
+  return { status: "success", message: "Delivery recorded." };
 }

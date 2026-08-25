@@ -35,6 +35,14 @@ const nextConfig: NextConfig = {
     "/api/cron/continuity-report": ["node_modules/pdfkit/js/data/**/*"],
     "/api/reports/continuity-snapshot": ["node_modules/pdfkit/js/data/**/*"],
     "/dispatcher": ["node_modules/pdfkit/js/data/**/*"],
+    // Batch Dispatch driver run sheet (see TECHNICAL.md "Batch
+    // Dispatch") — the only route whose server bundle can reach
+    // renderDispatchBatchPdf(). The dynamic segment is escaped because
+    // outputFileTracingIncludes keys are matched with picomatch, which
+    // would otherwise treat `[batchId]` as a character class rather
+    // than a literal route segment (see Next.js docs "output" config
+    // reference, `/api/login/\\[\\[\\.\\.\\.slug\\]\\]` example).
+    "/api/dispatcher/batches/\\[batchId\\]/pdf": ["node_modules/pdfkit/js/data/**/*"],
   },
 };
 

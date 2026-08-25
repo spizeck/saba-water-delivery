@@ -51,6 +51,8 @@ function makeRequest(
     confirmedAt: null,
     createdAt: baseTime.toISOString(),
     updatedAt: baseTime.toISOString(),
+    dispatchBatchId: null,
+    batchSequence: null,
     ...overrides,
   };
 }
@@ -101,6 +103,25 @@ describe("buildContinuityReportData", () => {
     expect(data.assigned[0].assignedDriverName).toBe("Andy Lavia");
     expect(data.assigned[0].claimedAt).toBe(baseTime.toISOString());
     expect(data.unassigned).toHaveLength(0);
+  });
+
+  it("flags a batch-assigned 'claimed' request as isBatchAssigned, and a normal claim as not", () => {
+    const data = buildContinuityReportData(
+      [
+        makeRequest("batch-load", "claimed", {
+          assignedDriverId: "driver-1",
+          dispatchBatchId: "batch-123",
+          batchSequence: 1,
+        }),
+        makeRequest("normal-claim", "claimed", { assignedDriverId: "driver-2" }),
+      ],
+      driverNames,
+      generatedAt,
+    );
+    const batchRow = data.assigned.find((r) => r.requestId === "batch-load");
+    const normalRow = data.assigned.find((r) => r.requestId === "normal-claim");
+    expect(batchRow?.isBatchAssigned).toBe(true);
+    expect(normalRow?.isBatchAssigned).toBe(false);
   });
 
   it("excludes 'delivered' requests entirely", () => {

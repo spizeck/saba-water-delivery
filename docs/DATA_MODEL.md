@@ -123,6 +123,10 @@ where it originated. This is the operational core of the system.
   `priorityReason`, `priorityUpdatedBy`, `priorityUpdatedAt` — the
   operational priority used for dispatch ordering (distinct from the
   resident's own reported urgency).
+- `dispatchBatchId`, `batchSequence` — set when this request is
+  currently part of a Batch Dispatch run (see "Batch Dispatch" below).
+  Both null for the vast majority of requests, which are self-claimed
+  or singly assigned as before.
 - Timestamps: `requestedAt`, `availableAt`, `claimedAt`, `deliveredAt`,
   `confirmedAt`, `createdAt`, `updatedAt`.
 
@@ -182,6 +186,41 @@ full offer history for statistics and auditing.
 **Writes:** only through `src/lib/domain/dispatch.ts` /
 `driverOffers.ts`.
 
+## `dispatchBatches/{batchId}`
+
+**Purpose:** a Batch Dispatch run — a deliberate dispatcher-controlled
+assignment of several loads to one driver at once, printed as a driver
+dispatch sheet. This is an exception to the normal one-offer-at-a-time
+driver dispatch model, not a replacement for it. See
+[`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) "Batch Dispatch."
+
+**Key fields:** `driverId` (the assigned driver's Firebase uid, same
+convention as `waterRequests.assignedDriverId`), `createdBy`, `status`
+(`"active"` while any current member load is still `"claimed"`,
+otherwise `"completed"`), `originalRequestIds` (the immutable list of
+request IDs assigned when the batch was created — historical record
+only, not the live membership list), `generatedAt` (last time its PDF
+was generated or reprinted).
+
+**Reads:** dispatcher, admin, viewer. **Writes:** only through
+`src/lib/domain/dispatchBatches.ts` (Admin SDK).
+
+**Relationships:** a request's CURRENT membership in a batch is
+determined by `waterRequests.dispatchBatchId` pointing back at this
+document — queried directly, not by trusting `originalRequestIds`. A
+request leaves a batch's current membership (its `dispatchBatchId` is
+cleared) when reassigned to a different driver or cancelled; it stays
+tagged through delivered/confirmed/disputed so the batch remains a
+complete, reprintable record.
+
+### `dispatchBatches/{batchId}/events/{eventId}`
+
+Audit trail: batch creation (`dispatch_batch_created`, with the full
+original request list) and every reprint (`dispatch_batch_reprinted`).
+Per-load events (assignment, removal from the batch, staff delivery
+reconciliation) are recorded on the request's own `events`
+subcollection instead — see `waterRequests/{requestId}/events` above.
+
 ## `config/dispatchSettings`
 
 **Purpose:** admin-editable dispatch-offer policy: `maxDeclinesPerDay`,
@@ -235,9 +274,14 @@ Composite indexes are defined in `firestore.indexes.json` and support:
 - Preferred-driver hold expiration scans (`status` + `preferredDriverExpiresAt`).
 - Priority-ordered dispatch selection (`status` + `preferredDriverId`/`priorityRank` + `requestedAt`).
 - The general outstanding-request queue (`status` + `requestedAt`).
+- A batch's current member requests, in run-sheet order (`dispatchBatchId` + `batchSequence`).
 
 `whatsappSessions` and `whatsappProcessedMessages` need no composite
 indexes — both are accessed only by direct document ID lookup.
+`dispatchBatches` itself needs no composite index either — the batch
+list is a single `orderBy("createdAt")`, and Batch Dispatch's eligible-
+requests query reuses the existing `status + priorityRank +
+requestedAt` index.
 
 Deploy index changes with:
 
