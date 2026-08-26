@@ -13,8 +13,9 @@ import {
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
-import { SABA_VILLAGES } from "@/lib/domain/villages";
+import { SABA_VILLAGES, isValidSabaVillage } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
+import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import {
@@ -89,8 +90,6 @@ export function CreateRequestForm({
         }
         if (!cancelled) setFrequentCount(count);
       } catch {
-        // Do not block the form if the frequency check fails; the warning
-        // simply will not be shown this time.
         if (!cancelled) setFrequentCount(null);
       }
     }
@@ -126,11 +125,27 @@ export function CreateRequestForm({
   const selectedHasActiveRequest = selectedResident
     ? activeSet.has(selectedResident.uid)
     : false;
+  const selectedSavedAreaInvalid = selectedResident?.village
+    ? !isValidSabaVillage(selectedResident.village)
+    : false;
 
   function selectResident(resident: ResidentDirectoryEntry) {
     setSelectedResident(resident);
-    setVillage(resident.village ?? "");
+    // Only prefill the request location from the saved profile when the
+    // saved value is a currently canonical village. Legacy/noncanonical
+    // values are shown for awareness but must be explicitly replaced by
+    // the dispatcher.
+    setVillage(isValidSabaVillage(resident.village) ? resident.village : "");
     setDeliveryDirections(resident.deliveryDirections ?? "");
+  }
+
+  function changeResident() {
+    setSelectedResident(null);
+    setSearch("");
+    // Reset requestor-derived location fields so stale information is not
+    // accidentally submitted for the newly selected requestor.
+    setVillage("");
+    setDeliveryDirections("");
   }
 
   function canReview(): boolean {
@@ -155,33 +170,35 @@ export function CreateRequestForm({
     hotel_or_restaurant: "Hotel or Restaurant",
   };
 
+  const inputClasses =
+    "h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none";
+
+  function resetFormAndRefresh() {
+    setStep("form");
+    setSelectedResident(null);
+    setSearch("");
+    setVillage("");
+    setDeliveryDirections("");
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerEmail("");
+    setPreferredDriverId("none");
+    setOverrideDuplicate(false);
+    setWaterSituation(EMPTY_WATER_SITUATION);
+    setAttestationChecked(false);
+    setFrequentCount(null);
+    router.refresh();
+  }
+
   if (state.status === "success") {
     return (
       <Card className="!border-green-200 !bg-green-50">
         <p className="text-sm font-medium text-green-800">{state.message}</p>
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <Button size="md" onClick={() => router.push("/dispatcher")}>
             Back to dashboard
           </Button>
-          <Button
-            variant="outline"
-            size="md"
-            onClick={() => {
-              setStep("form");
-              setSelectedResident(null);
-              setSearch("");
-              setVillage("");
-              setDeliveryDirections("");
-              setCustomerName("");
-              setCustomerPhone("");
-              setCustomerEmail("");
-              setPreferredDriverId("none");
-              setOverrideDuplicate(false);
-              setWaterSituation(EMPTY_WATER_SITUATION);
-              setAttestationChecked(false);
-              router.refresh();
-            }}
-          >
+          <Button variant="outline" size="md" onClick={resetFormAndRefresh}>
             Create another
           </Button>
         </div>
@@ -192,7 +209,7 @@ export function CreateRequestForm({
   if (step === "form") {
     return (
       <Card>
-        <h2 className="text-lg font-bold text-slate-900">Customer</h2>
+        <h2 className="text-lg font-bold text-slate-900">Requestor</h2>
         <div className="mt-3 flex gap-4">
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
             <input
@@ -216,101 +233,103 @@ export function CreateRequestForm({
 
         {customerType === "existing" ? (
           <div className="mt-4 flex flex-col gap-3">
-            <input
-              type="text"
-              placeholder="Search by name, phone, or email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
-            />
-            <div className="flex max-h-56 flex-col divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-              {filteredResidents.length === 0 && (
-                <p className="p-3 text-sm text-slate-500">No matching residents.</p>
-              )}
-              {filteredResidents.map((r) => {
-                const hasActive = activeSet.has(r.uid);
-                const isSelected = selectedResident?.uid === r.uid;
-                return (
-                  <button
-                    type="button"
-                    key={r.uid}
-                    onClick={() => selectResident(r)}
-                    className={`flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-slate-50 ${
-                      isSelected ? "bg-blue-50" : ""
-                    }`}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-slate-900">
-                        {r.displayName || "Unnamed"}
-                      </span>
-                      <span className="block truncate text-xs text-slate-500">
-                        {r.phone ?? "No phone"}
-                        {r.village ? ` · ${r.village}` : ""}
-                      </span>
-                    </span>
-                    {hasActive && (
-                      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-                        Active request
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            {!selectedResident ? (
+              <>
+                <input
+                  type="text"
+                  placeholder="Search by name, phone, or email..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
+                />
+                <div className="flex max-h-56 flex-col divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+                  {filteredResidents.length === 0 && (
+                    <p className="p-3 text-sm text-slate-500">No matching residents.</p>
+                  )}
+                  {filteredResidents.map((r) => {
+                    const hasActive = activeSet.has(r.uid);
+                    return (
+                      <button
+                        type="button"
+                        key={r.uid}
+                        onClick={() => selectResident(r)}
+                        className="flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-slate-900">
+                            {r.displayName || "Unnamed"}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {formatPhoneForDisplay(r.phone) ?? "No phone"}
+                            {r.village ? ` · Saved area: ${r.village}` : ""}
+                          </span>
+                        </span>
+                        {hasActive && (
+                          <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            Active request
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium uppercase tracking-wide text-blue-700">
+                        Selected requestor
+                      </p>
+                      <p className="mt-1 truncate text-base font-semibold text-slate-900">
+                        {selectedResident.displayName || "Unnamed"}
+                      </p>
+                      <p className="truncate text-sm text-slate-700">
+                        {formatPhoneForDisplay(selectedResident.phone) ?? "No phone"}
+                      </p>
+                      {selectedResident.village ? (
+                        <p
+                          className={`truncate text-sm ${
+                            selectedSavedAreaInvalid ? "font-medium text-red-700" : "text-slate-600"
+                          }`}
+                        >
+                          Saved area: {selectedResident.village}
+                          {selectedSavedAreaInvalid ? " — Needs update" : ""}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-slate-500">No saved area</p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="md"
+                      onClick={changeResident}
+                      className="shrink-0"
+                    >
+                      Change
+                    </Button>
+                  </div>
+                </div>
 
-            {selectedResident && selectedHasActiveRequest && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                {selectedResident.displayName} already has an unresolved water
-                request. Resolve it from the dashboard before creating a new one.
-              </p>
-            )}
-
-            {selectedResident && !selectedHasActiveRequest && (
-              <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3">
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                  Village/area
-                  <select
-                    value={village}
-                    onChange={(e) => setVillage(e.target.value)}
-                    required
-                    className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-                  >
-                    <option value="">Select a village...</option>
-                    {SABA_VILLAGES.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                  Delivery directions for this request
-                  <textarea
-                    value={deliveryDirections}
-                    onChange={(e) => setDeliveryDirections(e.target.value)}
-                    rows={3}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-                  />
-                  <span className="text-xs font-normal text-slate-500">
-                    Only applies to this request — the resident&apos;s saved
-                    profile is not changed.
-                  </span>
-                </label>
-
-                {frequentCount !== null && frequentCount >= 3 && (
-                  <FrequentRequestWarning count={frequentCount} />
+                {selectedHasActiveRequest && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    {selectedResident.displayName} already has an unresolved water request. Resolve
+                    it from the dashboard before creating a new one.
+                  </p>
                 )}
-              </div>
+              </>
             )}
           </div>
         ) : (
           <div className="mt-4 flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-              Customer name
+              Requestor name
               <input
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                className={inputClasses}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
@@ -318,7 +337,7 @@ export function CreateRequestForm({
               <input
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
-                className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                className={inputClasses}
               />
             </label>
 
@@ -332,16 +351,27 @@ export function CreateRequestForm({
                 type="email"
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
-                className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                className={inputClasses}
               />
             </label>
+          </div>
+        )}
+
+        {/* Delivery location — shown for unregistered requestors and for selected
+            existing residents who do not already have an active request. */}
+        {(customerType === "new" || (selectedResident && !selectedHasActiveRequest)) && (
+          <div className="mt-6 flex flex-col gap-3">
+            <h3 className="text-base font-semibold text-slate-900">Delivery location</h3>
+            <p className="text-xs text-slate-500">
+              Applies to this request only — does not change the requestor&apos;s saved profile.
+            </p>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Village/area
               <select
                 value={village}
                 onChange={(e) => setVillage(e.target.value)}
                 required
-                className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                className={inputClasses}
               >
                 <option value="">Select a village...</option>
                 {SABA_VILLAGES.map((v) => (
@@ -360,51 +390,51 @@ export function CreateRequestForm({
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
               />
             </label>
-            <p className="text-xs text-slate-500">
-              This customer will not have an application account. No email
-              address or login is required to receive water.
-            </p>
+
+            {customerType === "existing" && frequentCount !== null && frequentCount >= 3 && (
+              <FrequentRequestWarning count={frequentCount} />
+            )}
           </div>
         )}
 
-        <fieldset className="mt-4 flex flex-col gap-2">
-          <legend className="text-sm font-medium text-slate-700">
-            How much water are you requesting?
-          </legend>
-          <label className="flex items-center gap-2 text-sm text-slate-900">
-            <input
-              type="radio"
-              name="loadsChoice"
-              value={1}
-              checked={loads === 1}
-              onChange={() => setLoads(1)}
-              required
-            />
-            1 load (1,000 gallons)
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-900">
-            <input
-              type="radio"
-              name="loadsChoice"
-              value={2}
-              checked={loads === 2}
-              onChange={() => setLoads(2)}
-              required
-            />
-            2 loads (2,000 gallons)
-          </label>
-        </fieldset>
+        <div className="mt-6">
+          <h3 className="text-base font-semibold text-slate-900">Water requested</h3>
+          <fieldset className="mt-3 flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-sm text-slate-900">
+              <input
+                type="radio"
+                name="loadsChoice"
+                value={1}
+                checked={loads === 1}
+                onChange={() => setLoads(1)}
+                required
+              />
+              1 load (1,000 gallons)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-900">
+              <input
+                type="radio"
+                name="loadsChoice"
+                value={2}
+                checked={loads === 2}
+                onChange={() => setLoads(2)}
+                required
+              />
+              2 loads (2,000 gallons)
+            </label>
+          </fieldset>
+        </div>
 
-        <div className="mt-4">
+        <div className="mt-6">
           <WaterSituationFields value={waterSituation} onChange={setWaterSituation} />
         </div>
 
-        <label className="mt-4 flex flex-col gap-1 text-sm font-medium text-slate-700">
+        <label className="mt-6 flex flex-col gap-1 text-sm font-medium text-slate-700">
           Preferred driver
           <select
             value={preferredDriverId}
             onChange={(e) => setPreferredDriverId(e.target.value)}
-            className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+            className={inputClasses}
           >
             <option value="none">No preference</option>
             {eligibleDrivers.map((d) => (
@@ -414,11 +444,11 @@ export function CreateRequestForm({
             ))}
           </select>
           <span className="text-xs font-normal text-slate-500">
-            This is the customer&apos;s preference, not a dispatcher assignment.
+            This is the requestor&apos;s preference, not a dispatcher assignment.
           </span>
         </label>
 
-        <div className="mt-4">
+        <div className="mt-6">
           <Button
             size="lg"
             disabled={!canReview()}
@@ -428,7 +458,7 @@ export function CreateRequestForm({
             }}
             className="w-full"
           >
-            Review &amp; Confirm Request
+            Review request
           </Button>
         </div>
       </Card>
@@ -436,78 +466,89 @@ export function CreateRequestForm({
   }
 
   // --- Review step ---
+  const requestorName = customerType === "existing" ? selectedResident?.displayName : customerName;
+  const requestorPhone =
+    customerType === "existing"
+      ? selectedResident?.phone ?? null
+      : customerPhone.trim() || null;
+  const selectedCircumstances = waterSituation.vulnerableCircumstances.filter((c) => c !== "none");
+
   return (
     <Card>
-      <h2 className="text-lg font-bold text-slate-900">Confirm request</h2>
+      <h2 className="text-lg font-bold text-slate-900">Review request</h2>
 
-      <dl className="mt-4 flex flex-col gap-3 text-sm">
-        <div>
-          <dt className="font-medium text-slate-500">Customer</dt>
-          <dd className="text-slate-900">
-            {customerType === "existing" ? selectedResident?.displayName : customerName}
-          </dd>
-          <dd className="text-slate-600">
-            {customerType === "existing" ? selectedResident?.phone ?? "No phone" : customerPhone}
-          </dd>
+      <div className="mt-4 flex flex-col gap-3">
+        <section className="rounded-lg border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">Requestor</h3>
+          <p className="mt-1 text-sm text-slate-900">{requestorName || "—"}</p>
+          <p className="text-sm text-slate-600">
+            {formatPhoneForDisplay(requestorPhone) ?? "No phone"}
+          </p>
           {customerType === "new" && (
-            <dd className="text-xs text-slate-500">Unregistered customer — no account.</dd>
+            <p className="text-xs text-slate-500">Unregistered requestor — no account.</p>
           )}
-        </div>
+        </section>
 
-        {frequentCount !== null && frequentCount >= 3 && (
-          <FrequentRequestWarning count={frequentCount} />
-        )}
+        <section className="rounded-lg border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">Delivery location</h3>
+          <p className="mt-1 text-sm text-slate-900">{village || "—"}</p>
+          <p className="text-sm text-slate-600">{deliveryDirections || "—"}</p>
+        </section>
 
-        <div>
-          <dt className="font-medium text-slate-500">Delivery location</dt>
-          <dd className="text-slate-900">{village}</dd>
-          <dd className="text-slate-600">{deliveryDirections}</dd>
-        </div>
-        <div>
-          <dt className="font-medium text-slate-500">Quantity</dt>
-          <dd className="text-slate-900">{formatWaterQuantity(loads)}</dd>
-        </div>
-        <div>
-          <dt className="font-medium text-slate-500">Preferred driver</dt>
-          <dd className="text-slate-900">
+        <section className="rounded-lg border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">Water requested</h3>
+          <p className="mt-1 text-sm text-slate-900">{formatWaterQuantity(loads)}</p>
+        </section>
+
+        <section className="rounded-lg border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">Preferred driver</h3>
+          <p className="mt-1 text-sm text-slate-900">
             {selectedDriver ? selectedDriver.displayName : "No preference"}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-medium text-slate-500">Water situation</dt>
-          <dd className="text-slate-900">
-            <span className="font-medium">Urgency:</span> {" "}
-            {URGENCY_LABEL[waterSituation.reportedUrgency] || "—"}
-          </dd>
-          {waterSituation.vulnerableCircumstances.some((c) => c !== "none") && (
-            <dd className="text-slate-900">
-              <span className="font-medium">Circumstances:</span> {" "}
-              {waterSituation.vulnerableCircumstances
-                .filter((c) => c !== "none")
-                .map((c) => VULNERABLE_LABEL[c] ?? c)
-                .join(", ")}
-            </dd>
-          )}
-          {waterSituation.personsAffected && (
-            <dd className="text-slate-900">
-              <span className="font-medium">People affected:</span> {" "}
-              {waterSituation.personsAffected}
-            </dd>
-          )}
-          {waterSituation.availableStorageCapacity && (
-            <dd className="text-slate-900">
-              <span className="font-medium">Available storage:</span> {" "}
-              {waterSituation.availableStorageCapacity}
-            </dd>
-          )}
-          {waterSituation.reportedUrgency === "critical" && (
-            <dd className="text-slate-900">
-              <span className="font-medium">Critical explanation:</span> {" "}
-              {waterSituation.criticalExplanation}
-            </dd>
-          )}
-        </div>
-      </dl>
+          </p>
+        </section>
+
+        <section className="rounded-lg border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">Water situation</h3>
+          <dl className="mt-1 space-y-1 text-sm">
+            <div>
+              <dt className="inline text-slate-500">Urgency:</dt>{" "}
+              <dd className="inline text-slate-900">
+                {URGENCY_LABEL[waterSituation.reportedUrgency] || "—"}
+              </dd>
+            </div>
+            {selectedCircumstances.length > 0 && (
+              <div>
+                <dt className="inline text-slate-500">Circumstances:</dt>{" "}
+                <dd className="inline text-slate-900">
+                  {selectedCircumstances.map((c) => VULNERABLE_LABEL[c] ?? c).join(", ")}
+                </dd>
+              </div>
+            )}
+            {waterSituation.personsAffected && (
+              <div>
+                <dt className="inline text-slate-500">People affected:</dt>{" "}
+                <dd className="inline text-slate-900">{waterSituation.personsAffected}</dd>
+              </div>
+            )}
+            {waterSituation.availableStorageCapacity && (
+              <div>
+                <dt className="inline text-slate-500">Available storage:</dt>{" "}
+                <dd className="inline text-slate-900">{waterSituation.availableStorageCapacity}</dd>
+              </div>
+            )}
+            {waterSituation.reportedUrgency === "critical" && (
+              <div>
+                <dt className="inline text-slate-500">Critical explanation:</dt>{" "}
+                <dd className="inline text-slate-900">{waterSituation.criticalExplanation}</dd>
+              </div>
+            )}
+          </dl>
+        </section>
+      </div>
+
+      {frequentCount !== null && frequentCount >= 3 && (
+        <FrequentRequestWarning count={frequentCount} />
+      )}
 
       {state.status === "duplicate_warning" && !overrideDuplicate && (
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -520,8 +561,8 @@ export function CreateRequestForm({
             ))}
           </ul>
           <p className="mt-2 text-xs text-amber-700">
-            Phone matching is not identity verification. Only proceed if you
-            have confirmed this is a different request.
+            Phone matching is not identity verification. Only proceed if you have confirmed this is
+            a different request.
           </p>
           <Button
             type="button"
@@ -541,10 +582,7 @@ export function CreateRequestForm({
         </p>
       )}
 
-      <form
-        action={formAction}
-        className="mt-4 flex flex-col gap-3 sm:flex-row"
-      >
+      <form action={formAction} className="mt-6 flex flex-col gap-4">
         <input type="hidden" name="customerType" value={customerType} />
         <input type="hidden" name="loads" value={loads} />
         <input type="hidden" name="village" value={village} />
@@ -566,7 +604,7 @@ export function CreateRequestForm({
         />
         <WaterSituationHiddenFields value={waterSituation} />
 
-        <label className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+        <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 text-sm text-slate-700">
           <input
             type="checkbox"
             name="attestationAccepted"
@@ -574,7 +612,7 @@ export function CreateRequestForm({
             checked={attestationChecked}
             onChange={(e) => setAttestationChecked(e.target.checked)}
             required
-            className="mt-0.5"
+            className="mt-0.5 h-4 w-4 shrink-0"
           />
           <span>
             I have accurately recorded the information provided by the caller and confirmed it is
@@ -583,23 +621,31 @@ export function CreateRequestForm({
         </label>
 
         {(state.status !== "duplicate_warning" || overrideDuplicate) && (
-          <Button type="submit" size="lg" disabled={pending || !attestationChecked}>
-            {pending
-              ? "Creating\u2026"
-              : overrideDuplicate
-                ? "Create anyway"
-                : "Create Request"}
-          </Button>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              disabled={pending}
+              onClick={() => setStep("form")}
+              className="w-full whitespace-nowrap sm:flex-1"
+            >
+              Go Back
+            </Button>
+            <Button
+              type="submit"
+              size="lg"
+              disabled={pending || !attestationChecked}
+              className="w-full whitespace-nowrap sm:flex-1"
+            >
+              {pending
+                ? "Creating\u2026"
+                : overrideDuplicate
+                  ? "Create anyway"
+                  : "Create Request"}
+            </Button>
+          </div>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          disabled={pending}
-          onClick={() => setStep("form")}
-        >
-          Go back
-        </Button>
       </form>
     </Card>
   );
@@ -607,10 +653,10 @@ export function CreateRequestForm({
 
 function FrequentRequestWarning({ count }: { count: number }) {
   return (
-    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
       <p className="text-sm font-medium text-amber-900">Frequent delivery activity</p>
       <p className="text-xs text-amber-800">
-        This resident has had {count} water requests within the last 7 days.
+        This requestor has had {count} water requests within the last 7 days.
       </p>
     </div>
   );

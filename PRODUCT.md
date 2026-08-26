@@ -371,9 +371,9 @@ For dispatcher-created requests, the wording reflects that staff are
 accurately recording the information provided by the caller — not that
 the dispatcher is personally making a citizen attestation.
 
-The primary action on the request form is now "Review & Confirm
-Request", and a final "Request Water" / "Create Request" action appears
-only on the confirmation screen after the attestation is checked.
+The primary action on the request form is now "Review request", and a
+final "Create Request" action appears only on the confirmation screen
+after the attestation is checked.
 
 ## Dispatch priority is not the same as reported urgency
 
@@ -453,10 +453,14 @@ below).
 
 ## Existing (registered) resident
 
-A dispatcher can search for a resident by name, phone, or email and
-select them, pre-filling their saved village and delivery directions. The
-dispatcher may adjust delivery directions (and village) **for this
-request only** — this never overwrites the resident's saved profile.
+A dispatcher can search for a resident by name, phone, or email,
+select them to set the **Requestor**, and then record a separate **Delivery
+location** for the request. The selected resident's saved area is shown
+for reference, but if it is a legacy/noncanonical value it is marked
+"Needs update" and is **not** silently used as the request village. The
+dispatcher may adjust the request's delivery directions (and village)
+**for this request only** — this never overwrites the resident's saved
+profile.
 
 The existing one-active-request-per-resident rule is preserved exactly:
 if the resident already has an unresolved request, the dispatcher sees
@@ -464,21 +468,21 @@ this clearly before submitting and cannot create a duplicate. Resolving
 that conflict uses the same dispatcher tools already available for any
 request (reassign, cancel, resolve a dispute, etc.).
 
-## Unregistered customers
+## Unregistered requestors
 
 A resident must **not** be required to create an application account
 just to receive government water. A dispatcher can create a request for
 someone with no account by entering:
 
-- Customer name (required)
+- Requestor name (required)
 - Phone number (required)
 - Village/area (required)
 - Delivery directions (required)
 - Email (optional)
 
-No Firebase account is created for this customer, and none is required.
+No Firebase account is created for this requestor, and none is required.
 
-Because an unregistered customer has no stable account identity, exact
+Because an unregistered requestor has no stable account identity, exact
 duplicate detection is not possible the way it is for a registered
 resident. Instead, the dispatcher is warned when an unresolved request
 already exists with a matching phone number, and shown that existing
@@ -488,8 +492,8 @@ phone), and doing so is recorded, never silent.
 
 ## Future account linking
 
-An unregistered customer's past requests could eventually be associated
-with a registered account if that customer signs up later. This is
+An unregistered requestor's past requests could eventually be associated
+with a registered account if that requestor signs up later. This is
 **not implemented yet** — do not automatically link requests by name
 alone. Any future linking should be a deliberate, staff-initiated,
 auditable action, potentially assisted by matching phone/email, not an

@@ -21,35 +21,45 @@ drivers currently marked ineligible.
 
 ## Creating a manual request
 
-Use **Create Request** for a resident who calls or visits the office.
+Use **Create Request** for a requestor who calls or visits the office.
+The form asks first for the **Requestor** (registered resident or new /
+unregistered person), then the **Delivery location** and other request
+details, and finally shows a **Review request** screen for confirmation.
 
-- **Registered resident:** search by name, phone, or email and select
-  their account. Their saved village and delivery directions are
-  pre-filled — you may adjust either for this request only, without
-  changing what is saved on their profile.
-- **Unregistered customer:** enter their name, phone, village, and
+- **Registered resident:** search by name, phone, or email. Click a
+  result to select that resident. The search list collapses into a
+  compact **Selected requestor** card. Their saved area is shown for
+  reference; if it is a legacy value that is no longer one of the
+  approved villages, it is marked "Needs update" and the **Delivery
+  location** field is left empty for you to select a canonical village.
+  Click **Change** to clear the selection and search again.
+- **Unregistered requestor:** enter their name, phone, village, and
   delivery directions directly. No account is created and none is
   required.
 
-**Quantity:** for either type of customer, you must select whether the
+In both cases the village/directions you enter apply to **this request
+only** and never overwrite a registered resident's saved profile.
+
+**Quantity:** for either type of requestor, you must select whether the
 request is for **1 load (1,000 gallons)** or **2 loads (2,000
 gallons)**. A two-load request is still a single request — it gets one
 priority, one assignment, and one confirmation/dispute record.
 
-Either way, review the details and submit — this enters the exact same
-queue as a request submitted from the website or WhatsApp.
+Either way, review the details and click **Create Request** — this
+enters the exact same queue as a request submitted from the website or
+WhatsApp.
 
 ### Duplicate and frequent-request warnings
 
 - A registered resident who already has an unresolved request cannot
   have a second one created — you will see their existing request
   instead.
-- An unregistered customer with a matching phone number on an
+- An unregistered requestor with a matching phone number on an
   unresolved request will trigger a warning showing that request. A
   matching phone number is not proof of identity (for example, a
   shared household phone), so you may confirm and proceed anyway if
   appropriate. Doing so is recorded, never silent.
-- If a customer has **3 or more water requests in the last 7 days**,
+- If a requestor has **3 or more water requests in the last 7 days**,
   the Create Request form and the request detail page show a
   non-blocking "Frequent delivery activity" warning. This is awareness,
   not enforcement — you can still create or dispatch the request. The

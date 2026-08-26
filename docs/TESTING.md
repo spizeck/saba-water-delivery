@@ -94,8 +94,20 @@ any of these areas.
 ### Dispatcher
 
 - Create a manual request for a registered resident and for an
-  unregistered customer; for each, verify 1-load and 2-load submissions
+  unregistered requestor; for each, verify 1-load and 2-load submissions
   store the correct gallons.
+- Search for an existing resident, select them, and confirm the search
+  results collapse and a compact "Selected requestor" card appears.
+- Click **Change** and confirm the search interface reappears.
+- Select a resident whose saved area is noncanonical (e.g., `Hell's Gate`);
+  confirm the saved area is shown as "Needs update" and the **Delivery
+  location** field is not prefilled with the legacy value.
+- Select a resident with a valid canonical saved area and confirm it
+  prefills the request **Delivery location**, which can still be overridden
+  for this request without changing the resident's profile.
+- Reach the **Review request** screen, confirm grouped information is
+  clear, check the full-width attestation, and verify **Go Back** preserves
+  all entered values.
 - Trigger and acknowledge a duplicate warning for an unregistered
   customer.
 - Override a request's priority with a reason.

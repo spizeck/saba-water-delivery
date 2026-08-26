@@ -23,6 +23,19 @@ not attempt to recreate the full prelaunch development history.
 
 Operational usability pass following government dispatcher testing.
 
+Dispatcher manual-request UX refinement:
+- Existing-resident search now collapses into a compact "Selected
+  requestor" card with a **Change** action to reopen the search.
+- Requestor terminology replaces "Customer" on the dispatcher request
+  form, selected card, and review screen.
+- Saved profile area and request delivery location are clearly labeled
+  separately; legacy/noncanonical saved areas are shown as "Needs
+  update" and are not prefilled as the request village.
+- Review screen title changed from "Confirm request" to "Review request"
+  and is now laid out in grouped sections.
+- Attestation is now a full-width block above the final action buttons;
+  buttons are equal-width on desktop and stacked on mobile.
+
 Resident profile / delivery information reminder:
 - Noncanonical saved villages (e.g., `Lower Hells Gate`) now force a
   mandatory profile review. The reminder modal shows the old value as

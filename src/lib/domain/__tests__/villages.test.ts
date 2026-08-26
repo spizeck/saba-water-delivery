@@ -24,5 +24,9 @@ describe("isValidSabaVillage", () => {
     expect(isValidSabaVillage("Zions Hill - Lower")).toBe(true);
     expect(isValidSabaVillage("Bottom")).toBe(false);
     expect(isValidSabaVillage("The Bottom")).toBe(true);
+    expect(isValidSabaVillage("Hell's Gate")).toBe(false);
+    expect(isValidSabaVillage("Lower Hells Gate")).toBe(false);
+    expect(isValidSabaVillage("The Level")).toBe(false);
+    expect(isValidSabaVillage("Sunshine Ridge")).toBe(false);
   });
 });
