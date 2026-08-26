@@ -99,6 +99,47 @@ describe("sortForBatchSelection", () => {
     const sorted = sortForBatchSelection([newer, escalated, older]);
     expect(sorted.map((r) => r.id)).toEqual(["escalated", "older", "newer"]);
   });
+
+  it("orders multiple escalated requests at the same priority by oldest requested first", () => {
+    const older = makeRequest("older-escalated", {
+      dispatchOverrideRank: 0,
+      requestedAt: baseTime.toISOString(),
+    });
+    const newer = makeRequest("newer-escalated", {
+      dispatchOverrideRank: 0,
+      requestedAt: new Date(baseTime.getTime() + 60_000).toISOString(),
+    });
+
+    const sorted = sortForBatchSelection([newer, older]);
+    expect(sorted.map((r) => r.id)).toEqual(["older-escalated", "newer-escalated"]);
+  });
+
+  it("puts an escalated newer request ahead of a non-escalated older request at the same priority", () => {
+    const nonEscalated = makeRequest("non-escalated-older", { requestedAt: baseTime.toISOString() });
+    const escalated = makeRequest("escalated-newer", {
+      dispatchOverrideRank: 0,
+      requestedAt: new Date(baseTime.getTime() + 60_000).toISOString(),
+    });
+
+    const sorted = sortForBatchSelection([nonEscalated, escalated]);
+    expect(sorted.map((r) => r.id)).toEqual(["escalated-newer", "non-escalated-older"]);
+  });
+
+  it("keeps priority dominant over escalation (critical non-escalated before normal escalated)", () => {
+    const normalEscalated = makeRequest("normal-escalated", {
+      dispatchPriority: "normal",
+      dispatchOverrideRank: 0,
+      requestedAt: baseTime.toISOString(),
+    });
+    const criticalNonEscalated = makeRequest("critical-non-escalated", {
+      dispatchPriority: "critical",
+      dispatchOverrideRank: null,
+      requestedAt: new Date(baseTime.getTime() + 120_000).toISOString(),
+    });
+
+    const sorted = sortForBatchSelection([normalEscalated, criticalNonEscalated]);
+    expect(sorted.map((r) => r.id)).toEqual(["critical-non-escalated", "normal-escalated"]);
+  });
 });
 
 describe("validateBatchSelection", () => {

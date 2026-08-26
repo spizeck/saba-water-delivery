@@ -1251,18 +1251,14 @@ web.
 
 ### Village Selection
 
-No canonical village list/type existed anywhere in the codebase before
-this phase — the web profile/request forms have always used a free-text
-village field with only placeholder guidance text. Because the
-WhatsApp conversation needs a deterministic numbered menu, a canonical
-five-village list was introduced (`src/lib/domain/villages.ts`): The
-Bottom, St. John's, Windwardside, Zion's Hill - Lower, Zion's Hill -
-Upper. A WhatsApp-selected village is written into the exact same
-free-text `village` field as any web request — this did **not** change
-the web form, `UserProfile`, or `WaterRequest` field types. Migrating
-the web forms to the same canonical list later, for village-demand
-data-quality consistency, is a reasonable future product decision but
-was out of scope here.
+A canonical five-village list now exists in `src/lib/domain/villages.ts`
+and is shared by the resident profile form, the dispatcher manual-request
+forms, the WhatsApp conversation, and server-side validation: St Johns,
+The Bottom, Windwardside, Zions Hill - Lower, Zions Hill - Upper. Any
+village value outside this set is rejected when a profile or request is
+saved. Old spellings (`St. John's`, `Zion's Hill`, etc.) are no longer
+accepted; a one-time migration script (`scripts/migrate-villages.mjs`)
+can clean up prelaunch Firestore documents.
 
 ## Attestation
 

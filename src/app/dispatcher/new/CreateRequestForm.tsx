@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/Button";
@@ -16,7 +16,11 @@ import { SABA_VILLAGES } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
-import { createManualRequest, type CreateRequestActionState } from "../actions";
+import {
+  createManualRequest,
+  getFrequentRequestCount,
+  type CreateRequestActionState,
+} from "../actions";
 
 const initialState: CreateRequestActionState = { status: "idle" };
 
@@ -53,8 +57,55 @@ export function CreateRequestForm({
   const [overrideDuplicate, setOverrideDuplicate] = useState(false);
   const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
   const [attestationChecked, setAttestationChecked] = useState(false);
+  const [frequentCount, setFrequentCount] = useState<number | null>(null);
+  const [, startFrequentTransition] = useTransition();
 
   const [state, formAction, pending] = useActionState(createManualRequest, initialState);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    async function load() {
+      try {
+        let count = 0;
+        if (customerType === "existing" && selectedResident) {
+          const result = await getFrequentRequestCount({
+            customerId: selectedResident.uid,
+            phone: selectedResident.phone ?? null,
+          });
+          count = result.count;
+        } else if (customerType === "new" && customerPhone.trim()) {
+          const result = await getFrequentRequestCount({
+            customerId: null,
+            phone: customerPhone.trim(),
+          });
+          count = result.count;
+        } else {
+          if (!cancelled) setFrequentCount(null);
+          return;
+        }
+        if (!cancelled) setFrequentCount(count);
+      } catch {
+        // Do not block the form if the frequency check fails; the warning
+        // simply will not be shown this time.
+        if (!cancelled) setFrequentCount(null);
+      }
+    }
+
+    if (customerType === "new" && customerPhone.trim()) {
+      timeoutId = setTimeout(() => {
+        startFrequentTransition(() => load());
+      }, 300);
+    } else {
+      startFrequentTransition(() => load());
+    }
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [customerType, selectedResident, customerPhone]);
 
   const filteredResidents = useMemo(() => {
     if (!search.trim()) return residents.slice(0, 20);
@@ -243,6 +294,10 @@ export function CreateRequestForm({
                     profile is not changed.
                   </span>
                 </label>
+
+                {frequentCount !== null && frequentCount >= 3 && (
+                  <FrequentRequestWarning count={frequentCount} />
+                )}
               </div>
             )}
           </div>
@@ -264,6 +319,11 @@ export function CreateRequestForm({
                 className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
               />
             </label>
+
+            {frequentCount !== null && frequentCount >= 3 && (
+              <FrequentRequestWarning count={frequentCount} />
+            )}
+
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Email (optional)
               <input
@@ -363,6 +423,11 @@ export function CreateRequestForm({
             <dd className="text-xs text-slate-500">Unregistered customer — no account.</dd>
           )}
         </div>
+
+        {frequentCount !== null && frequentCount >= 3 && (
+          <FrequentRequestWarning count={frequentCount} />
+        )}
+
         <div>
           <dt className="font-medium text-slate-500">Delivery location</dt>
           <dd className="text-slate-900">{village}</dd>
@@ -506,5 +571,16 @@ export function CreateRequestForm({
         </Button>
       </form>
     </Card>
+  );
+}
+
+function FrequentRequestWarning({ count }: { count: number }) {
+  return (
+    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <p className="text-sm font-medium text-amber-900">Frequent delivery activity</p>
+      <p className="text-xs text-amber-800">
+        This resident has had {count} water requests within the last 7 days.
+      </p>
+    </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   escalateDispatchRequest,
   findActiveRequestsByPhone,
   getActiveRequestForCustomer,
+  getFrequentRequestCountForCustomer,
   markWaterDeliveredByStaff,
   resolveDisputeCompleted,
   resolveDisputeReopened,
@@ -744,4 +745,15 @@ export async function escalateRequest(
   revalidatePath("/dispatcher");
   revalidatePath(`/dispatcher/${requestId}`);
   return { status: "success", message: "Request escalated. It now appears ahead in the dispatch queue." };
+}
+
+export async function getFrequentRequestCount(input: {
+  customerId?: string | null;
+  phone?: string | null;
+}): Promise<{ count: number }> {
+  await requireStaff();
+  const customerId = input.customerId ?? null;
+  const phone = input.phone?.trim() ?? null;
+  const count = await getFrequentRequestCountForCustomer(customerId, phone);
+  return { count };
 }

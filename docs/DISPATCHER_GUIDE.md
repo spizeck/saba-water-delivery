@@ -34,7 +34,7 @@ Use **Create Request** for a resident who calls or visits the office.
 Either way, review the details and submit — this enters the exact same
 queue as a request submitted from the website or WhatsApp.
 
-### Duplicate warnings
+### Duplicate and frequent-request warnings
 
 - A registered resident who already has an unresolved request cannot
   have a second one created — you will see their existing request
@@ -44,6 +44,11 @@ queue as a request submitted from the website or WhatsApp.
   matching phone number is not proof of identity (for example, a
   shared household phone), so you may confirm and proceed anyway if
   appropriate. Doing so is recorded, never silent.
+- If a customer has **3 or more water requests in the last 7 days**,
+  the Create Request form and the request detail page show a
+  non-blocking "Frequent delivery activity" warning. This is awareness,
+  not enforcement — you can still create or dispatch the request. The
+  count is based on rolling request timestamps, not calendar weeks.
 
 ## Priority
 
@@ -70,6 +75,16 @@ ineligible, in cooldown, or already on another delivery, an
 Urgent/Critical request skips the hold entirely and goes straight to
 the general queue rather than waiting. If the preferred driver
 declines, the hold ends immediately either way.
+
+## Escalating a request
+
+You can move an open request ahead in the dispatch queue without
+changing its priority or its original request time. Use **Escalate** on
+a request when operational circumstances require it (for example, a
+vulnerable resident or an urgent follow-up). You must provide a reason;
+the action is recorded in the audit trail. Multiple escalated requests
+at the same priority remain oldest-first, so escalation does not
+randomize the queue or make newer requests jump ahead of older ones.
 
 ## Assignment and reassignment
 

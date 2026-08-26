@@ -22,6 +22,7 @@ not attempt to recreate the full prelaunch development history.
 ## Unreleased
 
 Operational usability pass following government dispatcher testing.
+Prelaunch cleanup pass:
 - Canonical village dropdowns (resident profile, dispatcher request,
   WhatsApp) and server-side validation of the five approved village
   values.
@@ -33,6 +34,14 @@ Operational usability pass following government dispatcher testing.
 - New dispatcher escalation action that moves a request ahead in the
   queue without rewriting its original request timestamp.
 - Dispatcher-visible warning when a customer has 3 or more requests in
-  the last 7 days.
+  the last 7 days (now shown during manual request creation and on the
+  request detail page).
 - Responsive Admin portal layout so the View Statistics button is
   visible on mobile.
+- Manual dispatch escalation (`Escalate` on request detail) sorts
+  ahead within the same priority without mutating `requestedAt`; multiple
+  escalated requests stay oldest-first within equal priority.
+- Canonical village list enforced across forms, WhatsApp, and server
+  validation; legacy spellings are no longer accepted for new data.
+- `scripts/migrate-villages.mjs` one-time dry-run/write migration for
+  prelaunch village cleanup.

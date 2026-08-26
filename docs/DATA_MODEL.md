@@ -14,7 +14,8 @@ separate analytics database or ETL pipeline.
 **Purpose:** one document per authenticated account (resident, driver,
 dispatcher, admin, viewer — a user can hold multiple roles at once).
 
-**Key fields:** `displayName`, `email`, `phone`, `village`,
+**Key fields:** `displayName`, `email`, `phone`, `village`
+(canonical Saba village values only — see `src/lib/domain/villages.ts`),
 `deliveryDirections`, `roles` (array), `deliveryProfileConfirmedAt`
 (last time the resident confirmed their delivery info was current),
 `createdAt`, `updatedAt`.
@@ -108,7 +109,9 @@ where it originated. This is the operational core of the system.
 - `gallons` — always `1000`.
 - `village`, `deliveryDirections` — the delivery location for this
   request (may differ from the resident's saved profile if a
-  dispatcher adjusted it for this request only).
+  dispatcher adjusted it for this request only). New and updated
+  requests are validated against the canonical village list in
+  `src/lib/domain/villages.ts`; unapproved values are rejected.
 - `preferredDriverId`, `preferredDriverExpiresAt` — the resident's
   optional preferred-driver hold.
 - `assignedDriverId` — set once a driver claims the request.

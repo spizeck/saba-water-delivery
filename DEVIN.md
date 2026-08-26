@@ -393,10 +393,11 @@ message ID is claimed via `claimMessageId()` before any processing —
 this is what makes Meta's webhook retries safe (see TECHNICAL.md
 "Webhook Idempotency").
 
-No canonical village list/type existed before this feature — see
+A canonical village list/type is now enforced across the resident profile,
+dispatcher forms, WhatsApp conversation, and server-side validation — see
 `src/lib/domain/villages.ts` (`SABA_VILLAGES`) and PRODUCT.md "Village
-Selection" for why it was introduced and what it deliberately did NOT
-change (the web form/profile still use free-text `village: string`).
+Selection". `village` remains a `string` field, but only the five
+canonical values are accepted for new or updated documents.
 
 `WaterRequestSource` gained `"whatsapp"` (`src/lib/domain/types.ts`) —
 see TECHNICAL.md "Request source and statistics" for why this required

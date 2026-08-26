@@ -110,6 +110,13 @@ delivery directions. This is a normal request, not a special case: it
 goes through the exact same queue, priority, and driver-assignment
 rules as any other request.
 
+Villages must be chosen from the approved list (St Johns, The Bottom,
+Windwardside, Zions Hill - Lower, Zions Hill - Upper). Free-text
+villages are no longer accepted. Any legacy spellings in prelaunch data
+are cleaned with the one-time `scripts/migrate-villages.mjs` migration
+script before go-live; unapproved or ambiguous values are reported, not
+silently mapped.
+
 ## WhatsApp requests
 
 Residents can also request water by messaging the government WhatsApp
