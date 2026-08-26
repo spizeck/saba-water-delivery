@@ -51,13 +51,20 @@ export async function updateResidentProfile(
     return { status: "error", message: "Delivery directions are required." };
   }
 
-  await updateUserProfile({
-    uid: session.uid,
-    displayName,
-    phone: phone || null,
-    village,
-    deliveryDirections,
-  });
+  try {
+    await updateUserProfile({
+      uid: session.uid,
+      displayName,
+      phone: phone || null,
+      village,
+      deliveryDirections,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "INVALID_VILLAGE") {
+      return { status: "error", message: "Please select a valid village from the list." };
+    }
+    throw err;
+  }
 
   revalidatePath("/resident");
   return { status: "success", message: "Profile saved." };

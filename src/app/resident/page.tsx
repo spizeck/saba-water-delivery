@@ -138,6 +138,7 @@ export default async function ResidentPortalPage() {
           profile={profile}
           mandatory={deliveryProfileReminder.mandatory}
           missingFields={deliveryProfileReminder.missingFields}
+          invalidFields={deliveryProfileReminder.invalidFields}
         />
       )}
     </>

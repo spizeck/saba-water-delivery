@@ -232,12 +232,14 @@ export async function confirmDeliveryProfile(uid: string): Promise<UserProfile> 
   }
 
   const data = snapshot.data()!;
+  const village = (data.village ?? "").toString().trim();
   const hasRequiredFields =
     Boolean((data.phone ?? "").toString().trim()) &&
-    Boolean((data.village ?? "").toString().trim()) &&
+    Boolean(village) &&
     Boolean((data.deliveryDirections ?? "").toString().trim());
+  const hasValidVillage = isValidSabaVillage(village);
 
-  if (!hasRequiredFields) {
+  if (!hasRequiredFields || !hasValidVillage) {
     throw new Error("DELIVERY_PROFILE_INCOMPLETE");
   }
 

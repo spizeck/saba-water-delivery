@@ -1314,6 +1314,7 @@ it is unit testable without a Firestore/Admin SDK context) takes:
 ```
 
 and returns `{ show: boolean; mandatory: boolean; missingFields:
+Array<"phone" | "village" | "deliveryDirections">; invalidFields:
 Array<"phone" | "village" | "deliveryDirections"> }`.
 
 Rules, applied in order:
@@ -1322,6 +1323,10 @@ Rules, applied in order:
    only, `show: true, mandatory: true` with the specific missing
    field(s) — these are the same canonical `UserProfile` fields used
    everywhere else, no duplicate fields.
+1b. If `village` is present but not one of the five canonical Saba
+   villages, `show: true, mandatory: true` with `invalidFields:
+   ["village"]` (the UI displays this as "Needs update" rather than
+   "Missing").
 2. Otherwise compute the most recent MEANINGFUL verification as the
    later of `deliveryProfileConfirmedAt` and `lastConfirmedDeliveryAt`.
    If neither exists (never confirmed AND never had a completed
@@ -1403,11 +1408,12 @@ unrelated fields only (e.g. display name) does not refresh it.
 - Never trusts a client-provided timestamp — always writes
   `FieldValue.serverTimestamp()`.
 - Re-validates server-side that phone/village/deliveryDirections are all
-  non-blank before writing, throwing `DELIVERY_PROFILE_INCOMPLETE`
+  non-blank and that `village` is one of the five canonical Saba
+  villages before writing, throwing `DELIVERY_PROFILE_INCOMPLETE`
   otherwise — this mirrors the UI (which never offers "Everything Is
-  Correct" when required fields are missing) but must not depend on the
-  UI alone (see DEVIN.md "Never rely on UI visibility for access
-  control").
+  Correct" when required fields are missing or invalid) but must not
+  depend on the UI alone (see DEVIN.md "Never rely on UI visibility for
+  access control").
 - Only ever confirms the calling resident's own profile —
   `confirmDeliveryProfileInfo()` (`src/app/resident/actions.ts`) resolves
   the uid from `requireRole("resident")`'s server-verified session, never
@@ -1422,11 +1428,12 @@ made server-side before the component ever mounts, so a multi-role user
 on `/driver` or `/dispatcher` never evaluates or renders this at all
 (it is not part of any shared portal layout).
 
-- **Mandatory** (missing required fields): no close (`X`)/backdrop
-  dismissal, no "Everything Is Correct" button; only "Review My
-  Information," which scrolls to the existing `ProfileForm` (anchored
-  via `#delivery-profile-form` on the same page) — no second profile
-  editor was built for this modal.
+- **Mandatory** (missing or invalid required fields): no close
+  (`X`)/backdrop dismissal, no "Everything Is Correct" button; only
+  "Review My Information," which scrolls to the existing `ProfileForm`
+  (anchored via `#delivery-profile-form` on the same page) — no second
+  profile editor was built for this modal. A noncanonical village is
+  shown as "Needs update" rather than blank.
 - **Periodic** (complete but stale): both "Review My Information" and
   "Everything Is Correct" are offered; the resident may also dismiss via
   `X`/backdrop. Dismissal is purely local UI state — it never calls the

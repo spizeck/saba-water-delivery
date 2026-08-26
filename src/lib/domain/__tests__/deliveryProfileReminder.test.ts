@@ -137,6 +137,50 @@ describe("evaluateDeliveryProfileReminder", () => {
     });
     expect(result.mandatory).toBe(true);
     expect(result.missingFields).toEqual(["phone", "village"]);
+    expect(result.invalidFields).toEqual([]);
+  });
+
+  it("noncanonical village triggers mandatory review with invalid village", () => {
+    const result = evaluateDeliveryProfileReminder({
+      ...completeProfile,
+      village: "Lower Hells Gate",
+      deliveryProfileConfirmedAt: daysAgo(1),
+      lastConfirmedDeliveryAt: null,
+      now: NOW,
+    });
+    expect(result.show).toBe(true);
+    expect(result.mandatory).toBe(true);
+    expect(result.missingFields).toEqual([]);
+    expect(result.invalidFields).toEqual(["village"]);
+  });
+
+  it("missing and invalid fields are reported separately", () => {
+    const result = evaluateDeliveryProfileReminder({
+      phone: "+599 000 0001",
+      village: "The Level",
+      deliveryDirections: "",
+      deliveryProfileConfirmedAt: daysAgo(1),
+      lastConfirmedDeliveryAt: null,
+      now: NOW,
+    });
+    expect(result.mandatory).toBe(true);
+    expect(result.missingFields).toEqual(["deliveryDirections"]);
+    expect(result.invalidFields).toEqual(["village"]);
+  });
+
+  it("canonical village is treated as complete", () => {
+    for (const village of ["St Johns", "The Bottom", "Windwardside", "Zions Hill - Lower", "Zions Hill - Upper"]) {
+      const result = evaluateDeliveryProfileReminder({
+        ...completeProfile,
+        village,
+        deliveryProfileConfirmedAt: daysAgo(1),
+        lastConfirmedDeliveryAt: null,
+        now: NOW,
+      });
+      expect(result.mandatory).toBe(false);
+      expect(result.invalidFields).toEqual([]);
+      expect(result.missingFields).toEqual([]);
+    }
   });
 
   it("an auto-confirmed delivery counts the same as any other confirmed delivery (recent -> does not show)", () => {

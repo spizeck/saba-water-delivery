@@ -15,7 +15,7 @@ The government water system, not an individual driver, owns the request.
    - Open requests should be equally accessible to eligible drivers.
 
 2. **Simple for residents**
-   - A standard water request is always one 1,000-gallon load.
+   - A standard water request is for 1 or 2 1,000-gallon loads.
    - Most requests are ASAP.
    - Repeat requests should require very little data entry.
 
@@ -54,7 +54,7 @@ Residents can:
 
 - Create an account and log in.
 - Maintain their contact and delivery information.
-- Request one 1,000-gallon load of water.
+- Request 1 or 2 1,000-gallon loads of water.
 - Request delivery ASAP.
 - Optionally select a preferred driver.
 - View current request status.
@@ -881,11 +881,14 @@ login gimmick, so it deliberately does **not** appear on every visit.
 For this reminder, "required" means:
 
 - Phone number
-- Village
+- Village (must be one of the five canonical village choices)
 - Delivery directions
 
 These are the same canonical profile fields used everywhere else in the
-system — no duplicate fields were introduced.
+system — no duplicate fields were introduced. An old or invalid village
+value such as `Lower Hells Gate`, `The Level`, or `Sunshine Ridge` is
+treated the same as a missing village: the resident must update it before
+they can confirm their information or request water.
 
 ## The modal
 
@@ -902,11 +905,12 @@ Two possible states:
   (goes to the existing profile editing section — there is no second,
   duplicate profile editor built for this modal) and **Everything Is
   Correct** (records that they reviewed and confirmed it).
-- **Information incomplete** — the modal is more forceful: it clearly
-  identifies what is missing, offers only **Review My Information**, and
-  does **not** offer "Everything Is Correct." A resident cannot confirm
-  a blank phone number or missing delivery directions. Casual dismissal
-  (closing via an X or the backdrop) is not offered in this state.
+- **Information incomplete or invalid** — the modal is more forceful: it
+  clearly identifies what is missing or needs to be updated, offers only
+  **Review My Information**, and does **not** offer "Everything Is
+  Correct." A resident cannot confirm a blank phone number, a missing
+  delivery direction, or a noncanonical village. Casual dismissal (closing
+  via an X or the backdrop) is not offered in this state.
 
 For the normal periodic reminder (information already complete), the
 resident may dismiss the modal without acting on it (e.g. via a close
@@ -919,7 +923,8 @@ resident actually confirms or reviews their information.
 The reminder is **not** based on login frequency, account age, or
 number of visits. It appears when:
 
-1. Required delivery information is missing, **or**
+1. Required delivery information is missing or invalid (for example, an
+   old noncanonical village value), **or**
 2. The resident has not meaningfully reviewed their delivery
    information in the last **45 days** — where "meaningfully reviewed"
    means the later of:

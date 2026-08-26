@@ -23,6 +23,19 @@ not attempt to recreate the full prelaunch development history.
 
 Operational usability pass following government dispatcher testing.
 
+Resident profile / delivery information reminder:
+- Noncanonical saved villages (e.g., `Lower Hells Gate`) now force a
+  mandatory profile review. The reminder modal shows the old value as
+  "Needs update" and does not offer "Everything Is Correct."
+- `confirmDeliveryProfile()` now refuses confirmation when the village
+  is not one of the five canonical choices.
+- Phone numbers in the reminder modal are formatted for display only;
+  the stored canonical value is unchanged.
+- Fixed the village dropdown reset bug: the select now stays on the
+  saved value after a successful profile save.
+- Modal action buttons are now a mobile-first stacked layout and a
+  two-column equal-width layout on larger screens.
+
 Quantity model change:
 - Residents may now request either 1 load (1,000 gallons) or 2 loads
   (2,000 gallons) in a single request. The choice is required on the

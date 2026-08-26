@@ -239,11 +239,11 @@ The Resident portal periodically reminds a resident to confirm their
 delivery information (phone/village/directions) is still correct — see
 PRODUCT.md / TECHNICAL.md "Delivery Profile Confirmation Reminder". This
 is a data-quality safeguard against failed deliveries, not a login nag:
-it is driven by profile completeness and a 45-day-since-last-
-meaningful-review window (confirmation, a delivery-relevant profile
-edit, or a completed delivery), never by login frequency or account
-age. It only appears on `/resident`, never on other portals for a
-multi-role user.
+it is driven by profile completeness, a canonical village check, and
+a 45-day-since-last-meaningful-review window (confirmation, a delivery-
+relevant profile edit, or a completed delivery), never by login
+frequency or account age. It only appears on `/resident`, never on
+other portals for a multi-role user.
 
 ## Driver
 

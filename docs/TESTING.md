@@ -38,7 +38,9 @@ Vitest covers the pure domain logic extensively, including:
 - Dispatch offer selection, decline/cooldown behavior, and avoiding
   re-offer loops.
 - Delivery confirmation timeout and auto-confirmation logic.
-- Delivery-profile reminder decision logic.
+- Delivery-profile reminder decision logic, including mandatory review
+  for noncanonical villages (e.g., `Lower Hells Gate`) and phone display
+  formatting (`formatPhone.ts`).
 - Continuity report data selection/transformation and PDF filename
   generation.
 - Continuity report email recipient parsing and payload construction.
@@ -60,6 +62,11 @@ any of these areas.
 
 - Log in.
 - Complete/update the delivery profile (phone, village, directions).
+- If the saved village is noncanonical (e.g., `Lower Hells Gate`),
+  confirm the reminder modal appears, shows the village as "Needs
+  update," and does not offer "Everything Is Correct."
+- Select a canonical village, save, and confirm the dropdown shows the
+  saved value before and after refreshing.
 - Submit a request for 1 load and verify it is stored/displayed as
   1,000 gallons.
 - Submit a request for 2 loads and verify it is stored/displayed as

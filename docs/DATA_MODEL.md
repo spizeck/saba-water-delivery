@@ -15,9 +15,11 @@ separate analytics database or ETL pipeline.
 dispatcher, admin, viewer — a user can hold multiple roles at once).
 
 **Key fields:** `displayName`, `email`, `phone`, `village`
-(canonical Saba village values only — see `src/lib/domain/villages.ts`),
-`deliveryDirections`, `roles` (array), `deliveryProfileConfirmedAt`
-(last time the resident confirmed their delivery info was current),
+(canonical Saba village values only — see `src/lib/domain/villages.ts`;
+noncanonical values are treated as incomplete and force a profile
+review), `deliveryDirections`, `roles` (array),
+`deliveryProfileConfirmedAt` (last time the resident confirmed their
+delivery info was current),
 `createdAt`, `updatedAt`.
 
 **Reads:** the owning user; dispatcher/admin (operational support).

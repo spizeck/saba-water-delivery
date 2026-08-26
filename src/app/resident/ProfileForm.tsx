@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -16,6 +16,7 @@ const inputClasses =
 
 export function ProfileForm({ profile }: { profile: UserProfile }) {
   const [state, formAction, pending] = useActionState(updateResidentProfile, initialState);
+  const [village, setVillage] = useState(profile.village ?? "");
 
   return (
     <Card>
@@ -24,7 +25,17 @@ export function ProfileForm({ profile }: { profile: UserProfile }) {
         Keep this up to date so drivers know where to deliver your water.
       </p>
 
-      <form action={formAction} className="mt-4 flex flex-col gap-4">
+      {/**
+       * `key` forces React to remount the form when the saved village
+       * changes after a successful server action, so the controlled
+       * select reflects the authoritative server state instead of
+       * staying on the previous default/placeholder.
+       */}
+      <form
+        action={formAction}
+        key={profile.village ?? "no-village"}
+        className="mt-4 flex flex-col gap-4"
+      >
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
           Display name
           <input
@@ -59,7 +70,8 @@ export function ProfileForm({ profile }: { profile: UserProfile }) {
           Village/area
           <select
             name="village"
-            defaultValue={profile.village ?? ""}
+            value={village}
+            onChange={(e) => setVillage(e.target.value)}
             required
             className={inputClasses}
           >

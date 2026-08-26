@@ -15,6 +15,7 @@
  */
 
 import { appConfig } from "./config";
+import { isValidSabaVillage } from "./villages";
 
 export type DeliveryProfileRequiredField = "phone" | "village" | "deliveryDirections";
 
@@ -40,13 +41,18 @@ export interface DeliveryProfileReminderResult {
   /** Whether the reminder modal should be shown at all. */
   show: boolean;
   /**
-   * True when required delivery information is missing. The resident
-   * must complete their profile — "Everything Is Correct" must not be
-   * offered, and casual dismissal should be avoided.
+   * True when required delivery information is missing or invalid. The
+   * resident must review their profile — "Everything Is Correct" must not
+   * be offered, and casual dismissal should be avoided.
    */
   mandatory: boolean;
   /** Which required fields are currently missing/blank, if any. */
   missingFields: DeliveryProfileRequiredField[];
+  /**
+   * Which required fields are present but invalid (e.g. a noncanonical
+   * village). These need an update rather than simple entry.
+   */
+  invalidFields: DeliveryProfileRequiredField[];
 }
 
 function isBlank(value: string | null): boolean {
@@ -61,6 +67,14 @@ function findMissingFields(input: DeliveryProfileReminderInput): DeliveryProfile
   if (isBlank(input.village)) missing.push("village");
   if (isBlank(input.deliveryDirections)) missing.push("deliveryDirections");
   return missing;
+}
+
+function findInvalidFields(input: DeliveryProfileReminderInput): DeliveryProfileRequiredField[] {
+  const invalid: DeliveryProfileRequiredField[] = [];
+  if (!isBlank(input.village) && !isValidSabaVillage(input.village)) {
+    invalid.push("village");
+  }
+  return invalid;
 }
 
 /**
@@ -87,8 +101,9 @@ export function evaluateDeliveryProfileReminder(
   input: DeliveryProfileReminderInput,
 ): DeliveryProfileReminderResult {
   const missingFields = findMissingFields(input);
-  if (missingFields.length > 0) {
-    return { show: true, mandatory: true, missingFields };
+  const invalidFields = findInvalidFields(input);
+  if (missingFields.length > 0 || invalidFields.length > 0) {
+    return { show: true, mandatory: true, missingFields, invalidFields };
   }
 
   const now = input.now ?? new Date();
@@ -102,7 +117,7 @@ export function evaluateDeliveryProfileReminder(
   // Never verified at all (never confirmed AND never had a completed
   // delivery) — show on first Resident portal visit.
   if (confirmedAtMs === null && lastDeliveryMs === null) {
-    return { show: true, mandatory: false, missingFields: [] };
+    return { show: true, mandatory: false, missingFields: [], invalidFields: [] };
   }
 
   const lastMeaningfulVerificationMs = Math.max(
@@ -113,5 +128,5 @@ export function evaluateDeliveryProfileReminder(
   const windowMs = appConfig.deliveryProfileReminderWindowDays * 24 * 60 * 60 * 1000;
   const ageMs = now.getTime() - lastMeaningfulVerificationMs;
 
-  return { show: ageMs >= windowMs, mandatory: false, missingFields: [] };
+  return { show: ageMs >= windowMs, mandatory: false, missingFields: [], invalidFields: [] };
 }

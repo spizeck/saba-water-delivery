@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { DeliveryProfileRequiredField } from "@/lib/domain/deliveryProfileReminder";
 import type { UserProfile } from "@/lib/domain/types";
+import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
 
 import { confirmDeliveryProfileInfo, type ProfileFormState } from "./actions";
 
@@ -20,6 +21,7 @@ interface Props {
   profile: UserProfile;
   mandatory: boolean;
   missingFields: DeliveryProfileRequiredField[];
+  invalidFields: DeliveryProfileRequiredField[];
 }
 
 /**
@@ -36,7 +38,19 @@ interface Props {
  * added as another section of this same modal without a redesign — no
  * photo UI is added now (not requested for this task).
  */
-export function DeliveryProfileReminderModal({ profile, mandatory, missingFields }: Props) {
+export function DeliveryProfileReminderModal({
+  profile,
+  mandatory,
+  missingFields,
+  invalidFields,
+}: Props) {
+  const allIssueFields = new Set([...missingFields, ...invalidFields]);
+
+  function fieldStatus(field: DeliveryProfileRequiredField): "ok" | "missing" | "invalid" {
+    if (missingFields.includes(field)) return "missing";
+    if (invalidFields.includes(field)) return "invalid";
+    return "ok";
+  }
   const [open, setOpen] = useState(true);
   const [state, formAction, pending] = useActionState(confirmDeliveryProfileInfo, initialState);
 
@@ -88,8 +102,8 @@ export function DeliveryProfileReminderModal({ profile, mandatory, missingFields
 
         {mandatory ? (
           <p className="text-sm text-slate-600">
-            Before requesting water, please complete the following required
-            information: <strong>{missingFields.map((f) => FIELD_LABEL[f]).join(", ")}</strong>.
+            Before requesting water, please review the following required
+            information: <strong>{[...allIssueFields].map((f) => FIELD_LABEL[f]).join(", ")}</strong>.
           </p>
         ) : (
           <p className="text-sm text-slate-600">
@@ -101,24 +115,44 @@ export function DeliveryProfileReminderModal({ profile, mandatory, missingFields
         <dl className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
           <div>
             <dt className="font-medium text-slate-500">Phone</dt>
-            <dd className={profile.phone?.trim() ? "text-slate-900" : "font-semibold text-red-700"}>
-              {profile.phone?.trim() || "Missing"}
+            <dd
+              className={
+                fieldStatus("phone") === "ok"
+                  ? "text-slate-900"
+                  : "font-semibold text-red-700"
+              }
+            >
+              {formatPhoneForDisplay(profile.phone) || "Missing"}
             </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Village</dt>
-            <dd className={profile.village?.trim() ? "text-slate-900" : "font-semibold text-red-700"}>
-              {profile.village?.trim() || "Missing"}
+            <dd
+              className={
+                fieldStatus("village") === "ok"
+                  ? "text-slate-900"
+                  : "font-semibold text-red-700"
+              }
+            >
+              {fieldStatus("village") === "missing"
+                ? "Missing"
+                : fieldStatus("village") === "invalid"
+                  ? `${profile.village?.trim()} — Needs update`
+                  : profile.village?.trim()}
             </dd>
           </div>
           <div>
             <dt className="font-medium text-slate-500">Delivery directions</dt>
             <dd
               className={
-                profile.deliveryDirections?.trim() ? "text-slate-900" : "font-semibold text-red-700"
+                fieldStatus("deliveryDirections") === "ok"
+                  ? "text-slate-900"
+                  : "font-semibold text-red-700"
               }
             >
-              {profile.deliveryDirections?.trim() || "Missing"}
+              {fieldStatus("deliveryDirections") === "missing"
+                ? "Missing"
+                : profile.deliveryDirections?.trim()}
             </dd>
           </div>
         </dl>
@@ -129,17 +163,22 @@ export function DeliveryProfileReminderModal({ profile, mandatory, missingFields
           </p>
         )}
 
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <a
             href="#delivery-profile-form"
             onClick={closeAndGoToProfile}
-            className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-base font-semibold text-slate-900 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:flex-1"
+            className="inline-flex h-11 w-full items-center justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:text-base"
           >
             Review My Information
           </a>
           {!mandatory && (
-            <form action={formAction} className="w-full sm:flex-1">
-              <Button type="submit" size="lg" className="w-full sm:!w-full" disabled={pending}>
+            <form action={formAction} className="w-full">
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full whitespace-nowrap px-4 text-sm sm:text-base"
+                disabled={pending}
+              >
                 {pending ? "Saving\u2026" : "Everything Is Correct"}
               </Button>
             </form>
