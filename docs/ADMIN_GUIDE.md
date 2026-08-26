@@ -9,8 +9,9 @@ behind any of this, see [`TECHNICAL.md`](../TECHNICAL.md).
 `/admin` lists all user accounts with search/filter by name, email, or
 role.
 
-Opening a user shows their profile information, current roles, and
-history.
+Opening a user shows their profile information, current roles,
+history, and (for authenticated residents) a **Link Historical Requests**
+section.
 
 **Roles you can add or remove here:** `viewer`, `dispatcher`, `admin`.
 
@@ -24,6 +25,52 @@ history.
   let you remove the last remaining admin account. This prevents
   accidentally locking everyone out of administration.
 - Every role change is recorded with who made it and when.
+
+## Linking historical requests
+
+When an unregistered requestor later creates an account, or when an
+existing account's phone/email matches older unregistered requests, an
+admin can link those requests to the account from the user's detail page:
+
+1. Open `/admin`, find the resident, and click their name.
+2. In the **Possible unregistered request history** panel, review the
+   requests matched by phone or email. These are only suggestions — a
+   phone match may be a shared household number.
+3. Select the requests that belong to this resident and enter a reason.
+4. Click **Link selected request(s)**.
+
+The original request document is kept; only its `customerId` is updated.
+The historical customer snapshot (name, phone, email as recorded at
+request creation) is preserved. Each linked request gets an audit event
+recording the decision, the actor, and the reason.
+
+## Merging duplicate accounts
+
+If one person ends up with two authenticated accounts (for example,
+different email addresses), use **Admin → Merge Accounts**:
+
+1. Select the **canonical** account to keep.
+2. Select the **duplicate** account whose data will be relinked.
+3. Review the comparison: roles, driver registry link, and number of
+   owned requests.
+4. Choose a **role merge policy**:
+   - **Safe union** merges only non-sensitive roles (`resident`,
+     `viewer`). Admin, dispatcher, and driver roles are not transferred
+     automatically.
+   - **Explicit** lets you pick the exact final role list. Use this only
+     when you are certain the duplicate's sensitive roles should move to
+     the canonical account.
+5. Enter a reason and confirm.
+
+The system relinks the duplicate account's requests to the canonical
+account, moves a driver registry link if applicable, updates the
+canonical user's roles, and (if safe) deletes the duplicate Firebase
+Auth account. If Auth deletion fails, the merge record will note the
+error so an admin can finish cleanup.
+
+If both accounts are linked to different Driver Registry entries, the
+merge is blocked. Unlink one of the accounts from its registry entry
+first (`/admin/drivers/[driverId] → Account Link`).
 
 ## Driver Registry
 

@@ -376,7 +376,15 @@ export type WaterRequestEventType =
   /** Dispatcher/admin manual escalation that places a request ahead
    * in the dispatch queue. Records the previous and new override rank
    * and the reason. The original `requestedAt` is never changed. */
-  | "dispatch_order_overridden";
+  | "dispatch_order_overridden"
+  /**
+   * Admin-initiated relink of an unregistered request's `customerId`
+   * from `null` to a registered user's uid. The historical customer
+   * snapshot is preserved unchanged for audit — this event records the
+   * linkage decision, the previous and new customerId, and the acting
+   * admin. See TECHNICAL.md "Historical Request Relinking".
+   */
+  | "customer_history_linked";
 
 export interface WaterRequestEvent {
   id: string;
@@ -582,3 +590,43 @@ export interface DispatchBatchEvent {
   createdAt: string;
   metadata: Record<string, unknown> | null;
 }
+
+// ---------------------------------------------------------------------------
+// Account merge audit
+// ---------------------------------------------------------------------------
+
+/**
+ * Records a deliberate admin account merge: two authenticated Firebase
+ * users were consolidated into one canonical identity. Stored as a root
+ * `accountMergeEvents/{eventId}` collection so the audit record is not
+ * lost when the duplicate user's document is deleted/updated.
+ *
+ * See TECHNICAL.md "Authenticated Account Merge" / "Merge Audit Trail".
+ */
+export interface AccountMergeEvent {
+  id: string;
+  /** uid of the account that remains canonical after the merge. */
+  canonicalUserId: string;
+  /** uid of the account whose application data was relinked/deleted. */
+  duplicateUserId: string;
+  /** uid of the admin who performed the merge. */
+  actorId: string;
+  createdAt: string;
+  /** Free-text reason provided by the admin. */
+  reason: string;
+  /** Role merge policy applied: "union" or "explicit". */
+  roleMergePolicy: AccountMergeRolePolicy;
+  /** Final merged role array written to the canonical user. */
+  mergedRoles: UserRole[];
+  /** Whether the duplicate Auth account was deleted after relinking. */
+  duplicateAuthDeleted: boolean;
+  /** Counts for the audit record. */
+  counts: {
+    requestsRelinked: number;
+    driverRegistryRelinked: 0 | 1;
+  } | null;
+  /** Non-secret diagnostic message if Auth deletion failed. */
+  error: string | null;
+}
+
+export type AccountMergeRolePolicy = "union" | "explicit";

@@ -10,6 +10,7 @@ import { getDriverByLinkedUserId, getDriverEvents } from "@/lib/domain/driverReg
 import { getUserProfile } from "@/lib/domain/users";
 import { formatSabaDate } from "@/lib/utils/datetime";
 
+import { LinkHistoryPanel } from "./LinkHistoryPanel";
 import { RoleManagement } from "./RoleManagement";
 import { UserHistory } from "./UserHistory";
 
@@ -160,6 +161,9 @@ export default async function UserDetailPage({ params }: PageProps) {
               )}
             </Card>
           )}
+
+          {/* Possible historical unregistered requests for this user */}
+          <LinkHistoryPanel targetUid={uid} />
 
           {/* History */}
           <UserHistory

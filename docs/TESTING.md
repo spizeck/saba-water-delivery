@@ -46,6 +46,13 @@ Vitest covers the pure domain logic extensively, including:
 - Continuity report email recipient parsing and payload construction.
 - WhatsApp conversation state machine (`processMessage`), input
   parsing, phone matching, and webhook signature/config verification.
+- Identity matching (`identityMatching.ts`): email/phone normalization,
+  name-similarity rules, conservative match-strength assignment
+  (strong email, medium phone, weak name-only), and the safe role-union
+  helper used during account merges.
+- Account setup email content: configuration reading, branded email
+  payload construction, secure-link inclusion, and confirmation that no
+  password appears in the message.
 - Cron and webhook route behavior (mocking only the server-only/
   network boundary, never the pure logic underneath).
 
@@ -110,6 +117,18 @@ any of these areas.
   all entered values.
 - Trigger and acknowledge a duplicate warning for an unregistered
   customer.
+- Create a manual request for an unregistered requestor with no email;
+  confirm the request succeeds without any account being created.
+- Create a manual request for an unregistered requestor whose email
+  matches an existing resident; confirm the existing account is
+  suggested, and that selecting it creates a registered request.
+- Create a manual request for an unregistered requestor with a new email
+  and check **Send account setup instructions**; confirm the request
+  succeeds and (if email is configured) the setup email arrives. Then
+  simulate a delivery failure and confirm the request still succeeds with
+  a dispatcher warning.
+- Enter a phone number that matches an existing resident; confirm a
+  possible match is shown and no automatic merge occurs.
 - Override a request's priority with a reason.
 - Reassign a claimed request to a different driver.
 - Resolve a dispute.
@@ -136,6 +155,16 @@ any of these areas.
 - Restrict and restore a driver's eligibility.
 - Change dispatch settings (max declines, cooldown hours) and confirm
   the change is audited.
+- From a user detail page, review possible unregistered request history,
+  select one or more matching requests, link them to the account, and
+  confirm the historical customer snapshot is preserved unchanged while
+  `customerId` now points to the user.
+- Use **Merge Accounts** to reconcile two accounts that belong to the
+  same person; confirm sensitive roles do not transfer unless explicitly
+  selected, and that duplicate-owned requests are relinked. Confirm an
+  audit record is created.
+- Attempt to merge two accounts both linked to different Driver Registry
+  entries and confirm the merge is blocked.
 
 ### Viewer
 

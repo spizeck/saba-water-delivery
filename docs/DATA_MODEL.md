@@ -174,6 +174,11 @@ or staff confirmation, dispute, cancellation, priority changes, and
 related system events. Every meaningful state transition is recorded
 here with actor, role, and timestamp.
 
+New event type: `customer_history_linked` — admin-initiated relink of an
+unregistered request to a registered user. Records previous/new
+`customerId`, the preserved customer snapshot, the acting admin, the
+reason, and timestamp.
+
 ### `waterRequests/{requestId}/photos/{photoId}` — planned, not implemented
 
 Same status as `propertyPhotos` above: a type definition and security
@@ -273,6 +278,31 @@ double-process a message.
 
 **Reads/writes:** the WhatsApp webhook route only, via the Admin SDK.
 Fully deny-by-default in `firestore.rules`, same as `whatsappSessions`.
+
+## `accountMergeEvents/{eventId}`
+
+**Purpose:** immutable audit record of an authenticated account merge.
+Stored as a root-level collection so the record survives any later
+deletion/update of the involved user documents.
+
+**Fields:**
+
+- `canonicalUserId` — uid of the account that remains.
+- `duplicateUserId` — uid of the merged account.
+- `actorId` — uid of the admin who performed the merge.
+- `createdAt` — ISO timestamp.
+- `reason` — free-text admin reason.
+- `roleMergePolicy` — `"union"` or `"explicit"`.
+- `mergedRoles` — final role array written to the canonical user.
+- `duplicateAuthDeleted` — boolean.
+- `counts.requestsRelinked` — number of `waterRequests` whose
+  `customerId` was relinked.
+- `counts.driverRegistryRelinked` — `0` or `1`.
+- `error` — non-secret diagnostic if duplicate Auth account deletion
+  failed, otherwise `null`.
+
+**Reads/writes:** fully deny-by-default in `firestore.rules`. All access
+is through server-side admin operations in `src/lib/domain/identity.ts`.
 
 ## Indexes
 

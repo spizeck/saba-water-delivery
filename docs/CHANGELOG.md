@@ -21,6 +21,26 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+Identity and account management:
+- Accounts remain optional for receiving water. Unregistered requestors
+  can still request delivery with name and phone only.
+- Dispatchers can optionally send a secure account-setup invitation when
+  an email address is provided; the request succeeds even if the
+  invitation fails.
+- Dispatchers are warned when an entered email already matches an
+  existing resident account and can choose to use that account.
+- Phone matches are surfaced as suggestions only; name-only matches
+  never link or merge automatically.
+- Admins can link historical unregistered requests to a registered
+  account from the user detail page. Original request snapshots are
+  preserved; only request ownership (`customerId`) is updated.
+- Admins can merge two authenticated accounts via a dedicated merge
+  tool. Sensitive roles (admin, dispatcher, driver) do not transfer
+  silently; a driver-registry conflict blocks the merge. All merge
+  actions are audited.
+- New automated tests cover identity matching and account-setup email
+  content.
+
 Operational usability pass following government dispatcher testing.
 
 Dispatcher manual-request UX refinement:

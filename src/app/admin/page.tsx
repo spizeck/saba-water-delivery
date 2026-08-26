@@ -50,6 +50,12 @@ export default async function AdminPortalPage() {
                 >
                   View Statistics
                 </Link>
+                <Link
+                  href="/admin/users/merge"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Merge Accounts
+                </Link>
               </div>
             </div>
           </Card>

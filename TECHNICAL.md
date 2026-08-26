@@ -1124,8 +1124,10 @@ business logic (see PRODUCT.md "Dispatcher-Created Requests").
   `createManualRequest`) surfaces the resident's existing active request
   on conflict rather than a generic error.
 - **Unregistered/manual customer**: `customerId` is `null`. No Firebase
-  Auth account is created. `createWaterRequest()` requires a `customer`
-  snapshot (`displayName` + `phone`; `email` optional) and skips the
+  Auth account is created unless the dispatcher explicitly opts to send
+  an account-setup invitation (see "Optional account invitation" below).
+  `createWaterRequest()` requires a `customer` snapshot
+  (`displayName` + `phone`; `email` optional) and skips the
   customerId-based duplicate transaction (checking by `customerId` would
   be meaningless — every unregistered request shares `customerId ===
   null`).
@@ -1150,15 +1152,22 @@ over a live profile lookup.
 
 - Registered resident: hard block via the existing transactional
   one-active-request check (`DUPLICATE_ACTIVE_REQUEST`).
-- Unregistered customer: soft warning only.
-  `findActiveRequestsByPhone()` looks for unresolved requests with a
-  matching `customer.phone`. Phone matching is not identity verification
-  (shared household phones, typos, reused numbers), so a match blocks
-  nothing by itself — the dispatcher action returns a
-  `"duplicate_warning"` state with the matching request(s), and staff can
-  explicitly acknowledge and proceed. Proceeding is recorded on the
-  creation audit event as `overrodeDuplicateWarningFor: [requestId, ...]`
-  — never silent.
+- Unregistered customer: soft warnings only.
+  - `findActiveRequestsByPhone()` looks for unresolved requests with a
+    matching `customer.phone`. Phone matching is not identity
+    verification (shared household phones, typos, reused numbers), so a
+    match blocks nothing by itself — the dispatcher action returns a
+    `"duplicate_warning"` state with the matching request(s), and staff
+    can explicitly acknowledge and proceed. Proceeding is recorded on
+    the creation audit event as `overrodeDuplicateWarningFor:
+    [requestId, ...]` — never silent.
+  - Identity matching against the resident directory (`src/lib/domain/
+    identityMatching.ts`) surfaces possible existing residents when the
+    dispatcher-entered email or phone matches. Email matches are strong;
+    phone matches are medium (reviewable); name-only matches are weak
+    and never used to auto-select an account. The dispatcher can choose
+    to use an existing account, proceed unregistered, or (for a new
+    email) send an account-setup invitation.
 - `getActiveCustomerIds()` lets the create-request UI flag registered
   residents who already have an active request directly in the search
   results, before the dispatcher even attempts to submit.
@@ -1187,13 +1196,99 @@ Both accept only `status === "delivered"` — there is no separate
 "unconfirmed" status to also accept (see "Delivery Confirmation
 Timeout" below).
 
-## Future account linking
+## Optional account invitation
 
-Not implemented. An unregistered customer's historical requests could
-later be associated with a registered account, but this must be a
-deliberate, staff-initiated, auditable action — never an automatic
-background match by name alone. Do not build this until explicitly
-requested.
+When a dispatcher creates a request for an unregistered requestor and
+enters an email address, `checkEmailAccountStatus()` looks up the email
+in Firebase Authentication. If an account already exists, the dispatcher
+can create the request as a registered request for that account. If no
+account exists, the dispatcher may check "Send account setup
+instructions". `createAccountInvitation()`:
+
+1. Creates a new Firebase Auth user with that email (no password).
+2. Generates a password-reset link via `generatePasswordResetLink()`.
+3. Sends a branded email through Resend with the secure link.
+
+The dispatcher never sees or stores a password. The current request
+remains `customerId: null` (unregistered) even after an invitation is
+sent; when the resident later signs in, staff can link historical
+requests through the admin workflow. If the email send fails, the water
+request is still created and the dispatcher is warned
+(`"invitation_warning"` action state) — the government service is never
+blocked by an optional account email.
+
+See `src/lib/domain/identity.ts` and `src/lib/email/accountSetupEmail.ts`.
+
+---
+
+# Identity Matching, Linking, and Account Merging
+
+Resident identity is deliberately lightweight in V1: authenticated users
+have `users/{uid}` documents, and unregistered requestors are stored as
+snapshots on `waterRequests`. There is no separate `residentProfiles`
+collection, to avoid a prelaunch refactor of the entire request
+workflow. Instead, pure matching helpers (`src/lib/domain/
+identityMatching.ts`) and admin-only server actions (`src/lib/domain/
+identity.ts`) provide identity management.
+
+## Matching rules
+
+`identityMatching.ts` exposes conservative matching functions used by
+both the dispatcher create-request form and admin tools:
+
+- `normalizePhoneForMatching()` strips non-digits — same convention as
+  WhatsApp matching.
+- `normalizeEmailForMatching()` lowercases and trims.
+- `findIdentityMatches()` returns matches with a strength:
+  - **strong** — exact normalized email match.
+  - **medium** — exact normalized phone match (reviewable, because phones
+    are shared/reassigned).
+  - **weak** — name similarity only; never used for automatic linking.
+
+## Historical request relinking
+
+Admin user detail pages (`/admin/users/[uid]`) include a **Link
+Historical Requests** panel. `findPossibleRequestHistoryMatchesForUser()`
+finds unregistered requests whose stored customer snapshot matches the
+user's email or phone. `linkRequestHistoryToUser()` updates
+`customerId` from `null` to the target uid inside a Firestore
+transaction, preserving the original `customer` snapshot and writing a
+`customer_history_linked` audit event per request. Historical actor
+fields (createdBy, assignedDriverId, etc.) are not rewritten.
+
+## Authenticated account merge
+
+`/admin/users/merge` lets an admin consolidate two authenticated
+accounts. `getAccountMergePreview()` returns comparison data including
+role lists, driver registry links, and duplicate-owned request counts.
+`mergeUserAccounts()` performs the merge with these safeguards:
+
+- **Request ownership** (`customerId`) relinked from duplicate to canonical.
+- **Driver registry link** moved only if the canonical account is not
+  already linked to a different registry entry; if both accounts are
+  linked to different entries, the merge is blocked.
+- **Role merge policy**:
+  - `union` — unions only non-sensitive roles (`resident`, `viewer`).
+    Admin, dispatcher, and driver roles are never transferred
+    automatically.
+  - `explicit` — admin selects the exact final role list; this is the
+    only way to transfer sensitive roles.
+- **Duplicate Firebase Auth account** is deleted only after Firestore
+  relinking succeeds. If deletion fails, the audit record captures the
+  error so staff can retry or clean up manually.
+- **Audit record** is written to `accountMergeEvents/{eventId}` with
+  canonical/duplicate uids, actor, reason, role decision, driver link
+  decision, relink counts, and any deletion error.
+
+## Provider linking vs. account merging
+
+Firebase Authentication's native provider linking lets one Firebase UID
+accumulate multiple login providers (Google, Facebook, email) — this is
+preferred when the same person created separate-provider sessions before
+signing in. Account merging (above) is the administrative exception
+workflow for two already-distinct Firebase UIDs that must be consolidated
+because a resident signed up twice with different email addresses or
+otherwise ended up with duplicate application accounts.
 
 ---
 

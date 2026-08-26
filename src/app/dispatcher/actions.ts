@@ -8,6 +8,12 @@ import { generateContinuityReportData } from "@/lib/domain/continuityReport";
 import { createDispatchBatch } from "@/lib/domain/dispatchBatches";
 import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
 import { restrictDriver as restrictDriverEntry, restoreDriver as restoreDriverEntry } from "@/lib/domain/driverRegistry";
+import {
+  createAccountInvitation,
+  getEmailAccountStatus,
+  type AccountInvitationResult,
+  type EmailAccountStatus,
+} from "@/lib/domain/identity";
 import { parseRequestedLoads } from "@/lib/domain/quantity";
 import { isValidDispatchPriority } from "@/lib/domain/priority";
 import type { DispatchPriority } from "@/lib/domain/types";
@@ -267,9 +273,10 @@ export interface DuplicateMatch {
 }
 
 export interface CreateRequestActionState {
-  status: "idle" | "success" | "error" | "duplicate_warning";
+  status: "idle" | "success" | "error" | "duplicate_warning" | "invitation_warning";
   message?: string;
   duplicates?: DuplicateMatch[];
+  invitation?: AccountInvitationResult;
 }
 
 /**
@@ -294,6 +301,8 @@ export async function createManualRequest(
     preferredDriverIdRaw && preferredDriverIdRaw !== "none" ? preferredDriverIdRaw : null;
   const overrideDuplicate = formData.get("overrideDuplicate") === "true";
   const attestationAccepted = formData.get("attestationAccepted") === "true";
+  const linkedResidentUid = String(formData.get("linkedResidentUid") ?? "").trim() || null;
+  const sendAccountInvitation = formData.get("sendAccountInvitation") === "true";
 
   if (loads === null) {
     return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
@@ -307,15 +316,17 @@ export async function createManualRequest(
   // form. The storage-capacity field is free-form text.
   const waterSituation = parseWaterSituationFromFormData(formData);
 
-  if (customerType === "existing") {
-    const residentUid = String(formData.get("residentUid") ?? "").trim();
-    if (!residentUid) {
-      return { status: "error", message: "Select an existing resident." };
-    }
+  // --- Existing registered resident path ---
+  // Either the dispatcher explicitly chose "Existing resident" and
+  // selected someone, or they chose "New / unregistered" but the email
+  // matched an existing account and they decided to use it.
+  const effectiveResidentUid =
+    customerType === "existing" ? String(formData.get("residentUid") ?? "").trim() : linkedResidentUid;
 
+  if (effectiveResidentUid) {
     try {
       await createWaterRequest({
-        customerId: residentUid,
+        customerId: effectiveResidentUid,
         loads,
         village,
         deliveryDirections,
@@ -334,7 +345,7 @@ export async function createManualRequest(
           return { status: "error", message: "Please select a valid village from the list." };
         }
         if (err.message === "DUPLICATE_ACTIVE_REQUEST") {
-          const existing = await getActiveRequestForCustomer(residentUid);
+          const existing = await getActiveRequestForCustomer(effectiveResidentUid);
           return {
             status: "error",
             message: existing
@@ -358,6 +369,10 @@ export async function createManualRequest(
 
     revalidatePath("/dispatcher");
     return { status: "success", message: "Water request created." };
+  }
+
+  if (customerType === "existing") {
+    return { status: "error", message: "Select an existing resident." };
   }
 
   // --- Unregistered / manual customer ---
@@ -433,7 +448,34 @@ export async function createManualRequest(
     throw err;
   }
 
+  // Optional account invitation. This never blocks the water request:
+  // if the email send fails, the request is still valid and the dispatcher
+  // is warned.
+  let invitation: AccountInvitationResult | undefined;
+  if (sendAccountInvitation && customerEmail) {
+    try {
+      invitation = await createAccountInvitation(customerEmail, customerName);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to send account setup email.";
+      invitation = {
+        created: false,
+        uid: null,
+        emailSent: false,
+        emailError: message,
+      };
+    }
+  }
+
   revalidatePath("/dispatcher");
+
+  if (invitation && !invitation.emailSent) {
+    return {
+      status: "invitation_warning",
+      message: "Water request created. Account setup email could not be sent.",
+      invitation,
+    };
+  }
+
   return { status: "success", message: "Water request created." };
 }
 
@@ -768,4 +810,59 @@ export async function getFrequentRequestCount(input: {
   const phone = input.phone?.trim() ?? null;
   const count = await getFrequentRequestCountForCustomer(customerId, phone);
   return { count };
+}
+
+// ---------------------------------------------------------------------------
+// Optional account creation from dispatcher request flow
+// ---------------------------------------------------------------------------
+
+export type { EmailAccountStatus };
+
+export async function checkEmailAccountStatus(email: string): Promise<EmailAccountStatus> {
+  await requireStaff();
+  return getEmailAccountStatus(email);
+}
+
+export interface SendInvitationActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+  result?: AccountInvitationResult;
+}
+
+export async function sendAccountSetupInvitation(
+  _prevState: SendInvitationActionState,
+  formData: FormData,
+): Promise<SendInvitationActionState> {
+  await requireStaff();
+
+  const email = String(formData.get("email") ?? "").trim();
+  const displayName = String(formData.get("displayName") ?? "").trim();
+
+  if (!email) return { status: "error", message: "Email is required to send an invitation." };
+
+  try {
+    const result = await createAccountInvitation(email, displayName);
+    if (result.created && result.emailSent) {
+      return {
+        status: "success",
+        message: "Account setup invitation sent.",
+        result,
+      };
+    }
+    if (!result.created && result.uid) {
+      return {
+        status: "error",
+        message: "An account already exists for this email. Use that existing account instead.",
+        result,
+      };
+    }
+    return {
+      status: "error",
+      message: result.emailError ?? "Invitation could not be sent.",
+      result,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to send invitation.";
+    return { status: "error", message };
+  }
 }

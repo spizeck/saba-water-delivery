@@ -33,9 +33,25 @@ details, and finally shows a **Review request** screen for confirmation.
   approved villages, it is marked "Needs update" and the **Delivery
   location** field is left empty for you to select a canonical village.
   Click **Change** to clear the selection and search again.
-- **Unregistered requestor:** enter their name, phone, village, and
-  delivery directions directly. No account is created and none is
-  required.
+- **Unregistered requestor:** enter their name, phone, email if they
+  have one, village, and delivery directions directly. No account is
+  created and none is required.
+
+### Online account options (optional)
+
+For an unregistered requestor, the **Online account** section on the
+request form is always optional:
+
+- **No email entered:** the requestor can continue without an online
+  account. Their request history may be linked later if they create an
+  account.
+- **Email already has an account:** if the email matches an existing
+  resident, you can select that existing account so the request is
+  registered. Otherwise you can leave it unregistered.
+- **New email:** you can check **Send account setup instructions** to
+  email the requestor a secure link to set their own password. The water
+  request is still created whether or not the invitation succeeds. You
+  never know or set anyone's password.
 
 In both cases the village/directions you enter apply to **this request
 only** and never overwrite a registered resident's saved profile.

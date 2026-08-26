@@ -107,10 +107,25 @@ screens.
 Not every resident can or will use the website. If someone calls the
 office or visits in person, a dispatcher enters the request directly
 using "Create Request" — either by finding their existing account or,
-if they have none, by entering their name, phone, village, and
-delivery directions. For all manual requests the dispatcher must also
-select the quantity: **1 load (1,000 gallons)** or **2 loads (2,000
-gallons)**. A two-load request is still a single request document with
+if they have none, by entering their name, phone, email if they have
+one, village, and delivery directions. Email and an online account are
+never required to receive water.
+
+When an email is entered, the dispatcher can:
+
+- Select an existing account if the email already matches one.
+- Send the requestor a secure account-setup invitation (optional). The
+  dispatcher never knows or sets the password.
+- Leave the request unregistered and proceed normally.
+
+If the system finds a possible matching resident by phone number, it
+shows the match only as a suggestion — phone numbers may be shared by
+households, so the dispatcher must confirm before using an existing
+account.
+
+For all manual requests the dispatcher must also select the quantity:
+**1 load (1,000 gallons)** or **2 loads (2,000 gallons)**. A two-load
+request is still a single request document with
 one priority, one assignment, and one confirmation/dispute record. This
 is a normal request, not a special case: it goes through the exact same
 queue, priority, and driver-assignment rules as any other request.

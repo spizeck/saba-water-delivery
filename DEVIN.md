@@ -626,8 +626,13 @@ admin, and viewer, since it's already aggregate-only data.
 ## Domain logic
 
 - `src/lib/domain/admin.ts` — user listing, role add/remove, audit queries
-- `src/app/admin/actions.ts` — server actions with admin authorization
-- `src/app/admin/users/[uid]/` — user detail page and role management UI
+- `src/lib/domain/identity.ts` — server-only account lookup, history
+  linking, account merging, optional account invitation
+- `src/app/admin/actions.ts` — server actions with admin authorization,
+  including identity linking/merge actions
+- `src/app/admin/users/[uid]/` — user detail page, role management UI,
+  and Link Historical Requests panel
+- `src/app/admin/users/merge/` — account merge page and form
 
 ---
 
@@ -696,14 +701,17 @@ for maintainers:
   distinct from the admin user list. Village/directions are editable for
   this request only — never written back to the profile.
 - **Unregistered customer:** name + phone required, email optional, no
-  Firebase Auth account created. `customerId` is stored as `null`.
+  Firebase Auth account created by default. `customerId` is stored as
+  `null`. The dispatcher may optionally send an account-setup
+  invitation; the request is created regardless of whether that invitation
+  succeeds.
 - **Quantity:** both paths require selecting 1 load (1,000 gallons) or 2
   loads (2,000 gallons), stored canonically as `loads`/`gallons`.
 - Both paths call the same `createWaterRequest()` used by the resident
   portal, with `source: "dispatcher"` and `createdBy: <staff uid>`. There
   is no separate manual queue or duplicated claiming/dispatch logic.
 
-## Duplicate handling
+## Duplicate handling and identity matching
 
 - Registered resident: hard block (existing one-active-request rule),
   surfaced with a link/description of the conflicting request.
@@ -711,6 +719,10 @@ for maintainers:
   (`findActiveRequestsByPhone()`), with an explicit "this is not a
   duplicate — continue" override that is recorded on the creation event,
   never silently bypassed.
+- Identity matching against `getResidentDirectory()` (pure logic in
+  `src/lib/domain/identityMatching.ts`) surfaces strong email matches,
+  medium/ambiguous phone matches, and weak name-only matches. Name-only
+  is never used for automatic linking.
 
 ## Staff confirmation
 
@@ -732,9 +744,21 @@ stored on the request along with `attestationAcceptedAt`.
   for source/snapshot/duplicate handling), `findActiveRequestsByPhone()`,
   `getActiveCustomerIds()`, `confirmDeliveryByStaff()`
 - `src/lib/domain/users.ts` — `getResidentDirectory()`
+- `src/lib/domain/identityMatching.ts` — pure conservative identity
+  matching for dispatcher duplicate suggestions and admin tools
+- `src/lib/domain/identity.ts` — server-only account lookup, history-link
+  matching, account merge, optional account invitation
+- `src/lib/email/accountSetupEmailContent.ts` and
+  `accountSetupEmail.ts` — branded optional account-setup invitation
 - `src/app/dispatcher/actions.ts` — `createManualRequest`,
+  `checkEmailAccountStatus`, `sendAccountSetupInvitation`,
   `confirmUnregisteredDelivery`
 - `src/app/dispatcher/new/` — page and form UI
+- `src/app/admin/actions.ts` — `linkHistoryToUser`, `mergeAccounts`,
+  `getHistoryMatchesForUser`, `getMergeAccountPreview`
+- `src/app/admin/users/[uid]/LinkHistoryPanel.tsx` — user-detail history
+  linking UI
+- `src/app/admin/users/merge/` — account merge page and form UI
 
 ---
 

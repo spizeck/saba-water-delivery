@@ -12,6 +12,7 @@ import {
   WaterSituationHiddenFields,
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
+import { findIdentityMatches, findStrongEmailMatch } from "@/lib/domain/identityMatching";
 import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
 import { SABA_VILLAGES, isValidSabaVillage } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
@@ -19,9 +20,11 @@ import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import {
+  checkEmailAccountStatus,
   createManualRequest,
   getFrequentRequestCount,
   type CreateRequestActionState,
+  type EmailAccountStatus,
 } from "../actions";
 
 const initialState: CreateRequestActionState = { status: "idle" };
@@ -63,6 +66,37 @@ export function CreateRequestForm({
   const [frequentCount, setFrequentCount] = useState<number | null>(null);
   const [, startFrequentTransition] = useTransition();
 
+  const [emailStatus, setEmailStatus] = useState<EmailAccountStatus | null>(null);
+  const [emailStatusLoading, setEmailStatusLoading] = useState(false);
+  const [useExistingResidentUid, setUseExistingResidentUid] = useState<string | null>(null);
+  const [sendInvitation, setSendInvitation] = useState(false);
+
+  const possibleMatches = useMemo(() => {
+    if (customerType !== "new") return [];
+    const matches = findIdentityMatches(
+      {
+        name: customerName,
+        phone: customerPhone,
+        email: customerEmail,
+      },
+      residents,
+    ).filter((m) => m.strength !== "weak");
+
+    const strongEmailMatch = findStrongEmailMatch(
+      { name: customerName, phone: customerPhone, email: customerEmail },
+      residents,
+    );
+
+    return strongEmailMatch
+      ? matches.filter((m) => m.resident.uid !== strongEmailMatch.resident.uid)
+      : matches;
+  }, [customerType, customerName, customerPhone, customerEmail, residents]);
+
+  const selectedPossibleMatch = useMemo(
+    () => residents.find((r) => r.uid === useExistingResidentUid) ?? null,
+    [residents, useExistingResidentUid],
+  );
+
   const [state, formAction, pending] = useActionState(createManualRequest, initialState);
 
   useEffect(() => {
@@ -78,6 +112,15 @@ export function CreateRequestForm({
             phone: selectedResident.phone ?? null,
           });
           count = result.count;
+        } else if (useExistingResidentUid) {
+          const match = residents.find((r) => r.uid === useExistingResidentUid);
+          if (match) {
+            const result = await getFrequentRequestCount({
+              customerId: match.uid,
+              phone: match.phone ?? null,
+            });
+            count = result.count;
+          }
         } else if (customerType === "new" && customerPhone.trim()) {
           const result = await getFrequentRequestCount({
             customerId: null,
@@ -106,7 +149,53 @@ export function CreateRequestForm({
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [customerType, selectedResident, customerPhone]);
+  }, [customerType, selectedResident, customerPhone, useExistingResidentUid, residents]);
+
+  // Check email against Firebase Auth when it changes (debounced).
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    async function load() {
+      const email = customerEmail.trim();
+      if (!email || customerType !== "new") {
+        if (!cancelled) {
+          setEmailStatus(null);
+          setEmailStatusLoading(false);
+        }
+        return;
+      }
+
+      if (!cancelled) setEmailStatusLoading(true);
+      try {
+        const status = await checkEmailAccountStatus(email);
+        if (!cancelled) {
+          setEmailStatus(status);
+          // If an existing account is found, pre-select it for the
+          // dispatcher to confirm; they can still deselect and proceed
+          // unregistered if appropriate.
+          if (status.exists) {
+            setUseExistingResidentUid(status.uid);
+          } else {
+            setUseExistingResidentUid(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setEmailStatus(null);
+      } finally {
+        if (!cancelled) setEmailStatusLoading(false);
+      }
+    }
+
+    timeoutId = setTimeout(() => {
+      load();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [customerType, customerEmail]);
 
   const filteredResidents = useMemo(() => {
     if (!search.trim()) return residents.slice(0, 20);
@@ -154,6 +243,9 @@ export function CreateRequestForm({
     if (customerType === "existing") {
       return Boolean(selectedResident) && !selectedHasActiveRequest;
     }
+    // New / unregistered: name + phone are required. Using an existing
+    // resident (from an email match) also satisfies the identity check.
+    if (useExistingResidentUid) return true;
     return customerName.trim().length > 0 && customerPhone.trim().length > 0;
   }
 
@@ -187,13 +279,34 @@ export function CreateRequestForm({
     setWaterSituation(EMPTY_WATER_SITUATION);
     setAttestationChecked(false);
     setFrequentCount(null);
+    setEmailStatus(null);
+    setEmailStatusLoading(false);
+    setUseExistingResidentUid(null);
+    setSendInvitation(false);
     router.refresh();
   }
 
-  if (state.status === "success") {
+  if (state.status === "success" || state.status === "invitation_warning") {
     return (
-      <Card className="!border-green-200 !bg-green-50">
-        <p className="text-sm font-medium text-green-800">{state.message}</p>
+      <Card
+        className={
+          state.status === "invitation_warning"
+            ? "!border-amber-200 !bg-amber-50"
+            : "!border-green-200 !bg-green-50"
+        }
+      >
+        <p
+          className={
+            state.status === "invitation_warning"
+              ? "text-sm font-medium text-amber-800"
+              : "text-sm font-medium text-green-800"
+          }
+        >
+          {state.message}
+        </p>
+        {state.status === "invitation_warning" && state.invitation?.emailError && (
+          <p className="mt-1 text-xs text-amber-700">{state.invitation.emailError}</p>
+        )}
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <Button size="md" onClick={() => router.push("/dispatcher")}>
             Back to dashboard
@@ -350,10 +463,149 @@ export function CreateRequestForm({
               <input
                 type="email"
                 value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
+                onChange={(e) => {
+                  setCustomerEmail(e.target.value);
+                  setUseExistingResidentUid(null);
+                  setSendInvitation(false);
+                }}
                 className={inputClasses}
               />
             </label>
+
+            {/* Optional account section */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <h3 className="text-sm font-semibold text-slate-900">Online account</h3>
+
+              {emailStatusLoading && (
+                <p className="mt-2 text-xs text-slate-500">Checking email...</p>
+              )}
+
+              {!emailStatusLoading && !customerEmail.trim() && (
+                <p className="mt-2 text-xs text-slate-600">
+                  No email provided. This requestor can continue without an online account.
+                </p>
+              )}
+
+              {!emailStatusLoading && customerEmail.trim() && !emailStatus && (
+                <p className="mt-2 text-xs text-slate-500">
+                  This is optional. The request can be created without an online account.
+                </p>
+              )}
+
+              {!emailStatusLoading && emailStatus?.exists && emailStatus.uid && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs font-medium text-blue-800">
+                    Existing account found for this email
+                  </p>
+                  <div className="rounded-md border border-blue-200 bg-blue-50 p-2">
+                    <p className="text-sm font-medium text-slate-900">
+                      {emailStatus.displayName || "Unnamed resident"}
+                    </p>
+                    <p className="text-xs text-slate-600">{emailStatus.email}</p>
+                  </div>
+                  <label className="flex items-start gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={useExistingResidentUid === emailStatus.uid}
+                      onChange={(e) =>
+                        setUseExistingResidentUid(e.target.checked ? emailStatus.uid : null)
+                      }
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                    />
+                    <span>Use this resident account for the request</span>
+                  </label>
+                </div>
+              )}
+
+              {!emailStatusLoading && emailStatus && !emailStatus.exists && customerEmail.trim() && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs text-slate-600">
+                    No existing account uses this email. You can invite the requestor to
+                    set one up, or leave it blank and create the request without an account.
+                  </p>
+                  <label className="flex items-start gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={sendInvitation}
+                      onChange={(e) => setSendInvitation(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                    />
+                    <span>Send account setup instructions</span>
+                  </label>
+                </div>
+              )}
+
+              {possibleMatches.length > 0 && !useExistingResidentUid && (
+                <div className="mt-3 border-t border-slate-200 pt-3">
+                  <p className="text-xs font-medium text-amber-800">
+                    Possible existing resident{possibleMatches.length > 1 ? "s" : ""} found
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {possibleMatches.map((m) => (
+                      <li key={m.resident.uid} className="rounded-md border border-amber-200 bg-amber-50 p-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">
+                              {m.resident.displayName || "Unnamed resident"}
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              {formatPhoneForDisplay(m.resident.phone) ?? "No phone"}
+                              {m.resident.email ? ` · ${m.resident.email}` : ""}
+                            </p>
+                            <p className="text-xs text-amber-700">
+                              Matched on{" "}
+                              {m.matchedOn
+                                .map((field) =>
+                                  field === "email"
+                                    ? "email"
+                                    : field === "phone"
+                                      ? "phone"
+                                      : "name",
+                                )
+                                .join(", ")}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setUseExistingResidentUid(m.resident.uid)}
+                            className="shrink-0 text-xs font-medium text-blue-700 hover:underline"
+                          >
+                            Use this account
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Phone matches are not proof of identity — only select a match if you are
+                    confident it is the same person.
+                  </p>
+                </div>
+              )}
+
+              {useExistingResidentUid && emailStatus?.exists && emailStatus.uid !== useExistingResidentUid && (
+                <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 p-2">
+                  <p className="text-xs text-blue-800">
+                    Using existing account from email match.
+                  </p>
+                </div>
+              )}
+
+              {useExistingResidentUid && (!emailStatus?.exists || emailStatus.uid !== useExistingResidentUid) && (
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-2">
+                  <p className="text-xs text-amber-800">
+                    An existing resident account will be used for this request.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setUseExistingResidentUid(null)}
+                    className="text-xs font-medium text-blue-700 hover:underline"
+                  >
+                    Undo
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -466,11 +718,18 @@ export function CreateRequestForm({
   }
 
   // --- Review step ---
-  const requestorName = customerType === "existing" ? selectedResident?.displayName : customerName;
+  const requestorName =
+    customerType === "existing"
+      ? selectedResident?.displayName
+      : selectedPossibleMatch?.displayName || customerName;
   const requestorPhone =
     customerType === "existing"
       ? selectedResident?.phone ?? null
-      : customerPhone.trim() || null;
+      : (selectedPossibleMatch?.phone ?? customerPhone.trim()) || null;
+  const requestorEmail =
+    customerType === "existing"
+      ? selectedResident?.email ?? null
+      : (selectedPossibleMatch?.email ?? customerEmail.trim()) || null;
   const selectedCircumstances = waterSituation.vulnerableCircumstances.filter((c) => c !== "none");
 
   return (
@@ -484,8 +743,17 @@ export function CreateRequestForm({
           <p className="text-sm text-slate-600">
             {formatPhoneForDisplay(requestorPhone) ?? "No phone"}
           </p>
-          {customerType === "new" && (
+          {requestorEmail && (
+            <p className="text-sm text-slate-600">{requestorEmail}</p>
+          )}
+          {customerType === "new" && useExistingResidentUid && (
+            <p className="text-xs text-blue-600">Registered account selected.</p>
+          )}
+          {customerType === "new" && !useExistingResidentUid && (
             <p className="text-xs text-slate-500">Unregistered requestor — no account.</p>
+          )}
+          {customerType === "new" && sendInvitation && !useExistingResidentUid && (
+            <p className="text-xs text-slate-500">Account setup invitation will be sent.</p>
           )}
         </section>
 
@@ -601,6 +869,16 @@ export function CreateRequestForm({
           type="hidden"
           name="overrideDuplicate"
           value={overrideDuplicate ? "true" : "false"}
+        />
+        <input
+          type="hidden"
+          name="linkedResidentUid"
+          value={useExistingResidentUid ?? ""}
+        />
+        <input
+          type="hidden"
+          name="sendAccountInvitation"
+          value={sendInvitation ? "true" : "false"}
         />
         <WaterSituationHiddenFields value={waterSituation} />
 

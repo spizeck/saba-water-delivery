@@ -214,6 +214,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Account merge audit records. Written and read only by server-side
+    // admin domain logic via the Firebase Admin SDK. No client access.
+    match /accountMergeEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;

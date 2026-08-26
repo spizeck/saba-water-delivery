@@ -490,14 +490,35 @@ request. Phone matching is **not** treated as proof of identity — a
 dispatcher may deliberately proceed anyway (e.g. a shared household
 phone), and doing so is recorded, never silent.
 
-## Future account linking
+If the dispatcher enters an email address, the system checks whether an
+existing resident account already uses that email. If one exists, the
+dispatcher can choose to create the request as a registered request for
+that account. If no account exists and the dispatcher opts in, the
+system can send the requestor a branded account-setup email with a secure
+password-reset link — but the request itself is still created normally if
+the invitation is not sent or fails. The dispatcher never knows or sets
+anyone's password.
 
-An unregistered requestor's past requests could eventually be associated
-with a registered account if that requestor signs up later. This is
-**not implemented yet** — do not automatically link requests by name
-alone. Any future linking should be a deliberate, staff-initiated,
-auditable action, potentially assisted by matching phone/email, not an
-automatic background process.
+## Account linking and merging
+
+An unregistered requestor's past requests can later be associated with a
+registered account through a deliberate, staff-initiated, auditable
+action. An admin opens the resident's user detail page and uses **Link
+Historical Requests**; the system surfaces unregistered requests whose
+stored phone or email matches the account. Staff select the requests that
+belong to that resident and link them. The historical customer snapshot on
+each request is preserved; only `customerId` is updated.
+
+If one real person ends up with two authenticated accounts — for example,
+one created with Facebook and another with Google — an admin can use
+**Merge Accounts** (`Admin → Merge Accounts`). The admin must explicitly
+choose which account remains canonical, review request counts, roles,
+and driver registry links, and provide a reason. The merge relinks
+request ownership and can move a driver registry link, but it never
+silently transfers admin, dispatcher, or driver roles unless the admin
+explicitly opts into those roles. A detailed audit record is kept.
+
+Automatic linking based on name alone is never performed.
 
 ---
 
