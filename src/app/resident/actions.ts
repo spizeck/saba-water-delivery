@@ -135,6 +135,9 @@ export async function requestWater(
     });
   } catch (err: unknown) {
     if (err instanceof Error) {
+      if (err.message === "INVALID_VILLAGE") {
+        return { status: "error", message: "Please select a valid village from the list." };
+      }
       if (err.message === "DUPLICATE_ACTIVE_REQUEST") {
         return {
           status: "error",

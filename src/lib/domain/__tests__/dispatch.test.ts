@@ -47,6 +47,7 @@ function makeRequest(
     updatedAt: baseTime.toISOString(),
     dispatchBatchId: null,
     batchSequence: null,
+    dispatchOverrideRank: null,
     ...overrides,
   };
 }
@@ -220,6 +221,28 @@ describe("dispatch selection", () => {
     });
 
     expect(result).toEqual(critical);
+  });
+
+  it("picks an escalated (dispatchOverrideRank 0) request when it appears first in the sorted available list", () => {
+    const escalated = makeRequest("req-escalated", "available", {
+      dispatchOverrideRank: 0,
+      requestedAt: baseTime.toISOString(),
+    });
+    const older = makeRequest("req-older", "available", {
+      requestedAt: new Date(baseTime.getTime() - 60_000).toISOString(),
+    });
+
+    const result = selectNextDispatchCandidate({
+      activeDelivery: null,
+      pendingOffer: null,
+      holds: [],
+      available: [escalated, older],
+      declinedRequestIds: new Set(),
+      driverId,
+      now: baseTime,
+    });
+
+    expect(result).toEqual(escalated);
   });
 
   it("breaks priority ties by oldest request first", () => {

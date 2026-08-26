@@ -36,12 +36,24 @@ export const BATCH_ELIGIBLE_STATUSES: WaterRequestStatus[] = [
  * may still deliberately select a different subset, but the list
  * itself must never default to an arbitrary or alphabetical order.
  */
+/**
+ * Sort key for the dispatch queue. Lower `dispatchOverrideRank` values
+ * sort ahead of higher ones (and ahead of nulls) within the same
+ * dispatch priority, while `requestedAt` is never modified. This is
+ * the same ordering used by `getNextOfferForDriver` so batch selection
+ * and normal dispatch stay aligned.
+ */
+export function dispatchQueueCompare(a: WaterRequest, b: WaterRequest): number {
+  const rankDiff = priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
+  if (rankDiff !== 0) return rankDiff;
+  const overrideA = a.dispatchOverrideRank ?? Infinity;
+  const overrideB = b.dispatchOverrideRank ?? Infinity;
+  if (overrideA !== overrideB) return overrideA - overrideB;
+  return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
+}
+
 export function sortForBatchSelection(requests: WaterRequest[]): WaterRequest[] {
-  return [...requests].sort((a, b) => {
-    const rankDiff = priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
-    if (rankDiff !== 0) return rankDiff;
-    return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
-  });
+  return [...requests].sort(dispatchQueueCompare);
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   WaterSituationHiddenFields,
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
+import { SABA_VILLAGES } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
@@ -215,11 +216,19 @@ export function CreateRequestForm({
               <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3">
                 <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                   Village/area
-                  <input
+                  <select
                     value={village}
                     onChange={(e) => setVillage(e.target.value)}
+                    required
                     className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-                  />
+                  >
+                    <option value="">Select a village...</option>
+                    {SABA_VILLAGES.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                   Delivery directions for this request
@@ -266,11 +275,19 @@ export function CreateRequestForm({
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Village/area
-              <input
+              <select
                 value={village}
                 onChange={(e) => setVillage(e.target.value)}
+                required
                 className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-              />
+              >
+                <option value="">Select a village...</option>
+                {SABA_VILLAGES.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Delivery directions

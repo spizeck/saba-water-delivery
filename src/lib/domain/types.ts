@@ -269,6 +269,17 @@ export interface WaterRequest {
   /** 1-based position within its batch's original run sheet. Null
    * whenever `dispatchBatchId` is null. */
   batchSequence: number | null;
+
+  /**
+   * Staff dispatch-override rank. Lower values sort ahead of higher
+   * values within the same dispatch priority, letting authorized
+   * dispatchers deliberately move an outstanding request ahead in the
+   * queue without rewriting its original `requestedAt`. Null for the
+   * vast majority of requests; `0` is the canonical value set when a
+   * dispatcher escalates a request. See `escalateDispatchRequest()` and
+   * `dispatchQueueCompare()`.
+   */
+  dispatchOverrideRank: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -355,7 +366,16 @@ export type WaterRequestEventType =
    * Dispatch"). Deliberately distinct from "marked_delivered" (a
    * driver's own action) so the audit trail never misrepresents a
    * staff paper-reconciliation entry as the driver's own action. */
-  | "marked_delivered_by_dispatcher_batch";
+  | "marked_delivered_by_dispatcher_batch"
+  /** Staff-recorded delivery for a normal (non-batch) request whose
+   * driver could not or did not mark it delivered through the driver
+   * app. Distinct from "marked_delivered" (the driver's own action)
+   * and from "marked_delivered_by_dispatcher_batch" (batch loads). */
+  | "marked_delivered_by_dispatcher"
+  /** Dispatcher/admin manual escalation that places a request ahead
+   * in the dispatch queue. Records the previous and new override rank
+   * and the reason. The original `requestedAt` is never changed. */
+  | "dispatch_order_overridden";
 
 export interface WaterRequestEvent {
   id: string;

@@ -28,8 +28,8 @@ export default async function AdminPortalPage() {
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6 max-w-5xl">
           <Card>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <h1 className="text-2xl font-bold text-slate-900">
                   System Administration
                 </h1>
@@ -37,7 +37,7 @@ export default async function AdminPortalPage() {
                   Manage users, roles, and driver access.
                 </p>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Link
                   href="/admin/drivers"
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"

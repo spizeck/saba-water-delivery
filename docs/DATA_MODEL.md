@@ -127,6 +127,9 @@ where it originated. This is the operational core of the system.
   currently part of a Batch Dispatch run (see "Batch Dispatch" below).
   Both null for the vast majority of requests, which are self-claimed
   or singly assigned as before.
+- `dispatchOverrideRank` — null by default; set to `0` by a dispatcher
+  escalation so the request sorts ahead within its priority without
+  changing `requestedAt`.
 - Timestamps: `requestedAt`, `availableAt`, `claimedAt`, `deliveredAt`,
   `confirmedAt`, `createdAt`, `updatedAt`.
 

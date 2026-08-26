@@ -48,6 +48,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     updatedAt: baseTime.toISOString(),
     dispatchBatchId: "batch-1",
     batchSequence: 1,
+    dispatchOverrideRank: null,
     ...overrides,
   };
 }
@@ -75,7 +76,7 @@ describe("buildDispatchBatchPdfData", () => {
 
   it("orders rows by batchSequence and maps core fields correctly", () => {
     const second = makeRequest({ id: "req-2", batchSequence: 2, village: "The Bottom" });
-    const first = makeRequest({ id: "req-1", batchSequence: 1, village: "St. John's" });
+    const first = makeRequest({ id: "req-1", batchSequence: 1, village: "St Johns" });
 
     const data = buildDispatchBatchPdfData(
       "batch-1",
@@ -87,7 +88,7 @@ describe("buildDispatchBatchPdfData", () => {
     );
 
     expect(data.rows.map((r) => r.sequence)).toEqual([1, 2]);
-    expect(data.rows[0].village).toBe("St. John's");
+    expect(data.rows[0].village).toBe("St Johns");
     expect(data.rows[0].customerName).toBe("Jane Resident");
     expect(data.rows[0].phone).toBe("+599-000-0001");
     expect(data.rows[0].gallons).toBe(1000);

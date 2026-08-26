@@ -1484,3 +1484,17 @@ The priority order is:
 The success criterion for V1 is simple:
 
 **A resident can request water without calling individual drivers, an eligible driver can claim and deliver it, government can see the entire process, and the resulting operational data is reliable.**
+
+## Immediate roadmap (not yet implemented)
+
+The following items are explicitly out of scope for the current pass and
+must not be treated as built until a separate work item documents and
+implements them:
+
+1. **Driver-facing special delivery conditions** — a way for a driver to
+   record non-standard delivery notes (e.g. extra hose, specific gate,
+   accessibility issue) on a per-load basis. This is not in the data
+   model or UI today.
+2. **Statistics "Last 24 Hours" view** — a statistics period shorter than
+   the existing week/month/year/all options. The current statistics pages
+   do not offer a 24-hour filter.

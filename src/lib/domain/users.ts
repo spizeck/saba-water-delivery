@@ -6,6 +6,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 
 import type { UserProfile, UserRole } from "./types";
 import { toUserRoles } from "@/lib/auth/roles";
+import { isValidSabaVillage } from "./villages";
 
 const USERS_COLLECTION = "users";
 
@@ -179,6 +180,10 @@ export interface UpdateUserProfileInput {
  * not refresh it.
  */
 export async function updateUserProfile(input: UpdateUserProfileInput): Promise<UserProfile> {
+  if (input.village !== null && !isValidSabaVillage(input.village)) {
+    throw new Error("INVALID_VILLAGE");
+  }
+
   const ref = getAdminDb().collection(USERS_COLLECTION).doc(input.uid);
 
   const existingSnapshot = await ref.get();

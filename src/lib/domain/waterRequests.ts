@@ -6,6 +6,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 
 import { appConfig } from "./config";
 import { BATCH_ELIGIBLE_STATUSES, computeDispatchBatchStatus } from "./dispatchBatchSelection";
+import { isValidSabaVillage } from "./villages";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { isDriverImmediatelyAvailable } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
@@ -151,6 +152,8 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     dispatchBatchId: data.dispatchBatchId ?? null,
     batchSequence: typeof data.batchSequence === "number" ? data.batchSequence : null,
+    dispatchOverrideRank:
+      typeof data.dispatchOverrideRank === "number" ? data.dispatchOverrideRank : null,
   };
 }
 
@@ -351,13 +354,18 @@ export async function getBatchEligibleRequests(): Promise<WaterRequest[]> {
  */
 export async function getRequestsForDispatchBatch(batchId: string): Promise<WaterRequest[]> {
   const db = getAdminDb();
+  // Do not orderBy "batchSequence" here — the equality on "dispatchBatchId"
+  // needs a single-field index (already present), while adding orderBy would
+  // require a composite index that may not be deployed. Sort in memory after
+  // the fetch; the result set is always small.
   const snapshot = await db
     .collection(REQUESTS_COLLECTION)
     .where("dispatchBatchId", "==", batchId)
-    .orderBy("batchSequence", "asc")
     .get();
 
-  return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+  return snapshot.docs
+    .map((doc) => toWaterRequest(doc.id, doc.data()))
+    .sort((a, b) => (a.batchSequence ?? 0) - (b.batchSequence ?? 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +465,9 @@ export async function createWaterRequest(
   }
   if (!attestationAccepted) {
     throw new Error("ATTESTATION_REQUIRED");
+  }
+  if (!isValidSabaVillage(village)) {
+    throw new Error("INVALID_VILLAGE");
   }
 
   const waterSituation = buildWaterSituationSnapshot(waterSituationInput);
@@ -583,6 +594,7 @@ export async function createWaterRequest(
       claimedAt: null,
       deliveredAt: null,
       confirmedAt: null,
+      dispatchOverrideRank: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -1065,42 +1077,35 @@ export async function markWaterDelivered(
 }
 
 // ---------------------------------------------------------------------------
-// Batch Dispatch — staff paper-reconciliation delivery
+// Staff-recorded delivery (batch or ordinary)
 // ---------------------------------------------------------------------------
 
-export interface RecordBatchDeliveryByStaffInput {
+export interface MarkWaterDeliveredByStaffInput {
   requestId: string;
   actorId: string;
+  note?: string;
 }
 
 /**
- * Lets dispatcher/admin staff record a batch-assigned load as delivered
- * on behalf of a driver who cannot (or did not) mark it delivered
- * themselves through the driver portal — the entire premise of Batch
- * Dispatch is supporting drivers whose phone/data access may be
- * unreliable (see PRODUCT.md "Batch Dispatch"). This closes a
- * previously identified operational gap (see docs/INCIDENT_RECOVERY.md
- * "Recovery: reconciling manually handled deliveries") for exactly this
- * use case, without introducing a general "staff can mark any delivery
- * delivered" capability: it is deliberately scoped to requests that are
- * currently part of a dispatch batch (`dispatchBatchId` set), throwing
- * `NOT_BATCH_ASSIGNED` for anything else. A normal self-claimed or
- * singly-assigned delivery must still be marked delivered by its driver
- * (or reassigned/cancelled by staff) — this function is not a shortcut
- * around that.
+ * Lets dispatcher/admin staff record a claimed request as delivered on
+ * behalf of a driver who cannot (or did not) mark it delivered through
+ * the driver portal. This is used for Batch Dispatch paper
+ * reconciliation, and for ordinary requests when the driver is
+ * unavailable or the delivery was confirmed by phone/radio.
  *
- * Records a distinct `marked_delivered_by_dispatcher_batch` audit event
- * rather than `marked_delivered`, so the trail never misrepresents a
- * staff paper-reconciliation entry as the driver's own action — the
- * same principle already used for `delivery_confirmed_by_dispatcher`
- * vs `customer_confirmed`. From this point on, the request proceeds
- * through the identical `delivered` -> confirmed/disputed/auto-
- * confirmed workflow as any other delivery.
+ * The request must be in `"claimed"` status with an assigned driver.
+ * The driver's `activeRequestId` lock is cleared only if it points at
+ * this request, and an active batch's derived status is kept in sync.
+ *
+ * Records `marked_delivered_by_dispatcher_batch` for batch-assigned
+ * loads and `marked_delivered_by_dispatcher` for normal assignments,
+ * so the audit trail never misrepresents a staff entry as the driver's
+ * own action.
  */
-export async function recordBatchDeliveryByStaff(
-  input: RecordBatchDeliveryByStaffInput,
+export async function markWaterDeliveredByStaff(
+  input: MarkWaterDeliveredByStaffInput,
 ): Promise<WaterRequest> {
-  const { requestId, actorId } = input;
+  const { requestId, actorId, note } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
   const now = FieldValue.serverTimestamp();
@@ -1110,11 +1115,11 @@ export async function recordBatchDeliveryByStaff(
     if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
 
     const data = snap.data()!;
-    const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
-    if (!dispatchBatchId) throw new Error("NOT_BATCH_ASSIGNED");
     if (data.status !== "claimed") throw new Error("REQUEST_NOT_CLAIMABLE");
 
     const assignedDriverId = data.assignedDriverId as string | null | undefined;
+    const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
+
     let registryRef: FirebaseFirestore.DocumentReference | null = null;
     if (assignedDriverId) {
       const driverQuery = db
@@ -1127,13 +1132,9 @@ export async function recordBatchDeliveryByStaff(
       }
     }
 
-    const batchSync = await readBatchMemberStatusesForSync(
-      txn,
-      db,
-      dispatchBatchId,
-      requestId,
-      "delivered",
-    );
+    const batchSync = dispatchBatchId
+      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, "delivered")
+      : null;
 
     txn.update(requestRef, {
       status: "delivered",
@@ -1145,15 +1146,108 @@ export async function recordBatchDeliveryByStaff(
       txn.update(registryRef, { activeRequestId: null, updatedAt: now, updatedBy: actorId });
     }
 
-    txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+    if (batchSync) {
+      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+    }
 
     const eventRef = requestRef.collection("events").doc();
+    const metadata: Record<string, unknown> = {
+      assignedDriverId: assignedDriverId ?? null,
+      ...(note?.trim() ? { note: note.trim() } : {}),
+    };
+    if (dispatchBatchId) {
+      metadata.dispatchBatchId = dispatchBatchId;
+    }
     txn.set(eventRef, {
-      type: "marked_delivered_by_dispatcher_batch",
+      type: dispatchBatchId ? "marked_delivered_by_dispatcher_batch" : "marked_delivered_by_dispatcher",
       actorId,
       actorRole: "dispatcher",
       createdAt: now,
-      metadata: { dispatchBatchId },
+      metadata,
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+/**
+ * Backwards-compatible alias for Batch Dispatch paper reconciliation.
+ * @deprecated Use `markWaterDeliveredByStaff` directly.
+ */
+export const recordBatchDeliveryByStaff = markWaterDeliveredByStaff;
+
+// ---------------------------------------------------------------------------
+// Manual dispatch escalation
+// ---------------------------------------------------------------------------
+
+export interface EscalateDispatchRequestInput {
+  requestId: string;
+  actorId: string;
+  reason: string;
+}
+
+/**
+ * Deliberately moves an outstanding request ahead in the dispatch queue
+ * without touching its original `requestedAt` or inventing a fake
+ * priority. Only `available` or `preferred_driver_hold` requests can be
+ * escalated. A `preferred_driver_hold` is released to the general queue
+ * as part of the action, making it eligible for the next valid driver
+ * immediately. The override rank is set to `0` (the canonical "ahead of
+ * normal" value) and the original `requestedAt` and `dispatchPriority`
+ * are preserved.
+ *
+ * Records a `dispatch_order_overridden` audit event that captures the
+ * previous override rank, the new one, the reason, the actor, and the
+ * timestamp so the action is always auditable.
+ */
+export async function escalateDispatchRequest(
+  input: EscalateDispatchRequestInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId, reason } = input;
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) throw new Error("ESCALATE_REASON_REQUIRED");
+
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+    const status = data.status as WaterRequestStatus;
+    const previousOverrideRank =
+      typeof data.dispatchOverrideRank === "number" ? data.dispatchOverrideRank : null;
+
+    if (status !== "available" && status !== "preferred_driver_hold") {
+      throw new Error("REQUEST_NOT_ESCALATABLE");
+    }
+
+    const updates: Record<string, unknown> = {
+      dispatchOverrideRank: 0,
+      updatedAt: now,
+    };
+
+    if (status === "preferred_driver_hold") {
+      updates.status = "available";
+      updates.availableAt = now;
+    }
+
+    txn.update(requestRef, updates);
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "dispatch_order_overridden",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: {
+        previousOverrideRank,
+        newOverrideRank: 0,
+        reason: trimmedReason,
+      },
     });
   });
 
@@ -1439,6 +1533,38 @@ export async function getAllRequests(): Promise<WaterRequest[]> {
     .get();
 
   return snapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+}
+
+/**
+ * Counts how many requests this customer has created in the last
+ * `windowDays` days. Registered customers are matched by `customerId`;
+ * unregistered customers are matched by the phone number stored on
+ * their request snapshot. This is a dispatcher-facing operational
+ * warning only — it never blocks a request by itself.
+ */
+export async function getFrequentRequestCountForCustomer(
+  customerId: string | null,
+  phone: string | null,
+  now = new Date(),
+  windowDays = 7,
+): Promise<number> {
+  const windowMs = windowDays * 24 * 60 * 60 * 1000;
+  const cutoff = new Date(now.getTime() - windowMs).toISOString();
+  const all = await getAllRequests();
+  const normalizedPhone = (phone ?? "").trim();
+
+  let count = 0;
+  for (const r of all) {
+    if (!r.requestedAt || r.requestedAt < cutoff) continue;
+    if (customerId && r.customerId === customerId) {
+      count++;
+      continue;
+    }
+    if (normalizedPhone && r.customer?.phone?.trim() === normalizedPhone) {
+      count++;
+    }
+  }
+  return count;
 }
 
 /**

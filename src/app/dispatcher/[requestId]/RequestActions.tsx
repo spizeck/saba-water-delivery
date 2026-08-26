@@ -12,6 +12,8 @@ import {
   cancelRequest,
   changePriority,
   confirmUnregisteredDelivery,
+  escalateRequest,
+  markDeliveredByStaff,
   reassignRequest,
   resolveDisputeAsCompleted,
   resolveDisputeAsReopened,
@@ -78,6 +80,16 @@ export function RequestActions({
             Assign driver
           </Button>
         )}
+        {isAssignable && (
+          <Button
+            size="md"
+            variant="outline"
+            onClick={() => setActivePanel(activePanel === "escalate" ? null : "escalate")}
+            className="text-sm !h-9 !px-3"
+          >
+            Escalate
+          </Button>
+        )}
         {isClaimed && (
           <Button
             size="md"
@@ -86,6 +98,16 @@ export function RequestActions({
             className="text-sm !h-9 !px-3"
           >
             Reassign
+          </Button>
+        )}
+        {isClaimed && (
+          <Button
+            size="md"
+            variant="outline"
+            onClick={() => setActivePanel(activePanel === "markDelivered" ? null : "markDelivered")}
+            className="text-sm !h-9 !px-3"
+          >
+            Mark Delivered
           </Button>
         )}
         {canConfirmUnregisteredDelivery && (
@@ -137,8 +159,14 @@ export function RequestActions({
       {activePanel === "assign" && (
         <AssignPanel requestId={requestId} drivers={eligibleDrivers} onDone={() => setActivePanel(null)} />
       )}
+      {activePanel === "escalate" && (
+        <EscalatePanel requestId={requestId} onDone={() => setActivePanel(null)} />
+      )}
       {activePanel === "reassign" && (
         <ReassignPanel requestId={requestId} drivers={eligibleDrivers} onDone={() => setActivePanel(null)} />
+      )}
+      {activePanel === "markDelivered" && (
+        <MarkDeliveredPanel requestId={requestId} onDone={() => setActivePanel(null)} />
       )}
       {activePanel === "cancel" && (
         <CancelPanel requestId={requestId} onDone={() => setActivePanel(null)} />
@@ -377,6 +405,70 @@ function CancelPanel({ requestId, onDone }: { requestId: string; onDone: () => v
         </Button>
         <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
           Go back
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function MarkDeliveredPanel({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const [state, formAction, pending] = useActionState(markDeliveredByStaff, initialState);
+  if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <input type="hidden" name="requestId" value={requestId} />
+      <p className="text-sm font-medium text-amber-900">Mark this delivery complete</p>
+      <p className="text-xs text-amber-800">
+        Only use this when the driver could not mark it delivered themselves.
+        The request will enter the normal 24-hour confirmation window.
+      </p>
+      <textarea
+        name="note"
+        required
+        rows={2}
+        placeholder="How the delivery was verified (e.g. driver confirmed by phone)"
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+      />
+      {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+          {pending ? "Recording\u2026" : "Record delivery"}
+        </Button>
+        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function EscalatePanel({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const [state, formAction, pending] = useActionState(escalateRequest, initialState);
+  if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <input type="hidden" name="requestId" value={requestId} />
+      <p className="text-sm font-medium text-amber-900">Escalate this request</p>
+      <p className="text-xs text-amber-800">
+        Moves this load ahead in the dispatch queue for the next valid
+        driver. The original request time and priority are preserved.
+      </p>
+      <textarea
+        name="reason"
+        required
+        rows={2}
+        placeholder="Why this request needs to jump the queue"
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+      />
+      {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+          {pending ? "Escalating\u2026" : "Escalate"}
+        </Button>
+        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
+          Cancel
         </Button>
       </div>
     </form>

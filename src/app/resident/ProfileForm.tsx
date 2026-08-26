@@ -4,6 +4,7 @@ import { useActionState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { SABA_VILLAGES } from "@/lib/domain/villages";
 import type { UserProfile } from "@/lib/domain/types";
 
 import { updateResidentProfile, type ProfileFormState } from "./actions";
@@ -56,13 +57,19 @@ export function ProfileForm({ profile }: { profile: UserProfile }) {
 
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
           Village/area
-          <input
+          <select
             name="village"
             defaultValue={profile.village ?? ""}
             required
-            placeholder="e.g. The Bottom"
             className={inputClasses}
-          />
+          >
+            <option value="">Select a village...</option>
+            {SABA_VILLAGES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">

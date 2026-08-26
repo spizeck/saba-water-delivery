@@ -14,6 +14,9 @@ import { sabaCalendarDateKey } from "@/lib/utils/datetime";
 import { appConfig } from "./config";
 import type { DriverOffer, WaterRequest } from "./types";
 import {
+  dispatchQueueCompare,
+} from "./dispatchBatchSelection";
+import {
   isOfferableToDriver,
   selectNextDispatchCandidate,
 } from "./dispatchSelection";
@@ -123,7 +126,9 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
     .orderBy("requestedAt", "asc")
     .limit(1)
     .get();
-  const holds = holdSnapshot.docs.map((doc) => toWaterRequest(doc.id, doc.data()));
+  const holds = holdSnapshot.docs
+    .map((doc) => toWaterRequest(doc.id, doc.data()))
+    .sort(dispatchQueueCompare);
 
   // Priority 2: highest dispatch-priority open request not already
   // declined by this driver recently, oldest first within the same
@@ -134,11 +139,11 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
     .where("status", "==", "available")
     .orderBy("priorityRank", "asc")
     .orderBy("requestedAt", "asc")
-    .limit(25)
+    .limit(100)
     .get();
-  const available = availableSnapshot.docs.map((doc) =>
-    toWaterRequest(doc.id, doc.data()),
-  );
+  const available = availableSnapshot.docs
+    .map((doc) => toWaterRequest(doc.id, doc.data()))
+    .sort(dispatchQueueCompare);
 
   const candidate = selectNextDispatchCandidate({
     activeDelivery,

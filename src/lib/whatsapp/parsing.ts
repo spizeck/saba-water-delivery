@@ -30,7 +30,7 @@ export function isCancelKeyword(text: string): boolean {
   return text.trim().toUpperCase() === "CANCEL";
 }
 
-/** Numbered village menu text, e.g. "1. The Bottom\n2. St. John's\n...". */
+/** Numbered village menu text, using the canonical SABA_VILLAGES order. */
 export function villageMenuText(): string {
   return SABA_VILLAGES.map((v, i) => `${i + 1}. ${v}`).join("\n");
 }

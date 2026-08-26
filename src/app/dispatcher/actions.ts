@@ -17,9 +17,10 @@ import {
   createWaterRequest,
   dispatcherAssign,
   dispatcherReassign,
+  escalateDispatchRequest,
   findActiveRequestsByPhone,
   getActiveRequestForCustomer,
-  recordBatchDeliveryByStaff,
+  markWaterDeliveredByStaff,
   resolveDisputeCompleted,
   resolveDisputeReopened,
 } from "@/lib/domain/waterRequests";
@@ -319,6 +320,9 @@ export async function createManualRequest(
       });
     } catch (err: unknown) {
       if (err instanceof Error) {
+        if (err.message === "INVALID_VILLAGE") {
+          return { status: "error", message: "Please select a valid village from the list." };
+        }
         if (err.message === "DUPLICATE_ACTIVE_REQUEST") {
           const existing = await getActiveRequestForCustomer(residentUid);
           return {
@@ -393,6 +397,8 @@ export async function createManualRequest(
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
+        case "INVALID_VILLAGE":
+          return { status: "error", message: "Please select a valid village from the list." };
         case "CUSTOMER_NAME_REQUIRED":
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
@@ -639,18 +645,19 @@ export async function recordBatchDelivery(
 ): Promise<RequestActionState> {
   const session = await requireStaff();
   const requestId = String(formData.get("requestId") ?? "").trim();
+  const batchId = String(formData.get("batchId") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
 
   if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (!note) return { status: "error", message: "A short verification note is required." };
 
   try {
-    await recordBatchDeliveryByStaff({ requestId, actorId: session.uid });
+    await markWaterDeliveredByStaff({ requestId, actorId: session.uid, note });
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
-        case "NOT_BATCH_ASSIGNED":
-          return { status: "error", message: "This request is not part of a dispatch batch." };
         case "REQUEST_NOT_CLAIMABLE":
           return { status: "error", message: "This request is not in a deliverable state." };
         default:
@@ -661,5 +668,80 @@ export async function recordBatchDelivery(
   }
 
   revalidatePath("/dispatcher/batches");
+  revalidatePath("/dispatcher");
+  if (batchId) revalidatePath(`/dispatcher/batches/${batchId}`);
+  revalidatePath(`/dispatcher/${requestId}`);
   return { status: "success", message: "Delivery recorded." };
+}
+
+/**
+ * Staff "Mark Delivered" for a normal (non-batch) request. Use this
+ * when a driver cannot use the app, a delivery is reported by phone/
+ * radio, or staff are reconciling a paper run. Requires a short note
+ * and only works for requests currently in `claimed` status.
+ */
+export async function markDeliveredByStaff(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (!note) return { status: "error", message: "A short verification note is required." };
+
+  try {
+    await markWaterDeliveredByStaff({ requestId, actorId: session.uid, note });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_CLAIMABLE":
+          return { status: "error", message: "This request is not in a deliverable state." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  revalidatePath(`/dispatcher/${requestId}`);
+  return { status: "success", message: "Delivery recorded." };
+}
+
+export async function escalateRequest(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (!reason) return { status: "error", message: "A reason is required." };
+
+  try {
+    await escalateDispatchRequest({ requestId, actorId: session.uid, reason });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_ESCALATABLE":
+          return { status: "error", message: "This request cannot be escalated." };
+        case "ESCALATE_REASON_REQUIRED":
+          return { status: "error", message: "A reason is required." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  revalidatePath(`/dispatcher/${requestId}`);
+  return { status: "success", message: "Request escalated. It now appears ahead in the dispatch queue." };
 }

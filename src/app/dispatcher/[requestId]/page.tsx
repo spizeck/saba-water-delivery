@@ -8,7 +8,11 @@ import { requireRole } from "@/lib/auth/session";
 import { getAllDriverRegistryEntries, getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
-import { checkDeliveryConfirmationTimeout, getRequestEvents } from "@/lib/domain/waterRequests";
+import {
+  checkDeliveryConfirmationTimeout,
+  getFrequentRequestCountForCustomer,
+  getRequestEvents,
+} from "@/lib/domain/waterRequests";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
@@ -64,6 +68,8 @@ const EVENT_LABELS: Record<string, string> = {
   dispatcher_batch_assigned: "Assigned via Batch Dispatch",
   dispatcher_batch_membership_removed: "Removed from batch",
   marked_delivered_by_dispatcher_batch: "Marked delivered by staff (batch reconciliation)",
+  marked_delivered_by_dispatcher: "Marked delivered by staff",
+  dispatch_order_overridden: "Dispatch order overridden by staff",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -140,6 +146,13 @@ export default async function RequestDetailPage({ params }: PageProps) {
       getAllDriverRegistryEntries(),
       getEligibleDriverOptions(),
     ]);
+
+  const customerPhone = data.customer?.phone ?? legacyCustomerProfile?.phone ?? null;
+  const frequentRequestCount = await getFrequentRequestCountForCustomer(
+    (data.customerId as string | null) ?? null,
+    customerPhone,
+  );
+  const showFrequentWarning = frequentRequestCount >= 3;
 
   const customer = data.customer
     ? { displayName: data.customer.displayName, phone: data.customer.phone ?? null }
@@ -285,6 +298,19 @@ export default async function RequestDetailPage({ params }: PageProps) {
                 </dd>
               </div>
             </dl>
+
+            {showFrequentWarning && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm font-medium text-amber-900">
+                  Frequent requests warning
+                </p>
+                <p className="text-xs text-amber-800">
+                  This customer has {frequentRequestCount} requests in the last 7
+                  days. This is a warning only — review to make sure the loads are
+                  legitimate, but the request remains allowed.
+                </p>
+              </div>
+            )}
           </Card>
 
           {/* Water situation — operational context for priority review.

@@ -60,6 +60,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     updatedAt: "2026-01-01T00:00:00.000Z",
     dispatchBatchId: null,
     batchSequence: null,
+    dispatchOverrideRank: null,
     ...overrides,
   };
 }

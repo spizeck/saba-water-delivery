@@ -53,6 +53,7 @@ function makeRequest(
     updatedAt: baseTime.toISOString(),
     dispatchBatchId: null,
     batchSequence: null,
+    dispatchOverrideRank: null,
     ...overrides,
   };
 }

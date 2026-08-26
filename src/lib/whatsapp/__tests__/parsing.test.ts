@@ -52,8 +52,9 @@ describe("isConfirmKeyword / isCancelKeyword", () => {
 
 describe("parseVillageChoice", () => {
   it("accepts a valid canonical village menu number", () => {
-    expect(parseVillageChoice("1")).toBe("The Bottom");
+    expect(parseVillageChoice("1")).toBe("St Johns");
     expect(parseVillageChoice("3")).toBe("Windwardside");
+    expect(parseVillageChoice("5")).toBe("Zions Hill - Upper");
   });
 
   it("rejects an out-of-range or non-numeric choice", () => {

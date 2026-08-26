@@ -155,20 +155,14 @@ account in the system:
   limitation applies — there is no dispatcher/admin action to record it
   as already delivered.
 
-**Operational gap (normal, non-batch assignments only):** there is
-still no dispatcher/admin workflow to directly record an ORDINARY
-(non-batch) request as delivered and confirmed when the delivering
-driver cannot or does not do so themselves through the driver portal.
-Today, closing out such a request accurately depends on the assigned
-driver eventually marking it delivered, or on a dispatcher cancelling
-it (which does not represent it as a completed delivery). Batch
-Dispatch's paper-reconciliation control was deliberately scoped to
-batch-assigned loads only, rather than generalized to every delivery,
-to avoid creating a broad "staff can mark any delivery delivered"
-capability that would weaken the normal driver-completion audit trail.
-If this gap for ordinary assignments becomes a frequent operational
-need outside the batch-assignment scenario, it should be raised as its
-own product decision.
+Staff can now mark any `claimed` request as delivered, whether or not
+it is part of a batch. Use the dispatcher request detail "Mark
+Delivered" action (or the batch detail "Mark Delivered" button for a
+batch-assigned load). Each records a distinct staff audit event
+(`marked_delivered_by_dispatcher` or `marked_delivered_by_dispatcher_batch`)
+so it is never misrepresented as the driver's own "Mark Delivered".
+From that point the request follows the same `delivered` ->
+confirmed/disputed/auto-confirmed workflow as any other delivery.
 
 There is no automated reconciliation feature — this is a manual staff
 process using the existing dispatcher and driver tools. Do not assume

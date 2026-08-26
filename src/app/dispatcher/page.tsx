@@ -66,6 +66,9 @@ export default async function DispatcherPortalPage() {
     if (pa !== pb) return pa - pb;
     const priorityDiff = priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
     if (priorityDiff !== 0) return priorityDiff;
+    const overrideA = a.dispatchOverrideRank ?? Infinity;
+    const overrideB = b.dispatchOverrideRank ?? Infinity;
+    if (overrideA !== overrideB) return overrideA - overrideB;
     return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
   });
 
@@ -134,10 +137,16 @@ export default async function DispatcherPortalPage() {
                 + Create Water Request
               </Link>
               <Link
-                href="/dispatcher/batches"
+                href="/dispatcher/batches/new"
                 className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
               >
                 Batch Dispatch
+              </Link>
+              <Link
+                href="/dispatcher/batches"
+                className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+              >
+                View Open Batches
               </Link>
             </div>
             <div className="flex flex-wrap items-center gap-2">

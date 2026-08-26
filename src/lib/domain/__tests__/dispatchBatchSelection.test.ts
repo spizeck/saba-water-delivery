@@ -43,6 +43,7 @@ function makeRequest(id: string, overrides: Partial<WaterRequest> = {}): WaterRe
     updatedAt: baseTime.toISOString(),
     dispatchBatchId: null,
     batchSequence: null,
+    dispatchOverrideRank: null,
     ...overrides,
   };
 }
@@ -88,6 +89,15 @@ describe("sortForBatchSelection", () => {
     const original = [...requests];
     sortForBatchSelection(requests);
     expect(requests).toEqual(original);
+  });
+
+  it("places escalated (override rank 0) requests ahead within the same priority", () => {
+    const escalated = makeRequest("escalated", { dispatchOverrideRank: 0, requestedAt: new Date(baseTime.getTime() + 60_000).toISOString() });
+    const older = makeRequest("older", { requestedAt: baseTime.toISOString() });
+    const newer = makeRequest("newer", { requestedAt: new Date(baseTime.getTime() + 120_000).toISOString() });
+
+    const sorted = sortForBatchSelection([newer, escalated, older]);
+    expect(sorted.map((r) => r.id)).toEqual(["escalated", "older", "newer"]);
   });
 });
 
