@@ -39,10 +39,10 @@ export function DriverTable({ drivers }: DriverTableProps) {
             <tr className="border-b border-slate-200 text-left">
               <th className="pb-2 font-medium text-slate-500">Driver</th>
               <th className="pb-2 text-right font-medium text-slate-500">
-                Claimed
+                Loads Claimed
               </th>
               <th className="pb-2 text-right font-medium text-slate-500">
-                Delivered
+                Loads Delivered
               </th>
               <th className="pb-2 text-right font-medium text-slate-500">
                 Confirmed

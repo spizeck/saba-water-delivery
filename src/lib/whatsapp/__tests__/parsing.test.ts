@@ -5,6 +5,7 @@ import {
   isConfirmKeyword,
   isGreeting,
   parseAvailableStorage,
+  parseLoadsChoice,
   parseMenuNumber,
   parsePersonsAffected,
   parseUrgencyChoice,
@@ -82,6 +83,19 @@ describe("parseVulnerableCircumstances", () => {
     expect(parseVulnerableCircumstances("7")).toBeNull();
     expect(parseVulnerableCircumstances("abc")).toBeNull();
     expect(parseVulnerableCircumstances("")).toBeNull();
+  });
+});
+
+describe("parseLoadsChoice", () => {
+  it("maps 1/2 to one/two loads", () => {
+    expect(parseLoadsChoice("1")).toBe(1);
+    expect(parseLoadsChoice("2")).toBe(2);
+  });
+
+  it("rejects anything else", () => {
+    expect(parseLoadsChoice("0")).toBeNull();
+    expect(parseLoadsChoice("3")).toBeNull();
+    expect(parseLoadsChoice("one")).toBeNull();
   });
 });
 

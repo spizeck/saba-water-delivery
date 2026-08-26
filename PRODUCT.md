@@ -263,11 +263,14 @@ See TECHNICAL.md "Viewer Role" for the enforcement details.
 
 # Standard Water Request
 
-Every request represents:
+Every request is for either:
 
-**1,000 gallons**
+- **1 load** = **1,000 gallons**, or
+- **2 loads** = **2,000 gallons**
 
-Do not allow arbitrary quantities in V1.
+A two-load request is still **one request** — one priority, one
+assignment, one confirmation/dispute record. Arbitrary quantities (0,
+3, 4, etc.) are not allowed in V1.
 
 A resident normally requests delivery:
 
@@ -598,7 +601,7 @@ The driver sees:
 
 - Customer name
 - Village
-- 1,000 gallons
+- Quantity (e.g., "1 load (1,000 gallons)" or "2 loads (2,000 gallons)")
 - Request age
 - Delivery directions
 
@@ -712,29 +715,32 @@ batch-creation operation comfortably small (see TECHNICAL.md).
 ## The driver dispatch sheet
 
 A compact, printable PDF titled "Driver Dispatch Sheet" lists every
-load in the batch, in order, with the customer's name, phone, village,
-1,000 gallons, delivery directions, priority, requested time and age,
-and a preferred-driver note when relevant. It includes a simple
-completion area for each load not yet delivered (a checkbox, space for
-driver initials, time, and notes) so a driver without app access can
-still be tracked on paper. It never includes the resident's vulnerable-
-circumstance details, persons-affected count, critical explanation, or
-any internal system identifiers — the same privacy posture as the
-operational continuity snapshot (see "Water Situation Privacy" above).
+request in the batch, in order, with the customer's name, phone,
+village, quantity (loads and gallons), delivery directions, priority,
+requested time and age, and a preferred-driver note when relevant. It
+includes a simple completion area for each request not yet delivered
+(a checkbox, space for driver initials, time, and notes) so a driver
+without app access can still be tracked on paper. It never includes the
+resident's vulnerable-circumstance details, persons-affected count,
+critical explanation, or any internal system identifiers — the same
+privacy posture as the operational continuity snapshot (see "Water
+Situation Privacy" above).
 
 A dispatcher can reopen an active or completed batch at any time and
 **reprint** its dispatch sheet. Reprinting never creates a new batch —
-it reflects the batch's current member loads and their current status
-(for example, a load already delivered shows as delivered instead of a
-blank completion area), always with a clear generation timestamp.
+it reflects the batch's current member requests and their current status
+(for example, a request already delivered shows as delivered instead of
+a blank completion area), always with a clear generation timestamp.
 
 ## Completing batch loads
 
-Each load in a batch is still completed individually, exactly like any
+Each request in a batch is still completed individually, exactly like any
 other delivery — its own delivered time, its own resident confirmation
 window, its own dispute handling, its own audit trail and statistics
-attribution. There is no single button that marks an entire batch
-delivered at once.
+attribution. A two-load request appears as one batch entry and is
+completed as one delivery when the full 2,000 gallons have been
+physically delivered. There is no single button that marks an entire
+batch delivered at once.
 
 If the driver has app access, they see each batch-assigned load in
 their normal "My deliveries" list, marked as a batch assignment, and
@@ -748,7 +754,7 @@ on a driver's behalf.
 
 ## Reassignment and cancellation
 
-If one load in a batch needs to be reassigned to a different driver,
+If one request in a batch needs to be reassigned to a different driver,
 or cancelled, that is handled exactly like any other request
 reassignment or cancellation — it simply leaves that batch's current
 membership. The rest of the batch is unaffected and remains intact.
@@ -1133,9 +1139,10 @@ Never rank individual residents, villages, or drivers by urgency —
 priority statistics are aggregate counts and timings only (see
 "Privacy" below).
 
-Because every completed request represents 1,000 gallons:
-
-`completed deliveries × 1,000 = gallons distributed`
+Gallons distributed are derived from each request's stored `gallons`
+value (which equals `loads × 1,000`), not by multiplying the request
+count by 1,000. A two-load request still counts as one completed
+delivery but contributes 2,000 gallons.
 
 Preserve raw events and timestamps rather than only storing aggregate statistics.
 
@@ -1146,12 +1153,12 @@ Preserve raw events and timestamps rather than only storing aggregate statistics
 WhatsApp is a **front end to the existing application**, not a
 parallel system. A resident can message the government Water Delivery
 WhatsApp number and, through a short guided conversation, create the
-exact same kind of 1,000-gallon water request as the web app — using
-the same domain functions, the same `waterRequests` collection, the
-same priority/preferred-driver/duplicate rules, and the same driver
-dispatch workflow. If a WhatsApp-created request ever behaved
-differently after creation from a website request, that would be a
-design error.
+exact same kind of water request as the web app — for either 1 load
+(1,000 gallons) or 2 loads (2,000 gallons) — using the same domain
+functions, the same `waterRequests` collection, the same
+priority/preferred-driver/duplicate rules, and the same driver dispatch
+workflow. If a WhatsApp-created request ever behaved differently after
+creation from a website request, that would be a design error.
 
 This phase covers **resident ordering only**. Driver WhatsApp
 functionality (going online/offline, offers, ACCEPT/DECLINE, DELIVERED)
@@ -1241,10 +1248,11 @@ numbered menu — see "Village Selection" below), delivery directions,
 persons affected, vulnerable/critical circumstances (canonical options
 only — Elderly person / Infant or young child / Medical need /
 Essential services (Commercial/business) / Hotel or Restaurant / None),
-available storage capacity (free text), and resident-reported urgency
+available storage capacity (free text), resident-reported urgency
 (Normal / Critical, with a required explanation for Critical — enforced
 by the exact same `buildWaterSituationSnapshot()` validation the web
-form uses, never re-implemented). An optional preferred-driver
+form uses, never re-implemented), and **quantity** (1 load / 2 loads,
+a numbered menu just like urgency). An optional preferred-driver
 selection is offered from the same eligible-driver list the web app
 uses; it remains a preference, never a guarantee, exactly as on the
 web.
@@ -1263,7 +1271,7 @@ can clean up prelaunch Firestore documents.
 ## Attestation
 
 Before submission, the resident sees a plain-text summary (name,
-village, load, persons affected, reported priority, preferred driver)
+village, quantity, persons affected, reported priority, preferred driver)
 and must reply `CONFIRM` to submit or `CANCEL` to stop — no earlier
 "yes" in the conversation is treated as the attestation. Confirming
 records `attestationAccepted: true` / `attestationAcceptedAt`, exactly

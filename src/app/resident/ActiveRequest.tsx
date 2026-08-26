@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import {
@@ -61,7 +62,7 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
       <dl className="mt-4 flex flex-col gap-3 text-sm">
         <div>
           <dt className="font-medium text-slate-500">Quantity</dt>
-          <dd className="text-slate-900">1,000 gallons</dd>
+          <dd className="text-slate-900">{formatWaterQuantity(request.loads)}</dd>
         </div>
         <div>
           <dt className="font-medium text-slate-500">Requested</dt>
@@ -86,12 +87,12 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
         )}
       </dl>
 
-      {showConfirmation && <DeliveryConfirmation requestId={request.id} />}
+      {showConfirmation && <DeliveryConfirmation request={request} />}
     </Card>
   );
 }
 
-function DeliveryConfirmation({ requestId }: { requestId: string }) {
+function DeliveryConfirmation({ request }: { request: WaterRequest }) {
   const [mode, setMode] = useState<"prompt" | "dispute">("prompt");
   const [confirmState, confirmAction, confirmPending] = useActionState(
     confirmDelivery,
@@ -121,7 +122,7 @@ function DeliveryConfirmation({ requestId }: { requestId: string }) {
   return (
     <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
       <p className="text-sm font-semibold text-blue-900">
-        Did you receive your 1,000-gallon delivery?
+        Did you receive your {formatWaterQuantity(request.loads).toLowerCase()}?
       </p>
       <p className="mt-1 text-xs text-blue-800">
         If you don&apos;t respond within 24 hours, this delivery will be
@@ -142,7 +143,7 @@ function DeliveryConfirmation({ requestId }: { requestId: string }) {
       {mode === "prompt" && (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <form action={confirmAction}>
-            <input type="hidden" name="requestId" value={requestId} />
+            <input type="hidden" name="requestId" value={request.id} />
             <Button type="submit" size="md" disabled={confirmPending}>
               {confirmPending ? "Confirming\u2026" : "Yes, received"}
             </Button>
@@ -159,7 +160,7 @@ function DeliveryConfirmation({ requestId }: { requestId: string }) {
 
       {mode === "dispute" && (
         <form action={disputeAction} className="mt-3 flex flex-col gap-3">
-          <input type="hidden" name="requestId" value={requestId} />
+          <input type="hidden" name="requestId" value={request.id} />
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-slate-700">
               What went wrong? (optional)

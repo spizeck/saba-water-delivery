@@ -31,6 +31,11 @@ Use **Create Request** for a resident who calls or visits the office.
   delivery directions directly. No account is created and none is
   required.
 
+**Quantity:** for either type of customer, you must select whether the
+request is for **1 load (1,000 gallons)** or **2 loads (2,000
+gallons)**. A two-load request is still a single request — it gets one
+priority, one assignment, and one confirmation/dispute record.
+
 Either way, review the details and submit — this enters the exact same
 queue as a request submitted from the website or WhatsApp.
 
@@ -125,17 +130,18 @@ individual drivers normally receive one offer at a time.
    deliberate override of the normal offer flow. Their online/offline
    and cooldown status, and whether they already have an active
    delivery, are shown so you can decide with full information.
-3. **Choose loads.** The list shows every outstanding request not yet
+3. **Choose requests.** The list shows every outstanding request not yet
    claimed by anyone, in the normal fairness order (highest priority
    first, oldest first within a priority). Check as many as you need —
-   there is a generous maximum per batch, shown on screen.
-4. If a load is held for a **different** resident's preferred driver,
+   there is a generous maximum per batch, shown on screen. Each request
+   displays its quantity (e.g., 2 loads / 2,000 gallons) as one entry.
+4. If a request is held for a **different** resident's preferred driver,
    it is clearly flagged. Selecting it requires you to check a box
    acknowledging that you are overriding that preference — it is never
    overridden silently.
 5. **Review** the full list, driver, and total gallons, then confirm.
 
-If anything about a selected load changed while you were reviewing it
+If anything about a selected request changed while you were reviewing it
 (for example, another driver claimed it in the meantime), the batch
 will not be created and you will need to review and try again — this
 is intentional, so a batch is never partially assigned.
@@ -144,28 +150,30 @@ is intentional, so a batch is never partially assigned.
 
 Confirming a batch takes you to its detail page, where you can
 download a printable **Driver Dispatch Sheet** — a simple PDF listing
-every load in order with the customer's name, phone, village,
-directions, and a checkbox/notes area for tracking completion on
-paper. You can **reprint** it at any time; a reprint always reflects
-the batch's current state (for example, a load already delivered shows
-as delivered rather than a blank checkbox), not a frozen copy of the
-original assignment.
+every request in order with the customer's name, phone, village,
+quantity (loads and gallons), directions, and a checkbox/notes area for
+tracking completion on paper. You can **reprint** it at any time; a
+reprint always reflects the batch's current state (for example, a
+request already delivered shows as delivered rather than a blank
+checkbox), not a frozen copy of the original assignment.
 
 ### Completing batch loads
 
-Each load is still delivered and confirmed individually — there is no
-single button that marks a whole batch delivered. If the driver has
-app access, they mark each load delivered themselves, exactly like any
-other claimed delivery. If the driver cannot use the app, open the
-batch and use **Record Delivery (paper reconciliation)** on that
-specific load after verifying with the driver that it was actually
-delivered. This is only available for batch-assigned loads.
+Each request is still delivered and confirmed individually — there is no
+single button that marks a whole batch delivered. A two-load request
+appears as one entry; marking it delivered means the full requested
+quantity (2,000 gallons) was delivered. If the driver has app access,
+they mark each request delivered themselves, exactly like any other
+claimed delivery. If the driver cannot use the app, open the batch and
+use **Record Delivery (paper reconciliation)** on that specific request
+after verifying with the driver that it was actually delivered. This is
+only available for batch-assigned loads.
 
-### Reassigning or cancelling a batch load
+### Reassigning or cancelling a batch request
 
-If one load in a batch needs to go to a different driver, or needs to
+If one request in a batch needs to go to a different driver, or needs to
 be cancelled, use the same **Reassign** or **Cancel** actions you would
-use for any request from its detail page. That load simply leaves the
+use for any request from its detail page. That request simply leaves the
 batch — the rest of the batch is unaffected.
 
 ## Statistics

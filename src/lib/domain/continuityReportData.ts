@@ -15,7 +15,7 @@
  */
 
 import { priorityRankFor } from "./priority";
-import type { DispatchPriority, WaterRequest, WaterRequestStatus } from "./types";
+import type { DispatchPriority, RequestedLoads, WaterRequest, WaterRequestStatus } from "./types";
 
 /** Statuses that represent a load still waiting for a driver to claim it. */
 const UNASSIGNED_STATUSES: WaterRequestStatus[] = [
@@ -36,6 +36,7 @@ export interface UnassignedReportRow {
   /** Minutes elapsed between `requestedAt` and report generation time. */
   ageMinutes: number;
   preferredDriverName: string | null;
+  loads: RequestedLoads;
   gallons: number;
 }
 
@@ -51,6 +52,7 @@ export interface AssignedReportRow {
   requestedAt: string;
   /** ISO timestamp, or null if somehow missing on a claimed request. */
   claimedAt: string | null;
+  loads: RequestedLoads;
   gallons: number;
   /** True when this load was assigned via Batch Dispatch (see
    * PRODUCT.md / TECHNICAL.md "Batch Dispatch") rather than a normal
@@ -115,6 +117,7 @@ export function buildContinuityReportData(
     preferredDriverName: r.preferredDriverId
       ? (driverNamesByUserId.get(r.preferredDriverId) ?? "Unknown driver")
       : null,
+    loads: r.loads,
     gallons: r.gallons,
   }));
 
@@ -130,6 +133,7 @@ export function buildContinuityReportData(
       : null,
     requestedAt: r.requestedAt,
     claimedAt: r.claimedAt,
+    loads: r.loads,
     gallons: r.gallons,
     isBatchAssigned: Boolean(r.dispatchBatchId),
   }));

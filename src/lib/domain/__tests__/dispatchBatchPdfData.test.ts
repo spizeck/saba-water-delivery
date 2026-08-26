@@ -18,6 +18,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     },
     source: "resident",
     createdBy: null,
+    loads: 1,
     gallons: 1000 as StandardLoadGallons,
     village: "Windwardside",
     deliveryDirections: "Blue gate, second driveway.",
@@ -151,6 +152,20 @@ describe("buildDispatchBatchPdfData", () => {
     );
     expect(data.rows[0].preferredDriverName).toBe("Andy Lavia");
     expect(data.rows[0].preferredDriverIsBatchDriver).toBe(false);
+  });
+
+  it("preserves the requested quantity on each row", () => {
+    const twoLoad = makeRequest({ id: "req-2", loads: 2, gallons: 2000 as StandardLoadGallons });
+    const data = buildDispatchBatchPdfData(
+      "batch-1",
+      "driver-1",
+      "Earl Ballentyne",
+      [twoLoad],
+      driverNames,
+      generatedAt,
+    );
+    expect(data.rows[0].loads).toBe(2);
+    expect(data.rows[0].gallons).toBe(2000);
   });
 
   it("preserves current status and delivered/confirmed timestamps for a reprint", () => {

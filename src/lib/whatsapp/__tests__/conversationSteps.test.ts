@@ -36,6 +36,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     customer: null,
     source: "resident",
     createdBy: null,
+    loads: 1,
     gallons: 1000,
     village: "Windwardside",
     deliveryDirections: "Blue gate",
@@ -144,8 +145,49 @@ describe("Critical", () => {
       draft: { reportedUrgency: "critical" },
     });
     const result = processMessage(session, "No water left at all", makeContext());
-    expect(result.session?.step).toBe("collect_preferred_driver");
+    expect(result.session?.step).toBe("collect_loads");
     expect(result.session?.draft.criticalExplanation).toBe("No water left at all");
+  });
+});
+
+describe("Quantity", () => {
+  it("rejects an invalid load choice and re-prompts", () => {
+    const session = makeSession({
+      step: "collect_loads",
+      draft: { reportedUrgency: "normal" },
+    });
+    const result = processMessage(session, "3", makeContext());
+    expect(result.session?.step).toBe("collect_loads");
+    expect(result.outbound[0]).toContain("How much water are you requesting?");
+  });
+
+  it("accepts one load and moves to preferred-driver selection", () => {
+    const session = makeSession({
+      step: "collect_loads",
+      draft: { reportedUrgency: "normal" },
+    });
+    const result = processMessage(session, "1", makeContext());
+    expect(result.session?.step).toBe("collect_preferred_driver");
+    expect(result.session?.draft.loads).toBe(1);
+  });
+
+  it("accepts two loads and moves to preferred-driver selection", () => {
+    const session = makeSession({
+      step: "collect_loads",
+      draft: { reportedUrgency: "normal" },
+    });
+    const result = processMessage(session, "2", makeContext());
+    expect(result.session?.step).toBe("collect_preferred_driver");
+    expect(result.session?.draft.loads).toBe(2);
+  });
+
+  it("includes the selected quantity on the confirmation summary", () => {
+    const session = makeSession({
+      step: "collect_loads",
+      draft: { reportedUrgency: "normal" },
+    });
+    const result = processMessage(session, "2", makeContext());
+    expect(result.outbound[0]).toContain("Would you like to request a preferred driver?");
   });
 });
 
@@ -158,6 +200,7 @@ describe("Confirmation", () => {
     personsAffected: 2,
     vulnerableCircumstances: ["none"],
     reportedUrgency: "normal",
+    loads: 1,
     preferredDriverId: null,
   };
 
@@ -271,7 +314,7 @@ describe("Delivery confirmation", () => {
     const result = processMessage(session, "2", context);
     expect(result.session?.step).toBe("confirm_delivery");
     expect(result.session?.draft.activeRequestId).toBe("req-1");
-    expect(result.outbound.join(" ")).toContain("Did you receive your 1,000-gallon delivery?");
+    expect(result.outbound.join(" ")).toContain("Did you receive your 1 load (1,000 gallons)?");
   });
 });
 

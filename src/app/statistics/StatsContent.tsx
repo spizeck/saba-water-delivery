@@ -54,7 +54,7 @@ export function StatsContent({ stats }: StatsContentProps) {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
         <MetricCard
           label="Total Requests"
           value={stats.summary.totalRequests}
@@ -77,6 +77,10 @@ export function StatsContent({ stats }: StatsContentProps) {
           label="Cancelled"
           value={stats.summary.cancelled}
           color="slate"
+        />
+        <MetricCard
+          label="Total Loads"
+          value={stats.summary.totalLoads}
         />
         <MetricCard
           label="Gallons"

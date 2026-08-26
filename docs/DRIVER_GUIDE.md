@@ -25,8 +25,9 @@ at a time — you will not see a list of every open request. This keeps
 access to work fair for every driver, since it prevents drivers from
 picking only the easiest or closest jobs.
 
-Each offer shows the customer's name, village, gallons (always 1,000),
-how long the request has been waiting, and the delivery directions.
+Each offer shows the customer's name, village, quantity (for example,
+"2 loads (2,000 gallons)"), how long the request has been waiting,
+and the delivery directions.
 
 ## Accept or Decline
 
@@ -45,7 +46,9 @@ temporarily.
 
 Once you accept a delivery, you can view the customer's contact and
 location information. After you deliver the water, use **Mark
-Delivered** to close out your part of the job.
+Delivered** to close out your part of the job. If the request is for 2
+loads (2,000 gallons), mark it delivered only after the full quantity
+has been physically delivered.
 
 ## When your next request becomes available
 

@@ -127,6 +127,7 @@ export async function handleIncomingWhatsAppMessage(
         case "create_request":
           await createWaterRequest({
             customerId: action.customerId,
+            loads: action.loads,
             village: action.village,
             deliveryDirections: action.deliveryDirections,
             preferredDriverId: action.preferredDriverId,

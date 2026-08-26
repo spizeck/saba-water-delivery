@@ -29,7 +29,7 @@ export function VillageTable({ villages }: VillageTableProps) {
                 Requests
               </th>
               <th className="pb-2 text-right font-medium text-slate-500">
-                Delivered
+                Loads
               </th>
               <th className="pb-2 text-right font-medium text-slate-500">
                 Gallons

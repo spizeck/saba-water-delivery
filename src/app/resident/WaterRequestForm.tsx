@@ -11,6 +11,7 @@ import {
   WaterSituationHiddenFields,
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
+import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
 
 import { requestWater, type RequestWaterFormState } from "./actions";
 
@@ -41,6 +42,7 @@ export function WaterRequestForm({
   eligibleDrivers,
 }: Props) {
   const [confirming, setConfirming] = useState(false);
+  const [loads, setLoads] = useState<RequestedLoads>(1);
   const [preferredDriverId, setPreferredDriverId] = useState("none");
   const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
   const [attestationChecked, setAttestationChecked] = useState(false);
@@ -58,11 +60,39 @@ export function WaterRequestForm({
       <Card>
         <h2 className="text-lg font-bold text-slate-900">Request water</h2>
         <p className="mt-2 text-slate-600">
-          Request one 1,000-gallon load of RO water for delivery.
+          Request one or two 1,000-gallon loads of RO water for delivery.
         </p>
 
         <div className="mt-4 flex flex-col gap-4">
           <WaterSituationFields value={waterSituation} onChange={setWaterSituation} />
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-sm font-medium text-slate-700">
+              How much water are you requesting?
+            </legend>
+            <label className="flex items-center gap-2 text-sm text-slate-900">
+              <input
+                type="radio"
+                name="loads"
+                value={1}
+                checked={loads === 1}
+                onChange={() => setLoads(1)}
+                required
+              />
+              1 load (1,000 gallons)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-900">
+              <input
+                type="radio"
+                name="loads"
+                value={2}
+                checked={loads === 2}
+                onChange={() => setLoads(2)}
+                required
+              />
+              2 loads (2,000 gallons)
+            </label>
+          </fieldset>
 
           {eligibleDrivers.length > 0 && (
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
@@ -105,7 +135,7 @@ export function WaterRequestForm({
       <dl className="mt-4 flex flex-col gap-3 text-sm">
         <div>
           <dt className="font-medium text-slate-500">Quantity</dt>
-          <dd className="text-slate-900">1,000 gallons</dd>
+          <dd className="text-slate-900">{formatWaterQuantity(loads)}</dd>
         </div>
         <div>
           <dt className="font-medium text-slate-500">Delivery location</dt>
@@ -155,6 +185,7 @@ export function WaterRequestForm({
       </dl>
 
       <form action={formAction} className="mt-4 flex flex-col gap-3">
+        <input type="hidden" name="loads" value={loads} />
         <input type="hidden" name="preferredDriverId" value={preferredDriverId} />
         <WaterSituationHiddenFields value={waterSituation} />
 

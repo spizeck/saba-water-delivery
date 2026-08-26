@@ -23,6 +23,7 @@ function makeRequest(
     },
     source: "resident",
     createdBy: null,
+    loads: 1,
     gallons: 1000 as StandardLoadGallons,
     village: "Windwardside",
     deliveryDirections: "Blue gate, second driveway.",
@@ -201,6 +202,21 @@ describe("buildContinuityReportData", () => {
       expect(row).not.toHaveProperty("criticalExplanation");
       expect(row).not.toHaveProperty("personsAffected");
     }
+  });
+
+  it("preserves the requested quantity on report rows", () => {
+    const data = buildContinuityReportData(
+      [makeRequest("two-load", "available", { loads: 2, gallons: 2000 as StandardLoadGallons }),
+        makeRequest("one-load", "available", { loads: 1, gallons: 1000 as StandardLoadGallons })],
+      driverNames,
+      generatedAt,
+    );
+    const twoLoad = data.unassigned.find((r) => r.requestId === "two-load");
+    const oneLoad = data.unassigned.find((r) => r.requestId === "one-load");
+    expect(twoLoad?.loads).toBe(2);
+    expect(twoLoad?.gallons).toBe(2000);
+    expect(oneLoad?.loads).toBe(1);
+    expect(oneLoad?.gallons).toBe(1000);
   });
 
   it("orders by priority then age within each section", () => {

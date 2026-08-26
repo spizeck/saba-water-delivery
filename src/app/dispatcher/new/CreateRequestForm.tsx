@@ -12,6 +12,7 @@ import {
   WaterSituationHiddenFields,
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
+import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
 import { SABA_VILLAGES } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
@@ -48,6 +49,7 @@ export function CreateRequestForm({
   const [search, setSearch] = useState("");
   const [selectedResident, setSelectedResident] = useState<ResidentDirectoryEntry | null>(null);
 
+  const [loads, setLoads] = useState<RequestedLoads>(1);
   const [village, setVillage] = useState("");
   const [deliveryDirections, setDeliveryDirections] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -365,6 +367,34 @@ export function CreateRequestForm({
           </div>
         )}
 
+        <fieldset className="mt-4 flex flex-col gap-2">
+          <legend className="text-sm font-medium text-slate-700">
+            How much water are you requesting?
+          </legend>
+          <label className="flex items-center gap-2 text-sm text-slate-900">
+            <input
+              type="radio"
+              name="loadsChoice"
+              value={1}
+              checked={loads === 1}
+              onChange={() => setLoads(1)}
+              required
+            />
+            1 load (1,000 gallons)
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-900">
+            <input
+              type="radio"
+              name="loadsChoice"
+              value={2}
+              checked={loads === 2}
+              onChange={() => setLoads(2)}
+              required
+            />
+            2 loads (2,000 gallons)
+          </label>
+        </fieldset>
+
         <div className="mt-4">
           <WaterSituationFields value={waterSituation} onChange={setWaterSituation} />
         </div>
@@ -435,7 +465,7 @@ export function CreateRequestForm({
         </div>
         <div>
           <dt className="font-medium text-slate-500">Quantity</dt>
-          <dd className="text-slate-900">1,000 gallons</dd>
+          <dd className="text-slate-900">{formatWaterQuantity(loads)}</dd>
         </div>
         <div>
           <dt className="font-medium text-slate-500">Preferred driver</dt>
@@ -516,6 +546,7 @@ export function CreateRequestForm({
         className="mt-4 flex flex-col gap-3 sm:flex-row"
       >
         <input type="hidden" name="customerType" value={customerType} />
+        <input type="hidden" name="loads" value={loads} />
         <input type="hidden" name="village" value={village} />
         <input type="hidden" name="deliveryDirections" value={deliveryDirections} />
         <input type="hidden" name="preferredDriverId" value={preferredDriverId} />

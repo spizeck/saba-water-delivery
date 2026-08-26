@@ -19,6 +19,7 @@ function makeRequest(id: string, overrides: Partial<WaterRequest> = {}): WaterRe
     customer: { displayName: `Customer ${id}`, phone: null, email: null, isRegistered: false },
     source: "resident",
     createdBy: null,
+    loads: 1,
     gallons: 1000 as StandardLoadGallons,
     village: "Windwardside",
     deliveryDirections: "Test directions",

@@ -14,7 +14,7 @@
  * PRODUCT.md "Water Situation Privacy".
  */
 
-import type { DispatchPriority, WaterRequest, WaterRequestStatus } from "./types";
+import type { DispatchPriority, RequestedLoads, WaterRequest, WaterRequestStatus } from "./types";
 
 export interface DispatchBatchPdfRow {
   /** 1-based run-sheet position. */
@@ -23,6 +23,7 @@ export interface DispatchBatchPdfRow {
   phone: string | null;
   village: string;
   deliveryDirections: string;
+  loads: RequestedLoads;
   gallons: number;
   priority: DispatchPriority;
   /** ISO timestamp. */
@@ -76,6 +77,7 @@ export function buildDispatchBatchPdfData(
       phone: r.customer?.phone ?? null,
       village: r.village,
       deliveryDirections: r.deliveryDirections,
+      loads: r.loads,
       gallons: r.gallons,
       priority: r.dispatchPriority,
       requestedAt: r.requestedAt,

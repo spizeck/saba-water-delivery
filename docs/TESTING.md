@@ -23,6 +23,9 @@ Vercel's deployment runs.
 
 Vitest covers the pure domain logic extensively, including:
 
+- Water-request quantity validation: 1-load → 1,000 gallons, 2-load →
+  2,000 gallons, invalid load counts rejected, gallons derived
+  server-side (`quantity.ts`).
 - Dispatch priority determination and ranking (`priority.ts`).
 - Batch Dispatch selection ordering, every validation rule (including
   the race scenario where a request changes state before confirmation,
@@ -57,7 +60,10 @@ any of these areas.
 
 - Log in.
 - Complete/update the delivery profile (phone, village, directions).
-- Submit a request; confirm it enters the queue.
+- Submit a request for 1 load and verify it is stored/displayed as
+  1,000 gallons.
+- Submit a request for 2 loads and verify it is stored/displayed as
+  2,000 gallons but still counts as one request.
 - Attempt a second request while the first is still active; confirm it
   is blocked.
 - Confirm a delivered request ("Yes, received").
@@ -81,7 +87,8 @@ any of these areas.
 ### Dispatcher
 
 - Create a manual request for a registered resident and for an
-  unregistered customer.
+  unregistered customer; for each, verify 1-load and 2-load submissions
+  store the correct gallons.
 - Trigger and acknowledge a duplicate warning for an unregistered
   customer.
 - Override a request's priority with a reason.

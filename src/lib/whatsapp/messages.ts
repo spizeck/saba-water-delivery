@@ -7,6 +7,7 @@
  */
 
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { waterOfficeContact } from "@/lib/siteContact";
 
 import { villageMenuText, vulnerableCircumstanceMenuText } from "./parsing";
@@ -15,7 +16,7 @@ import type { WhatsAppDriverOption, WhatsAppSessionDraft } from "./types";
 export const WELCOME_MENU =
   "Welcome to Saba Water Delivery.\n\n" +
   "What would you like to do?\n\n" +
-  "1. Request 1,000 gallons of water\n" +
+  "1. Request water\n" +
   "2. Check my current request\n\n" +
   "Reply with 1 or 2.";
 
@@ -69,6 +70,13 @@ export const ASK_STORAGE =
 export const ASK_URGENCY = "How urgent is this request?\n\n1. Normal\n2. Critical\n\nReply with 1 or 2.";
 export const INVALID_URGENCY = `Sorry, please reply with 1 or 2.\n\n${ASK_URGENCY}`;
 
+export const ASK_LOADS =
+  "How much water are you requesting?\n\n" +
+  "1. 1 load (1,000 gallons)\n" +
+  "2. 2 loads (2,000 gallons)\n\n" +
+  "Reply with 1 or 2.";
+export const INVALID_LOADS = `Sorry, please reply with 1 or 2.\n\n${ASK_LOADS}`;
+
 export const ASK_CRITICAL_EXPLANATION = "Please briefly explain why this request is critical.";
 export const CRITICAL_EXPLANATION_REQUIRED_MESSAGE =
   `A brief explanation is required for a Critical request.\n\n${ASK_CRITICAL_EXPLANATION}`;
@@ -91,12 +99,13 @@ export function requestSummaryMessage(
   draft: WhatsAppSessionDraft,
   preferredDriverName: string | null,
 ): string {
+  const loads = draft.loads ?? 1;
   const lines = [
     "Please review your request:",
     "",
     `Name: ${draft.displayName ?? ""}`,
     `Village: ${draft.village ?? ""}`,
-    "Load: 1,000 gallons",
+    `Quantity: ${formatWaterQuantity(loads)}`,
     `Persons affected: ${draft.personsAffected ?? "Not provided"}`,
     `Priority reported: ${URGENCY_LABEL[draft.reportedUrgency ?? "normal"]}`,
     `Preferred driver: ${preferredDriverName ?? "No preference"}`,
@@ -141,15 +150,18 @@ export function requestStatusMessage(
   return `Status: ${STATUS_LABEL[status]}\nPriority: ${PRIORITY_LABEL[dispatchPriority]}`;
 }
 
-export const DELIVERY_CONFIRMATION_PROMPT =
-  "Your driver marked the delivery complete.\n\n" +
-  "Did you receive your 1,000-gallon delivery?\n\n" +
-  "1. Yes, received\n" +
-  "2. No, there is a problem\n\n" +
-  "Reply with 1 or 2.";
+export function deliveryConfirmationPrompt(loads: number = 1): string {
+  return (
+    "Your driver marked the delivery complete.\n\n" +
+    `Did you receive your ${formatWaterQuantity(loads as 1 | 2).toLowerCase()}?\n\n` +
+    "1. Yes, received\n" +
+    "2. No, there is a problem\n\n" +
+    "Reply with 1 or 2."
+  );
+}
 
 export const INVALID_DELIVERY_CONFIRMATION_CHOICE =
-  `Sorry, please reply with 1 or 2.\n\n${DELIVERY_CONFIRMATION_PROMPT}`;
+  "Sorry, please reply with 1 or 2.";
 
 export const ASK_DISPUTE_REASON = "Please briefly describe the problem with your delivery.";
 

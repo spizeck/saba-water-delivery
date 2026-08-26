@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/Card";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
 import { formatSabaDate } from "@/lib/utils/datetime";
 
@@ -37,7 +38,7 @@ export function RequestHistory({ requests }: Props) {
           <div key={req.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
             <div className="min-w-0">
               <p className="text-sm font-medium text-slate-900">
-                1,000 gal &mdash; {req.village}
+                {formatWaterQuantity(req.loads)} &mdash; {req.village}
               </p>
               <p className="text-xs text-slate-500">
                 {formatDate(req.requestedAt)}

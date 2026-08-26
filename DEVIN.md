@@ -18,7 +18,9 @@ The system must provide:
 
 **Resident requests water → eligible driver claims request → driver delivers water → resident confirms delivery → government retains complete operational visibility and statistics.**
 
-Every load is exactly **1,000 gallons**.
+Every request is for either **1 load (1,000 gallons)** or **2 loads
+(2,000 gallons)**. A two-load request remains one request, one
+priority, one assignment, and one confirmation/dispute record.
 
 ---
 
@@ -250,8 +252,8 @@ Optimize for phone use.
 Primary driver workflow:
 
 1. Go online.
-2. Receive one delivery offer at a time (customer name, village, gallons,
-   age, directions).
+2. Receive one delivery offer at a time (customer name, village, quantity
+   in loads and gallons, age, directions).
 3. Accept or decline the offer.
 4. View customer/location details for an accepted delivery.
 5. Deliver water.
@@ -645,7 +647,7 @@ staff. Accessible via "View Statistics" links in both portals.
 
 ## Metric sections
 
-- **Summary cards:** Total requests, confirmed, awaiting confirmation, disputed, cancelled, gallons.
+- **Summary cards:** Total requests, confirmed, awaiting confirmation, disputed, cancelled, total loads, gallons delivered.
 - **Current operations:** Open requests, aging (>24h, >48h), unresolved disputes, oldest.
 - **Average times:** Request→Claim, Request→Delivery, Claim→Delivery, Delivery→Confirm.
 - **Request volume:** Bar chart (daily for short periods, monthly for year/all).
@@ -695,6 +697,8 @@ for maintainers:
   this request only — never written back to the profile.
 - **Unregistered customer:** name + phone required, email optional, no
   Firebase Auth account created. `customerId` is stored as `null`.
+- **Quantity:** both paths require selecting 1 load (1,000 gallons) or 2
+  loads (2,000 gallons), stored canonically as `loads`/`gallons`.
 - Both paths call the same `createWaterRequest()` used by the resident
   portal, with `source: "dispatcher"` and `createdBy: <staff uid>`. There
   is no separate manual queue or duplicated claiming/dispatch logic.

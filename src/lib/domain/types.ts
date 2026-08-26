@@ -70,11 +70,9 @@ export type WaterRequestStatus =
   | "disputed"
   | "cancelled";
 
-/**
- * Every request is exactly 1,000 gallons in V1. This type exists so the
- * intent is explicit in code even though the value never varies.
- */
-export type StandardLoadGallons = 1000;
+import type { RequestedLoads, StandardLoadGallons } from "./quantity";
+
+export type { RequestedLoads, StandardLoadGallons };
 
 /**
  * Who originated the request. Resident-created requests come from the
@@ -206,6 +204,9 @@ export interface WaterRequest {
    * for `source === "resident"`. */
   createdBy: string | null;
 
+  /** Number of 1,000-gallon loads requested: 1 or 2. */
+  loads: RequestedLoads;
+  /** Derived gallons value — always `loads * 1000`. */
   gallons: StandardLoadGallons;
 
   village: string;

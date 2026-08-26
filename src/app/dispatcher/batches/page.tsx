@@ -41,7 +41,7 @@ export default async function DispatchBatchesPage() {
               </Link>
               <h1 className="mt-2 text-2xl font-bold text-slate-900">Batch Dispatch</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Assign several outstanding loads to one driver at once and
+                Assign several outstanding requests to one driver at once and
                 print a driver dispatch sheet. Use this for planned runs or
                 for a driver whose phone/data access is unreliable — it does
                 not replace the normal one-offer-at-a-time driver dispatch.
@@ -100,7 +100,7 @@ function BatchTable({
               {driverNames[batch.driverId] ?? "Unknown driver"}
             </p>
             <p className="text-xs text-slate-500">
-              {batch.originalRequestIds.length} load
+              {batch.originalRequestIds.length} request
               {batch.originalRequestIds.length === 1 ? "" : "s"} &middot; Created{" "}
               {formatSabaDateTime(batch.createdAt)}
             </p>

@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { DriverOffer, WaterRequest } from "@/lib/domain/types";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 
 import { acceptOffer, declineOffer, type OfferActionState } from "./actions";
 
@@ -92,7 +93,7 @@ export function OfferCard({ offer, request, customer }: Props) {
         </p>
         <p className="text-sm text-slate-600">{request.village}</p>
         <p className="text-sm text-slate-600">
-          1,000 gallons &middot; Requested {formatAge(request.requestedAt)}
+          {formatWaterQuantity(request.loads)} &middot; Requested {formatAge(request.requestedAt)}
         </p>
       </div>
 

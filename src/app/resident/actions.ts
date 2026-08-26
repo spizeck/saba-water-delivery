@@ -9,6 +9,7 @@ import {
   createWaterRequest,
   disputeWaterDelivery,
 } from "@/lib/domain/waterRequests";
+import { parseRequestedLoads } from "@/lib/domain/quantity";
 import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm";
 
 /** Shared, user-facing messages for water-situation validation errors —
@@ -120,6 +121,11 @@ export async function requestWater(
   const preferredDriverId = String(formData.get("preferredDriverId") ?? "").trim();
   const hasPreferred = preferredDriverId && preferredDriverId !== "none";
 
+  const loads = parseRequestedLoads(formData.get("loads"));
+  if (loads === null) {
+    return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+  }
+
   const attestationAccepted = formData.get("attestationAccepted") === "true";
 
   const waterSituation = parseWaterSituationFromFormData(formData);
@@ -127,6 +133,7 @@ export async function requestWater(
   try {
     await createWaterRequest({
       customerId: session.uid,
+      loads,
       village: profile.village,
       deliveryDirections: profile.deliveryDirections,
       preferredDriverId: hasPreferred ? preferredDriverId : null,
@@ -135,6 +142,9 @@ export async function requestWater(
     });
   } catch (err: unknown) {
     if (err instanceof Error) {
+      if (err.message === "INVALID_LOADS") {
+        return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+      }
       if (err.message === "INVALID_VILLAGE") {
         return { status: "error", message: "Please select a valid village from the list." };
       }

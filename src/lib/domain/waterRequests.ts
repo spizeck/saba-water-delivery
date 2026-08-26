@@ -7,13 +7,19 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { appConfig } from "./config";
 import { BATCH_ELIGIBLE_STATUSES, computeDispatchBatchStatus } from "./dispatchBatchSelection";
 import { isValidSabaVillage } from "./villages";
+import {
+  gallonsForLoads,
+  isValidRequestedLoads,
+} from "./quantity";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { isDriverImmediatelyAvailable } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import type {
   DispatchBatchStatus,
   DispatchPriority,
+  RequestedLoads,
   ReportedUrgency,
+  StandardLoadGallons,
   VulnerableCircumstance,
   WaterRequest,
   WaterRequestCustomerSnapshot,
@@ -113,7 +119,10 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     // default rather than a guess.
     source: (data.source as WaterRequestSource) ?? "resident",
     createdBy: data.createdBy ?? null,
-    gallons: data.gallons,
+    loads: isValidRequestedLoads(data.loads) ? data.loads : 1,
+    gallons: isValidRequestedLoads(data.gallons / 1000)
+      ? (data.gallons as StandardLoadGallons)
+      : gallonsForLoads(isValidRequestedLoads(data.loads) ? data.loads : 1),
     village: data.village,
     deliveryDirections: data.deliveryDirections,
     preferredDriverId: data.preferredDriverId ?? null,
@@ -381,6 +390,8 @@ export async function getRequestsForDispatchBatch(batchId: string): Promise<Wate
 export interface CreateWaterRequestInput {
   /** Firebase uid of the resident, or null for an unregistered/manual customer. */
   customerId: string | null;
+  /** Number of 1,000-gallon loads requested: 1 or 2. */
+  loads: RequestedLoads;
   village: string;
   deliveryDirections: string;
   preferredDriverId?: string | null;
@@ -443,6 +454,7 @@ export async function createWaterRequest(
   const db = getAdminDb();
   const {
     customerId,
+    loads,
     village,
     deliveryDirections,
     preferredDriverId,
@@ -453,6 +465,11 @@ export async function createWaterRequest(
     waterSituation: waterSituationInput,
     attestationAccepted,
   } = input;
+
+  if (!isValidRequestedLoads(loads)) {
+    throw new Error("INVALID_LOADS");
+  }
+  const gallons = gallonsForLoads(loads);
 
   if (!customerId && !customerInput?.displayName?.trim()) {
     throw new Error("CUSTOMER_NAME_REQUIRED");
@@ -573,7 +590,8 @@ export async function createWaterRequest(
       customer: customerSnapshot,
       source,
       createdBy: source === "dispatcher" ? createdBy : null,
-      gallons: appConfig.standardLoadGallons,
+      loads,
+      gallons,
       village,
       deliveryDirections,
       preferredDriverId: preferredDriverId ?? null,
@@ -611,6 +629,8 @@ export async function createWaterRequest(
       actorRole: source === "dispatcher" ? "dispatcher" : "resident",
       createdAt: now,
       metadata: {
+        loads,
+        gallons,
         village,
         preferredDriverId: preferredDriverId ?? null,
         isRegisteredCustomer: Boolean(customerId),

@@ -22,6 +22,23 @@ not attempt to recreate the full prelaunch development history.
 ## Unreleased
 
 Operational usability pass following government dispatcher testing.
+
+Quantity model change:
+- Residents may now request either 1 load (1,000 gallons) or 2 loads
+  (2,000 gallons) in a single request. The choice is required on the
+  resident web form, the dispatcher manual-request form, and the
+  WhatsApp ordering flow. A two-load request remains one request, one
+  priority, one assignment, and one confirmation/dispute record — it is
+  not split into two request documents.
+- Gallons are derived server-side from `loads`; clients cannot send an
+  authoritative gallon value. Statistics now total actual request
+  gallons instead of assuming `request count × 1,000`.
+- Driver offers, batch dispatch sheets, continuity reports, and all
+  request detail/list views display the actual quantity in loads and
+  gallons.
+- Partial-load fulfillment is not tracked; marking a two-load request
+  delivered means the full requested quantity was physically delivered.
+
 Prelaunch cleanup pass:
 - Canonical village dropdowns (resident profile, dispatcher request,
   WhatsApp) and server-side validation of the five approved village

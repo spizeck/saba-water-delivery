@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getAllDriverRegistryEntries, getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
+import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
 import {
   checkDeliveryConfirmationTimeout,
   getFrequentRequestCountForCustomer,
@@ -244,6 +245,10 @@ export default async function RequestDetailPage({ params }: PageProps) {
                     </span>
                   )}
                 </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Quantity</dt>
+                <dd className="text-slate-900">{formatWaterQuantity(data.loads as RequestedLoads)}</dd>
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Phone</dt>

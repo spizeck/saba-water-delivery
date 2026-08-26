@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { createBatch, type CreateBatchActionState } from "@/app/dispatcher/actions";
 import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
-import type { DispatchPriority } from "@/lib/domain/types";
+import { formatWaterQuantity, LOAD_GALLONS } from "@/lib/domain/quantity";
+import type { DispatchPriority, RequestedLoads } from "@/lib/domain/types";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 interface DriverOption {
@@ -21,7 +22,7 @@ interface RequestOption {
   id: string;
   customerName: string;
   village: string;
-  gallons: number;
+  loads: RequestedLoads;
   priority: DispatchPriority;
   requestedAt: string;
   preferredDriverId: string | null;
@@ -95,7 +96,7 @@ export function NewBatchForm({
         </StepLabel>
         <span>&rarr;</span>
         <StepLabel active={step === "requests"} done={selectedIds.length > 0}>
-          2. Loads
+          2. Requests
         </StepLabel>
         <span>&rarr;</span>
         <StepLabel active={step === "review"} done={false}>
@@ -149,7 +150,7 @@ export function NewBatchForm({
               onClick={() => setStep("requests")}
               className="text-sm !h-9 !px-3"
             >
-              Next: choose loads
+              Next: choose requests
             </Button>
           </div>
         </div>
@@ -158,7 +159,7 @@ export function NewBatchForm({
       {step === "requests" && (
         <div className="mt-4 flex flex-col gap-2">
           <p className="text-sm font-medium text-slate-700">
-            Select loads for {selectedDriver?.displayName}
+            Select requests for {selectedDriver?.displayName}
           </p>
           <p className="text-xs text-slate-500">
             Listed in the normal dispatch order — highest priority first,
@@ -190,7 +191,7 @@ export function NewBatchForm({
                         {r.customerName} &mdash; {r.village}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {r.gallons} gal &middot; Requested {formatSabaDateTime(r.requestedAt)}
+                        {formatWaterQuantity(r.loads)} &middot; Requested {formatSabaDateTime(r.requestedAt)}
                       </p>
                       {r.preferredDriverName && (
                         <p className={`text-xs ${isOverride ? "font-semibold text-amber-800" : "text-slate-500"}`}>
@@ -246,8 +247,8 @@ export function NewBatchForm({
             Review batch for {selectedDriver.displayName}
           </p>
           <p className="text-xs text-slate-500">
-            {selectedIds.length} load{selectedIds.length === 1 ? "" : "s"} selected &middot;{" "}
-            {selectedRequests.reduce((sum, r) => sum + r.gallons, 0)} gallons total
+            {selectedIds.length} request{selectedIds.length === 1 ? "" : "s"} selected &middot;{" "}
+            {selectedRequests.reduce((sum, r) => sum + r.loads * LOAD_GALLONS, 0).toLocaleString("en-US")} gallons total
           </p>
 
           <ol className="flex flex-col gap-1.5 rounded-lg border border-slate-200 p-3 text-sm">
@@ -266,7 +267,7 @@ export function NewBatchForm({
           {overrideRequests.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
               <p className="text-sm font-semibold text-amber-900">
-                {overrideRequests.length} of these loads are held for a different
+                {overrideRequests.length} of these requests are held for a different
                 resident-preferred driver
               </p>
               <ul className="mt-1 list-disc pl-5 text-xs text-amber-900">

@@ -70,16 +70,16 @@ preserved.
   priority (with a reason), and resolve disputes.
 - Dispatchers can enter a request for a resident who cannot use the
   website — see "Manual requests" below.
-- For a driver who needs several loads assigned at once — most often a
-  driver whose phone or data connection is unreliable — dispatchers can
-  use **Batch Dispatch** to assign a group of loads together and print
-  a driver dispatch sheet. This is a deliberate exception, separate
-  from the normal one-offer-at-a-time driver workflow above — see
-  "Batch Dispatch" below.
+- For a driver who needs several requests assigned at once — most often
+  a driver whose phone or data connection is unreliable — dispatchers
+  can use **Batch Dispatch** to assign a group of requests together and
+  print a driver dispatch sheet. This is a deliberate exception,
+  separate from the normal one-offer-at-a-time driver workflow above —
+  see "Batch Dispatch" below.
 
 ## Batch Dispatch
 
-Batch Dispatch lets a dispatcher assign several outstanding loads to
+Batch Dispatch lets a dispatcher assign several outstanding requests to
 one driver at once, instead of the driver receiving them one at a time
 through the app. Use it when:
 
@@ -88,15 +88,17 @@ through the app. Use it when:
   deliveries.
 - Staff are planning a run for a driver ahead of time.
 
-The dispatcher selects the driver and the loads, reviews the list, and
+The dispatcher selects the driver and the requests, reviews the list, and
 confirms. This produces a printable "Driver Dispatch Sheet" listing
-every load with the customer's name, phone, village, directions, and a
-simple checkbox/notes area for the driver (or a dispatcher, if the
-driver cannot use the app) to mark off as each load is completed.
+every request with the customer's name, phone, village, quantity
+(loads and gallons), directions, and a simple checkbox/notes area for
+the driver (or a dispatcher, if the driver cannot use the app) to mark
+off as each request is completed.
 
-Each load in a batch is still delivered and confirmed individually,
+Each request in a batch is still delivered and confirmed individually,
 exactly like any other request — Batch Dispatch does not change how a
-delivery is completed, only how it was assigned. See
+delivery is completed, only how it was assigned. A two-load request
+appears as one entry and is delivered as one request. See
 [`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) for the step-by-step
 screens.
 
@@ -106,9 +108,12 @@ Not every resident can or will use the website. If someone calls the
 office or visits in person, a dispatcher enters the request directly
 using "Create Request" — either by finding their existing account or,
 if they have none, by entering their name, phone, village, and
-delivery directions. This is a normal request, not a special case: it
-goes through the exact same queue, priority, and driver-assignment
-rules as any other request.
+delivery directions. For all manual requests the dispatcher must also
+select the quantity: **1 load (1,000 gallons)** or **2 loads (2,000
+gallons)**. A two-load request is still a single request document with
+one priority, one assignment, and one confirmation/dispute record. This
+is a normal request, not a special case: it goes through the exact same
+queue, priority, and driver-assignment rules as any other request.
 
 Villages must be chosen from the approved list (St Johns, The Bottom,
 Windwardside, Zions Hill - Lower, Zions Hill - Upper). Free-text
@@ -137,7 +142,7 @@ outages affect which channels.
 At 8:00 PM Saba time, the system automatically generates and emails an
 Outstanding Delivery Snapshot report to the configured government
 recipients. This report lists every request that has not yet been
-delivered (unassigned and currently-assigned loads) so that, if the
+delivered (unassigned and currently-assigned requests) so that, if the
 website or internet becomes unavailable, staff and drivers still have
 a paper/PDF record of exactly what water still needs to be delivered
 and to whom. See [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) for

@@ -34,6 +34,7 @@ export type WhatsAppConversationStep =
   | "collect_storage"
   | "collect_urgency"
   | "collect_critical_explanation"
+  | "collect_loads"
   | "collect_preferred_driver"
   | "confirm_request"
   | "confirm_delivery"
@@ -55,6 +56,8 @@ export interface WhatsAppSessionDraft {
   availableStorageCapacity?: string | null;
   reportedUrgency?: ReportedUrgency;
   criticalExplanation?: string | null;
+  /** Number of 1,000-gallon loads requested: 1 or 2. */
+  loads?: 1 | 2;
   /** Firebase uid of the preferred driver, or null for "no preference". */
   preferredDriverId?: string | null;
   /**
@@ -123,6 +126,7 @@ export type WhatsAppConversationAction =
       type: "create_request";
       customerId: string | null;
       customer: { displayName: string; phone: string; email: string | null } | null;
+      loads: 1 | 2;
       village: string;
       deliveryDirections: string;
       preferredDriverId: string | null;

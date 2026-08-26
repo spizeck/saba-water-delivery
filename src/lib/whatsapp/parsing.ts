@@ -84,6 +84,14 @@ export function parseVulnerableCircumstances(text: string): VulnerableCircumstan
   return selected;
 }
 
+/** Parses the quantity/load menu choice ("1" or "2"). */
+export function parseLoadsChoice(text: string): 1 | 2 | null {
+  const num = parseMenuNumber(text);
+  if (num === 1) return 1;
+  if (num === 2) return 2;
+  return null;
+}
+
 /** Parses the Normal/Critical urgency menu choice ("1" or "2"). */
 export function parseUrgencyChoice(text: string): "normal" | "critical" | null {
   const num = parseMenuNumber(text);

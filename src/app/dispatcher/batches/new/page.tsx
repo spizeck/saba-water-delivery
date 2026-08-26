@@ -50,7 +50,7 @@ export default async function NewBatchPage() {
     id: r.id,
     customerName: r.customer?.displayName || "Unknown",
     village: r.village,
-    gallons: r.gallons,
+    loads: r.loads,
     priority: r.dispatchPriority,
     requestedAt: r.requestedAt,
     preferredDriverId: r.preferredDriverId,
@@ -68,7 +68,7 @@ export default async function NewBatchPage() {
             </Link>
             <h1 className="mt-2 text-2xl font-bold text-slate-900">New Batch</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Select a driver, then choose the loads to assign them at once.
+              Select a driver, then choose the requests to assign them at once.
             </p>
           </div>
 

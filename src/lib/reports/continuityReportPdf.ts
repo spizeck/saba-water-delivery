@@ -19,6 +19,7 @@ import type {
   ContinuityReportData,
   UnassignedReportRow,
 } from "@/lib/domain/continuityReport";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 export { continuityReportPdfFilename } from "./continuityReportFilename";
@@ -64,7 +65,7 @@ function drawUnassignedRow(doc: PDFKit.PDFDocument, row: UnassignedReportRow) {
       [
         `Village: ${row.village}`,
         row.phone ? `Phone: ${row.phone}` : null,
-        `Gallons: ${row.gallons}`,
+        `Quantity: ${formatWaterQuantity(row.loads)}`,
       ]
         .filter(Boolean)
         .join("   |   "),
@@ -99,7 +100,7 @@ function drawAssignedRow(doc: PDFKit.PDFDocument, row: AssignedReportRow) {
       [
         `Village: ${row.village}`,
         row.phone ? `Phone: ${row.phone}` : null,
-        `Gallons: ${row.gallons}`,
+        `Quantity: ${formatWaterQuantity(row.loads)}`,
       ]
         .filter(Boolean)
         .join("   |   "),
@@ -147,14 +148,14 @@ export function renderContinuityReportPdf(data: ContinuityReportData): Promise<B
         "This report reflects the delivery queue as of the generated time shown above. It is a snapshot, not live data.",
       );
 
-    drawSectionHeading(doc, `Unassigned Loads (${data.unassigned.length})`);
+    drawSectionHeading(doc, `Unassigned Requests (${data.unassigned.length})`);
     if (data.unassigned.length === 0) {
       doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("None.");
     } else {
       for (const row of data.unassigned) drawUnassignedRow(doc, row);
     }
 
-    drawSectionHeading(doc, `Assigned Loads (${data.assigned.length})`);
+    drawSectionHeading(doc, `Assigned Requests (${data.assigned.length})`);
     if (data.assigned.length === 0) {
       doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("None.");
     } else {

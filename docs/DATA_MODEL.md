@@ -106,7 +106,10 @@ where it originated. This is the operational core of the system.
   "Request source" below).
 - `createdBy` — the staff uid who created the request, only set when
   `source === "dispatcher"`.
-- `gallons` — always `1000`.
+- `loads` — `1` or `2`; the number of 1,000-gallon loads requested in a
+  single request.
+- `gallons` — derived server-side as `loads * 1000`, so `1000` or
+  `2000`. Clients never send an authoritative gallon value.
 - `village`, `deliveryDirections` — the delivery location for this
   request (may differ from the resident's saved profile if a
   dispatcher adjusted it for this request only). New and updated

@@ -267,7 +267,8 @@ referencing driver IDs inconsistently.
   // when source is "resident".
   createdBy: string | null
 
-  gallons: 1000
+  loads: 1 | 2
+  gallons: loads * 1000 // 1000 | 2000
 
   village: string
   deliveryDirections: string
@@ -869,7 +870,7 @@ status stays correct afterward.
 (`continuityReportData.ts`), set from `r.dispatchBatchId != null` — no
 other change was needed, since a batch-assigned request is already
 `status: "claimed"` and therefore already included in the report's
-existing "Assigned Loads" section
+existing "Assigned Requests" section
 (`getOutstandingRequestsForContinuityReport()` already includes
 `"claimed"`). `continuityReportPdf.ts` prints `(Batch)` after the
 driver's name on such rows, purely for staff context during an
@@ -1825,10 +1826,10 @@ request → delivered
 delivery → confirmed
 ```
 
-Use completed request count to calculate gallons:
+Use each request's stored `gallons` value to calculate total gallons:
 
 ```text
-completedRequests * 1000
+sum(request.gallons for request in completedRequests)
 ```
 
 Dispatcher-created requests count toward every metric identically to
@@ -1908,12 +1909,13 @@ tested without Firestore or network access:
 
 ## Report contents
 
-**Unassigned Loads**: priority, customer name, phone, village, delivery
+**Unassigned Requests**: priority, customer name, phone, village, delivery
 directions, requested time (Saba local), age (elapsed since
-`requestedAt`), preferred driver name (if any), gallons.
+`requestedAt`), preferred driver name (if any), quantity (loads and gallons).
 
-**Assigned Loads**: priority, customer name, phone, village, delivery
-directions, assigned driver name, requested time, claimed time, gallons.
+**Assigned Requests**: priority, customer name, phone, village, delivery
+directions, assigned driver name, requested time, claimed time, quantity
+(loads and gallons).
 
 A "delivered, awaiting confirmation" section was considered but not
 built for V1 — those deliveries have already physically occurred, so

@@ -25,6 +25,7 @@ import {
   isConfirmKeyword,
   isGreeting,
   parseAvailableStorage,
+  parseLoadsChoice,
   parseMenuNumber,
   parsePersonsAffected,
   parseUrgencyChoice,
@@ -72,7 +73,7 @@ function handleMenu(
   }
 
   if (choice === 1) {
-    // Request 1,000 gallons of water.
+    // Start a new water request.
     if (context.activeRequest) {
       return {
         session,
@@ -117,7 +118,10 @@ function handleMenu(
           step: "confirm_delivery",
           draft: { activeRequestId: context.activeRequest.id },
         }),
-        outbound: [statusMsg, m.DELIVERY_CONFIRMATION_PROMPT],
+        outbound: [
+          statusMsg,
+          m.deliveryConfirmationPrompt(context.activeRequest.loads),
+        ],
       };
     }
     return { session, outbound: [statusMsg] };
@@ -241,7 +245,6 @@ function handleCollectStorage(session: WhatsAppSession, text: string): WhatsAppC
 function handleCollectUrgency(
   session: WhatsAppSession,
   text: string,
-  context: WhatsAppConversationContext,
 ): WhatsAppConversationResult {
   const urgency = parseUrgencyChoice(text);
   if (!urgency) return { session, outbound: [m.INVALID_URGENCY] };
@@ -258,24 +261,41 @@ function handleCollectUrgency(
 
   return {
     session: withSession(session, {
-      step: "collect_preferred_driver",
+      step: "collect_loads",
       draft: { reportedUrgency: urgency, criticalExplanation: null },
     }),
-    outbound: [m.preferredDriverMenuText(context.eligibleDrivers)],
+    outbound: [m.ASK_LOADS],
   };
 }
 
 function handleCollectCriticalExplanation(
   session: WhatsAppSession,
   text: string,
-  context: WhatsAppConversationContext,
 ): WhatsAppConversationResult {
   const explanation = text.trim();
   if (!explanation) return { session, outbound: [m.CRITICAL_EXPLANATION_REQUIRED_MESSAGE] };
   return {
     session: withSession(session, {
-      step: "collect_preferred_driver",
+      step: "collect_loads",
       draft: { criticalExplanation: explanation },
+    }),
+    outbound: [m.ASK_LOADS],
+  };
+}
+
+function handleCollectLoads(
+  session: WhatsAppSession,
+  text: string,
+  context: WhatsAppConversationContext,
+): WhatsAppConversationResult {
+  const loads = parseLoadsChoice(text);
+  if (loads === null) {
+    return { session, outbound: [m.INVALID_LOADS] };
+  }
+  return {
+    session: withSession(session, {
+      step: "collect_preferred_driver",
+      draft: { loads },
     }),
     outbound: [m.preferredDriverMenuText(context.eligibleDrivers)],
   };
@@ -337,6 +357,7 @@ function handleConfirmRequestStep(
             phone: draft.phone ?? session.senderPhone,
             email: null,
           },
+      loads: draft.loads ?? 1,
       village: draft.village ?? "",
       deliveryDirections: draft.deliveryDirections ?? "",
       preferredDriverId: draft.preferredDriverId ?? null,
@@ -422,9 +443,11 @@ export function processMessage(
     case "collect_storage":
       return handleCollectStorage(session, text);
     case "collect_urgency":
-      return handleCollectUrgency(session, text, context);
+      return handleCollectUrgency(session, text);
     case "collect_critical_explanation":
-      return handleCollectCriticalExplanation(session, text, context);
+      return handleCollectCriticalExplanation(session, text);
+    case "collect_loads":
+      return handleCollectLoads(session, text, context);
     case "collect_preferred_driver":
       return handleCollectPreferredDriver(session, text, context);
     case "confirm_request":

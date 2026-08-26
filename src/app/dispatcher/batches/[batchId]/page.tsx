@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/auth/session";
 import { getDispatchBatch } from "@/lib/domain/dispatchBatches";
 import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { priorityRankFor } from "@/lib/domain/priority";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getRequestsForDispatchBatch } from "@/lib/domain/waterRequests";
@@ -121,7 +122,7 @@ export default async function BatchDetailPage({ params }: PageProps) {
                 </p>
                 <p className="text-xs text-slate-400">Batch ID: {batch.id}</p>
                 <p className="mt-1 text-sm text-slate-500">
-                  {batch.originalRequestIds.length} load
+                  {batch.originalRequestIds.length} request
                   {batch.originalRequestIds.length === 1 ? "" : "s"} originally assigned
                   {batch.generatedAt && (
                     <> &middot; Sheet last generated {formatSabaDateTime(batch.generatedAt)}</>
@@ -148,7 +149,7 @@ export default async function BatchDetailPage({ params }: PageProps) {
 
           <Card>
             <h2 className="text-lg font-bold text-slate-900">
-              Loads ({sortedRequests.length}
+              Requests ({sortedRequests.length}
               {sortedRequests.length !== batch.originalRequestIds.length && (
                 <span className="font-normal text-slate-500">
                   {" "}
@@ -175,7 +176,7 @@ export default async function BatchDetailPage({ params }: PageProps) {
                           </Link>
                         </p>
                         <p className="text-sm text-slate-700">
-                          {r.village} &middot; {r.customer?.phone ?? "No phone"} &middot; {r.gallons} gal
+                          {r.village} &middot; {r.customer?.phone ?? "No phone"} &middot; {formatWaterQuantity(r.loads)}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">{r.deliveryDirections}</p>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs">

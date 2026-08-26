@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getAllRequests } from "@/lib/domain/waterRequests";
 import { formatSabaDate } from "@/lib/utils/datetime";
@@ -63,6 +64,7 @@ export default async function ViewerPortalPage() {
     id: r.id,
     status: r.status,
     dispatchPriority: r.dispatchPriority,
+    loads: r.loads,
     village: r.village,
     source: r.source,
     requestedAt: r.requestedAt,
@@ -112,6 +114,7 @@ export default async function ViewerPortalPage() {
                     <tr className="border-b border-slate-200 text-left text-xs font-medium uppercase text-slate-500">
                       <th className="pb-2 pr-3">Status</th>
                       <th className="pb-2 pr-3">Priority</th>
+                      <th className="pb-2 pr-3">Qty</th>
                       <th className="pb-2 pr-3">Village</th>
                       <th className="pb-2 pr-3">Requested</th>
                       <th className="pb-2 pr-3">Source</th>
@@ -123,6 +126,7 @@ export default async function ViewerPortalPage() {
                       <tr key={r.id}>
                         <td className="py-2 pr-3 text-slate-900">{STATUS_LABELS[r.status]}</td>
                         <td className="py-2 pr-3 text-slate-600 capitalize">{r.dispatchPriority}</td>
+                        <td className="py-2 pr-3 text-slate-600">{formatWaterQuantity(r.loads)}</td>
                         <td className="py-2 pr-3 text-slate-600">{r.village}</td>
                         <td className="py-2 pr-3 text-slate-600">{formatSabaDate(r.requestedAt)}</td>
                         <td className="py-2 pr-3 text-slate-600">

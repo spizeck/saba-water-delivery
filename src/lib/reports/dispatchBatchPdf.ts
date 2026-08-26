@@ -15,6 +15,7 @@ import "server-only";
 import PDFDocument from "pdfkit";
 
 import type { DispatchBatchPdfData, DispatchBatchPdfRow } from "@/lib/domain/dispatchBatchPdfData";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 export { dispatchBatchPdfFilename } from "./dispatchBatchPdfFilename";
@@ -66,7 +67,7 @@ function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
       [
         `Village: ${row.village}`,
         row.phone ? `Phone: ${row.phone}` : null,
-        `Gallons: ${row.gallons}`,
+        `Quantity: ${formatWaterQuantity(row.loads)}`,
       ]
         .filter(Boolean)
         .join("   |   "),
@@ -144,11 +145,11 @@ export function renderDispatchBatchPdf(data: DispatchBatchPdfData): Promise<Buff
       .font("Helvetica-Bold")
       .fontSize(13)
       .fillColor("#0f172a")
-      .text(`Loads (${data.rows.length})`);
+      .text(`Requests (${data.rows.length})`);
     doc.moveDown(0.25);
 
     if (data.rows.length === 0) {
-      doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("No loads in this batch.");
+      doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("No requests in this batch.");
     } else {
       for (const row of data.rows) drawRow(doc, row);
     }

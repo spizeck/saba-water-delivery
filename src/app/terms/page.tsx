@@ -28,7 +28,7 @@ export default function TermsPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Purpose of the service</h2>
                 <p className="mt-2 text-slate-600">
-                  Saba Water Delivery is a government service that lets residents request a standard 1,000-gallon government RO water delivery and lets authorized drivers claim and complete those deliveries.
+                  Saba Water Delivery is a government service that lets residents request a standard government RO water delivery of 1 or 2 1,000-gallon loads and lets authorized drivers claim and complete those deliveries.
                 </p>
               </section>
 
@@ -42,7 +42,12 @@ export default function TermsPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Requests and delivery</h2>
                 <p className="mt-2 text-slate-600">
-                  Requests are for a standard 1,000-gallon delivery. The service uses reported urgency and vulnerable or critical circumstances to help set an operational dispatch priority. Government staff may reassign or reprioritize requests based on operational need. A preferred driver is a preference, not a guarantee.
+                  Requests are for one or two 1,000-gallon loads (1,000 or
+                  2,000 gallons total). The service uses reported urgency
+                  and vulnerable or critical circumstances to help set an
+                  operational dispatch priority. Government staff may
+                  reassign or reprioritize requests based on operational
+                  need. A preferred driver is a preference, not a guarantee.
                 </p>
               </section>
 

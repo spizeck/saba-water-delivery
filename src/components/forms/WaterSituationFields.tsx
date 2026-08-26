@@ -103,7 +103,7 @@ export function WaterSituationFields({ value, onChange }: Props) {
           className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
         />
         <span className="text-xs font-normal text-slate-500">
-          Each delivery is 1,000 gallons. Enter a description or estimate.
+          Each load is 1,000 gallons. Enter a description or estimate.
         </span>
       </label>
 

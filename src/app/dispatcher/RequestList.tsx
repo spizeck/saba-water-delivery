@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { DispatchPriority, WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
 
 const PRIORITY_LABELS: Record<DispatchPriority, string> = {
@@ -79,6 +80,7 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                   <th className="pb-2 pr-3">Priority</th>
                   <th className="pb-2 pr-3">Age</th>
                   <th className="pb-2 pr-3">Customer</th>
+                  <th className="pb-2 pr-3">Qty</th>
                   <th className="pb-2 pr-3">Village</th>
                   <th className="pb-2 pr-3">Driver</th>
                   <th className="pb-2"></th>
@@ -113,6 +115,7 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                         </span>
                       )}
                     </td>
+                    <td className="py-2 pr-3 text-slate-600">{formatWaterQuantity(req.loads)}</td>
                     <td className="py-2 pr-3 text-slate-600">{req.village}</td>
                     <td className="py-2 pr-3 text-slate-600">
                       {req.assignedDriverId

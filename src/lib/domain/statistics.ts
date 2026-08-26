@@ -9,6 +9,7 @@ import type { DispatchPriority, WaterRequestSource, WaterRequestStatus } from ".
 import { appConfig } from "./config";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { getOfferAggregate } from "./driverOffers";
+import { LOAD_GALLONS } from "./quantity";
 
 /** Fixed display order for priority breakdowns — not derived from the
  * numeric `priorityRank` used for dispatch ordering, to keep the two
@@ -65,6 +66,8 @@ export interface SummaryMetrics {
   disputed: number;
   cancelled: number;
   gallonsDelivered: number;
+  /** Total number of 1,000-gallon loads requested in the selected period. */
+  totalLoads: number;
   /** How many requests were submitted online (resident), via WhatsApp, or entered by staff. */
   bySource: { resident: number; dispatcher: number; whatsapp: number };
   /** How many requests were created at each dispatch priority level
@@ -233,6 +236,7 @@ interface RawRequest {
   claimedAt: Date | null;
   deliveredAt: Date | null;
   confirmedAt: Date | null;
+  loads: number;
   gallons: number;
 }
 
@@ -268,6 +272,7 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       claimedAt: d.claimedAt?.toDate?.() ?? null,
       deliveredAt: d.deliveredAt?.toDate?.() ?? null,
       confirmedAt: d.confirmedAt?.toDate?.() ?? null,
+      loads: typeof d.loads === "number" ? d.loads : Math.floor((d.gallons ?? appConfig.standardLoadGallons) / LOAD_GALLONS),
       gallons: d.gallons ?? appConfig.standardLoadGallons,
     };
   });
@@ -284,9 +289,10 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     ).length,
     disputed: requests.filter((r) => r.status === "disputed").length,
     cancelled: requests.filter((r) => r.status === "cancelled").length,
-    gallonsDelivered:
-      requests.filter((r) => DELIVERED_STATUSES.includes(r.status)).length *
-      appConfig.standardLoadGallons,
+    gallonsDelivered: requests
+      .filter((r) => DELIVERED_STATUSES.includes(r.status))
+      .reduce((sum, r) => sum + r.gallons, 0),
+    totalLoads: requests.reduce((sum, r) => sum + r.loads, 0),
     bySource: {
       resident: requests.filter((r) => r.source === "resident").length,
       dispatcher: requests.filter((r) => r.source === "dispatcher").length,
@@ -384,15 +390,16 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   // ---------------------------------------------------------------------------
   const villageMap = new Map<
     string,
-    { requests: number; deliveredLoads: number }
+    { requests: number; deliveredLoads: number; gallonsDelivered: number }
   >();
 
   for (const r of requests) {
     const v = r.village;
-    const entry = villageMap.get(v) ?? { requests: 0, deliveredLoads: 0 };
+    const entry = villageMap.get(v) ?? { requests: 0, deliveredLoads: 0, gallonsDelivered: 0 };
     entry.requests++;
     if (DELIVERED_STATUSES.includes(r.status)) {
-      entry.deliveredLoads++;
+      entry.deliveredLoads += r.loads;
+      entry.gallonsDelivered += r.gallons;
     }
     villageMap.set(v, entry);
   }
@@ -402,7 +409,7 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       village,
       requests: data.requests,
       deliveredLoads: data.deliveredLoads,
-      gallonsDelivered: data.deliveredLoads * appConfig.standardLoadGallons,
+      gallonsDelivered: data.gallonsDelivered,
     }))
     .sort((a, b) => b.requests - a.requests);
 
@@ -428,11 +435,11 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
 
     // Loads claimed (any request that has been assigned to this driver currently).
     if (r.claimedAt) {
-      driverClaimedMap.set(driverId, (driverClaimedMap.get(driverId) ?? 0) + 1);
+      driverClaimedMap.set(driverId, (driverClaimedMap.get(driverId) ?? 0) + r.loads);
     }
     // Loads delivered
     if (DELIVERED_STATUSES.includes(r.status)) {
-      driverDeliveredMap.set(driverId, (driverDeliveredMap.get(driverId) ?? 0) + 1);
+      driverDeliveredMap.set(driverId, (driverDeliveredMap.get(driverId) ?? 0) + r.loads);
     }
     // Confirmed deliveries
     if (r.status === "confirmed") {

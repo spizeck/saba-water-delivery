@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { WaterRequest } from "@/lib/domain/types";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import { markDelivered, type MarkDeliveredActionState } from "./actions";
@@ -74,7 +75,7 @@ function DeliveryCard({
     <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-slate-900">
-          1,000 gal &mdash; {request.village}
+          {formatWaterQuantity(request.loads)} &mdash; {request.village}
         </p>
         {request.dispatchBatchId && (
           <span className="inline-flex shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-900">
@@ -145,7 +146,7 @@ function DeliveryCard({
       ) : (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm font-medium text-amber-800">
-            Confirm that you have delivered 1,000 gallons to this address?
+            Confirm that you have delivered {formatWaterQuantity(request.loads).toLowerCase()} to this address?
           </p>
           <form action={formAction} className="mt-2 flex gap-2">
             <input type="hidden" name="requestId" value={request.id} />

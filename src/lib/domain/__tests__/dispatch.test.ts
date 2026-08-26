@@ -23,6 +23,7 @@ function makeRequest(
     customer: null,
     source: "resident",
     createdBy: null,
+    loads: 1,
     gallons: 1000 as StandardLoadGallons,
     village: "Test Village",
     deliveryDirections: "Test directions",

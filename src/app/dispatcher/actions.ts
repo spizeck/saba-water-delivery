@@ -8,6 +8,7 @@ import { generateContinuityReportData } from "@/lib/domain/continuityReport";
 import { createDispatchBatch } from "@/lib/domain/dispatchBatches";
 import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
 import { restrictDriver as restrictDriverEntry, restoreDriver as restoreDriverEntry } from "@/lib/domain/driverRegistry";
+import { parseRequestedLoads } from "@/lib/domain/quantity";
 import { isValidDispatchPriority } from "@/lib/domain/priority";
 import type { DispatchPriority } from "@/lib/domain/types";
 import {
@@ -285,6 +286,7 @@ export async function createManualRequest(
   const session = await requireStaff();
 
   const customerType = String(formData.get("customerType") ?? "existing");
+  const loads = parseRequestedLoads(formData.get("loads"));
   const village = String(formData.get("village") ?? "").trim();
   const deliveryDirections = String(formData.get("deliveryDirections") ?? "").trim();
   const preferredDriverIdRaw = String(formData.get("preferredDriverId") ?? "").trim();
@@ -293,6 +295,9 @@ export async function createManualRequest(
   const overrideDuplicate = formData.get("overrideDuplicate") === "true";
   const attestationAccepted = formData.get("attestationAccepted") === "true";
 
+  if (loads === null) {
+    return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+  }
   if (!village) return { status: "error", message: "Village/area is required." };
   if (!deliveryDirections) {
     return { status: "error", message: "Delivery directions are required." };
@@ -311,6 +316,7 @@ export async function createManualRequest(
     try {
       await createWaterRequest({
         customerId: residentUid,
+        loads,
         village,
         deliveryDirections,
         preferredDriverId,
@@ -321,6 +327,9 @@ export async function createManualRequest(
       });
     } catch (err: unknown) {
       if (err instanceof Error) {
+        if (err.message === "INVALID_LOADS") {
+          return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+        }
         if (err.message === "INVALID_VILLAGE") {
           return { status: "error", message: "Please select a valid village from the list." };
         }
@@ -379,6 +388,7 @@ export async function createManualRequest(
   try {
     await createWaterRequest({
       customerId: null,
+      loads,
       village,
       deliveryDirections,
       preferredDriverId,
@@ -398,6 +408,8 @@ export async function createManualRequest(
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
+        case "INVALID_LOADS":
+          return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
         case "INVALID_VILLAGE":
           return { status: "error", message: "Please select a valid village from the list." };
         case "CUSTOMER_NAME_REQUIRED":
