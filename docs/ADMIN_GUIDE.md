@@ -142,6 +142,12 @@ Each driver has an independent meter code and number per fill station
 (Bottom, W.W.S., Hells Gate). Edit these from the driver's detail page.
 Changing one station's assignment does not affect the others.
 
+These meter assignments are also used when drivers record water collection.
+If a driver reports a "No meter assigned" error, check or update their meter
+assignment for the fill station they are using. Historical collection records
+store a snapshot of the meter at the time of collection, so changing an
+assignment does not alter past records.
+
 ### A driver can receive work only when all of the following are true
 
 - A Driver Registry entry exists for them.

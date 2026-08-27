@@ -21,6 +21,18 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+Water Collection Tracking:
+- Per-load fill station and meter recording before a delivery can be marked
+  complete; the delivery is blocked until every load is collected.
+- New driver collection UI for recording each load's fill station and meter.
+- Dispatcher staff reconciliation for missing load collections, creating an
+  audit record.
+- Batch dispatch PDF sheets now show per-load collection areas.
+- Dispatcher statistics view shows fill-station and meter totals.
+- Technical: `WaterLoadCollection` type, `recordWaterCollection` domain
+  function, `loadCollection.ts` pure helpers, `water_collected` and
+  `water_collected_by_staff` audit events, `DEFAULT_FILL_STATION_ID` constant.
+
 Identity and account management:
 - Accounts remain optional for receiving water. Unregistered requestors
   can still request delivery with name and phone only.

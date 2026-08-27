@@ -5,10 +5,12 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getAllDriverRegistryEntries, getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
+import { getAllDriverRegistryEntries, getEligibleDriverOptions, getMeterAssignments } from "@/lib/domain/driverRegistry";
+import { getFillStations } from "@/lib/domain/fillStations";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
+import { toWaterRequest } from "@/lib/domain/waterRequests";
 import {
   checkDeliveryConfirmationTimeout,
   getFrequentRequestCountForCustomer,
@@ -18,6 +20,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import { RequestActions } from "./RequestActions";
+import { WaterCollectionDisplay } from "./WaterCollectionDisplay";
 
 export const metadata: Metadata = {
   title: "Request Detail — Dispatcher",
@@ -71,6 +74,9 @@ const EVENT_LABELS: Record<string, string> = {
   marked_delivered_by_dispatcher_batch: "Marked delivered by staff (batch reconciliation)",
   marked_delivered_by_dispatcher: "Marked delivered by staff",
   dispatch_order_overridden: "Dispatch order overridden by staff",
+  water_collected: "Water collected",
+  water_collected_by_staff: "Water collected (recorded by staff)",
+  customer_history_linked: "Customer history linked",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -140,13 +146,22 @@ export default async function RequestDetailPage({ params }: PageProps) {
   // snapshot; only fall back to a live profile lookup for legacy requests
   // that predate the snapshot field (and never for unregistered customers,
   // who have no `users/{uid}` document to look up).
-  const [legacyCustomerProfile, events, allDriverEntries, eligibleDriverOptions] =
+  const [legacyCustomerProfile, events, allDriverEntries, eligibleDriverOptions, fillStations] =
     await Promise.all([
       !data.customer && data.customerId ? getUserProfile(data.customerId) : null,
       getRequestEvents(requestId),
       getAllDriverRegistryEntries(),
       getEligibleDriverOptions(),
+      getFillStations(),
     ]);
+
+  // Fetch meter assignments for the assigned driver (needed for collection display)
+  const assignedDriverRegistryEntry = data.assignedDriverId
+    ? allDriverEntries.find((d) => d.linkedUserId === data.assignedDriverId)
+    : null;
+  const assignedDriverMeters = assignedDriverRegistryEntry
+    ? await getMeterAssignments(assignedDriverRegistryEntry.id)
+    : [];
 
   const customerPhone = data.customer?.phone ?? legacyCustomerProfile?.phone ?? null;
   const frequentRequestCount = await getFrequentRequestCountForCustomer(
@@ -394,6 +409,20 @@ export default async function RequestDetailPage({ params }: PageProps) {
               </Card>
             );
           })()}
+
+          {/* Water Collection */}
+          {(status === "claimed" || status === "delivered" || status === "confirmed" || status === "disputed") && (
+            <WaterCollectionDisplay
+              requestId={requestId}
+              loads={(data.loads ?? 1) as RequestedLoads}
+              loadCollections={toWaterRequest(requestId, data).loadCollections}
+              assignedDriverId={data.assignedDriverId ?? null}
+              assignedDriverName={data.assignedDriverId ? (driverNames[data.assignedDriverId] ?? null) : null}
+              stations={fillStations}
+              driverMeters={assignedDriverMeters}
+              isClaimed={status === "claimed"}
+            />
+          )}
 
           {/* Actions */}
           <RequestActions

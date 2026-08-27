@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getNextOfferForDriver } from "@/lib/domain/dispatch";
-import { getDriverByLinkedUserId } from "@/lib/domain/driverRegistry";
+import { getDriverByLinkedUserId, getMeterAssignments } from "@/lib/domain/driverRegistry";
+import { getFillStations } from "@/lib/domain/fillStations";
 import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
@@ -83,7 +84,11 @@ export default async function DriverPortalPage() {
   // Fetch the driver's active deliveries first; if they already have one,
   // skip the offer query to avoid an unnecessary read. getNextOfferForDriver
   // still enforces the same rule independently.
-  const claimedDeliveries = await getClaimedRequestsForDriver(uid);
+  const [claimedDeliveries, fillStations, driverMeters] = await Promise.all([
+    getClaimedRequestsForDriver(uid),
+    getFillStations(),
+    getMeterAssignments(driverEntry.id),
+  ]);
   const nextOffer =
     canReceiveOffers && claimedDeliveries.length === 0
       ? await getNextOfferForDriver(uid)
@@ -188,6 +193,8 @@ export default async function DriverPortalPage() {
           <ClaimedDeliveries
             deliveries={claimedDeliveries}
             customerInfo={customerInfoMap}
+            stations={fillStations}
+            meters={driverMeters}
           />
 
           {/* Current dispatch offer (only when eligible, online, and not in cooldown) */}

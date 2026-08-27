@@ -55,6 +55,10 @@ Vitest covers the pure domain logic extensively, including:
   password appears in the message.
 - Cron and webhook route behavior (mocking only the server-only/
   network boundary, never the pure logic underneath).
+- Load collection helpers (`loadCollection.ts`): `areAllLoadsCollected`,
+  `getMissingLoadNumbers`, historical meter snapshot integrity, default fill
+  station, and statistics computation (`src/lib/domain/__tests__/loadCollection.test.ts`,
+  17 tests).
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently
@@ -165,6 +169,19 @@ any of these areas.
   audit record is created.
 - Attempt to merge two accounts both linked to different Driver Registry
   entries and confirm the merge is blocked.
+
+### Water collection tracking
+
+- Record water collection for a one-load request and confirm the load is
+  marked collected before the delivery can be marked delivered.
+- Record water collection for both loads of a two-load request and confirm
+  delivery is blocked until every load is collected.
+- Trigger a missing meter error and confirm it corresponds to the driver's
+  fill-station meter assignment.
+- Reconcile a missing collection from the dispatcher portal and confirm the
+  audit record is created.
+- Confirm the dispatcher statistics view shows fill-station and meter totals
+  correctly.
 
 ### Viewer
 

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { acceptDriverOffer, declineDriverOffer } from "@/lib/domain/dispatch";
 import { setAvailabilityByLinkedUser } from "@/lib/domain/driverRegistry";
-import { markWaterDelivered } from "@/lib/domain/waterRequests";
+import { markWaterDelivered, recordWaterCollection } from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
 import { formatSabaTime } from "@/lib/utils/datetime";
 
@@ -189,6 +189,8 @@ export async function markDelivered(
           return { status: "error", message: "This request is not in a deliverable state." };
         case "NOT_ASSIGNED_DRIVER":
           return { status: "error", message: "You are not assigned to this delivery." };
+        case "LOADS_NOT_COLLECTED":
+          return { status: "error", message: "Record water collection for all loads before marking delivered." };
         default:
           throw err;
       }
@@ -198,4 +200,72 @@ export async function markDelivered(
 
   revalidatePath("/driver");
   return { status: "success", message: "Delivery marked as complete." };
+}
+
+// ---------------------------------------------------------------------------
+// Record water collection
+// ---------------------------------------------------------------------------
+
+export interface RecordCollectionActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+export async function recordCollection(
+  _prevState: RecordCollectionActionState,
+  formData: FormData,
+): Promise<RecordCollectionActionState> {
+  const session = await requireRole("driver");
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const loadNumberRaw = Number(formData.get("loadNumber"));
+  const fillStationId = String(formData.get("fillStationId") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (loadNumberRaw !== 1 && loadNumberRaw !== 2) {
+    return { status: "error", message: "Invalid load number." };
+  }
+  if (!fillStationId) return { status: "error", message: "Please select a fill station." };
+
+  try {
+    await recordWaterCollection({
+      requestId,
+      loadNumber: loadNumberRaw as 1 | 2,
+      fillStationId,
+      driverId: session.uid,
+      actorId: session.uid,
+      actorRole: "driver",
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_CLAIMABLE":
+          return { status: "error", message: "This request is not in a deliverable state." };
+        case "NOT_ASSIGNED_DRIVER":
+          return { status: "error", message: "You are not assigned to this delivery." };
+        case "INVALID_LOAD_NUMBER":
+          return { status: "error", message: "Invalid load number for this request." };
+        case "LOAD_ALREADY_COLLECTED":
+          return { status: "error", message: "This load has already been recorded as collected." };
+        case "NO_METER_ASSIGNMENT":
+          return {
+            status: "error",
+            message: "No meter is assigned to you for this fill station. Contact the Water Delivery Office.",
+          };
+        case "FILL_STATION_NOT_FOUND":
+          return { status: "error", message: "Fill station not found." };
+        case "FILL_STATION_INACTIVE":
+          return { status: "error", message: "This fill station is no longer active." };
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver profile not found. Contact the water office." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/driver");
+  return { status: "success", message: "Water collection recorded." };
 }

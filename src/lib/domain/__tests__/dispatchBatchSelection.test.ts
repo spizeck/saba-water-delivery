@@ -45,6 +45,7 @@ function makeRequest(id: string, overrides: Partial<WaterRequest> = {}): WaterRe
     dispatchBatchId: null,
     batchSequence: null,
     dispatchOverrideRank: null,
+    loadCollections: null,
     ...overrides,
   };
 }

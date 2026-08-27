@@ -112,6 +112,30 @@ where it originated. This is the operational core of the system.
   single request.
 - `gallons` — derived server-side as `loads * 1000`, so `1000` or
   `2000`. Clients never send an authoritative gallon value.
+- `loadCollections` — `WaterLoadCollection[] | null`. One record per
+  physical 1,000-gallon load collection event. Array length should match
+  `loads` when populated, but this is not enforced at the schema level.
+  Each element captures a denormalized snapshot at collection time:
+  - `loadNumber` — `1` | `2`; which load this record describes.
+  - `collectedAt` — `Timestamp`; when the collection was recorded.
+  - `fillStationId` — canonical station ID (e.g. `bottom`, `wws`,
+    `hells-gate`).
+  - `fillStationName` — snapshot of the station name at collection time.
+  - `meterCode` — string station meter code (e.g. `"BTM2"`).
+  - `meterNumber` — number (e.g. `2`).
+  - `driverId` — Firebase UID of the driver who physically collected
+    the water.
+  - `recordedBy` — Firebase UID of the actor who recorded the event
+    (the driver, or a staff member acting on their behalf).
+  - `recordedByRole` — `UserRole` (`"driver"` | `"dispatcher"` |
+    `"admin"`).
+  - `note` — `string | null`; required for staff recordings and should
+    briefly explain why the driver did not record it themselves.
+
+  Meter and station data are captured as denormalized snapshots and are
+  never updated retroactively; treat them as historical truth for the
+  collection event. Requests created before this feature existed, or
+  whose collection was simply never recorded, have `loadCollections: null`.
 - `village`, `deliveryDirections` — the delivery location for this
   request (may differ from the resident's saved profile if a
   dispatcher adjusted it for this request only). New and updated
@@ -178,6 +202,11 @@ New event type: `customer_history_linked` — admin-initiated relink of an
 unregistered request to a registered user. Records previous/new
 `customerId`, the preserved customer snapshot, the acting admin, the
 reason, and timestamp.
+
+New event types: `water_collected` — driver-recorded collection of one
+1,000-gallon load; `water_collected_by_staff` — dispatcher/admin-recorded
+collection on a driver's behalf. Both record the load number, station,
+meter, driver, actor, and timestamp details.
 
 ### `waterRequests/{requestId}/photos/{photoId}` — planned, not implemented
 

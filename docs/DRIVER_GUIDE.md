@@ -42,6 +42,15 @@ pause length are set by government administrators). This does not
 affect your eligibility to deliver — it only pauses new offers
 temporarily.
 
+## Recording Water Collection
+
+Before you mark a delivery as delivered, you must record water collection for each physical load:
+
+- For each load, select the fill station. **The Bottom** is selected by default.
+- The system shows the meter assigned to you for that station. If no meter is assigned, contact the Water Delivery Office.
+- Press **Water collected** for each load. One-load requests need one collection; two-load requests need two collections.
+- You can only mark the delivery as delivered after all loads are recorded.
+
 ## Completing a delivery
 
 Once you accept a delivery, you can view the customer's contact and

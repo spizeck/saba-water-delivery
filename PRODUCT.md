@@ -818,6 +818,19 @@ Exception states may include:
 
 The exact implementation may use additional internal states if needed, but the resident-facing statuses should remain simple.
 
+# Water Collection Tracking
+
+Each physical load is **1,000 gallons**. Before marking a request delivered,
+the driver records the fill station used for every requested load; **Bottom** is
+the default and primary fill station. At collection time, the system snapshots
+the driver's assigned meter for that station. A request cannot be marked
+`DELIVERED` until every requested load has a collection record.
+
+Collection history preserves the station and meter snapshot even if assignments
+later change. Authorized dispatcher/staff may reconcile a missing collection
+record with a required verification note. Statistics use these snapshots to
+track fill-station and meter usage.
+
 ---
 
 # Delivery Confirmation

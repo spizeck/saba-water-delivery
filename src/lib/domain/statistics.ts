@@ -151,6 +151,22 @@ export interface DispatchOfferMetrics {
   acceptanceRate: number | null; // percentage of responded offers accepted
 }
 
+export interface FillStationMetrics {
+  fillStationId: string;
+  fillStationName: string;
+  loadsCollected: number;
+  gallonsCollected: number;
+}
+
+export interface MeterMetrics {
+  fillStationId: string;
+  fillStationName: string;
+  meterCode: string;
+  meterNumber: number;
+  loadsCollected: number;
+  gallonsCollected: number;
+}
+
 export interface StatsData {
   period: StatsPeriod;
   summary: SummaryMetrics;
@@ -163,6 +179,8 @@ export interface StatsData {
   disputes: DisputeMetrics;
   dispatchOffers: DispatchOfferMetrics;
   priorityTiming: PriorityTimingRow[];
+  fillStations: FillStationMetrics[];
+  meters: MeterMetrics[];
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +242,16 @@ const OPEN_STATUSES: WaterRequestStatus[] = [
   "disputed",
 ];
 
+interface RawLoadCollection {
+  loadNumber: number;
+  fillStationId: string;
+  fillStationName: string;
+  meterCode: string;
+  meterNumber: number;
+  driverId: string;
+  collectedAt: Date | null;
+}
+
 interface RawRequest {
   id: string;
   status: WaterRequestStatus;
@@ -238,6 +266,7 @@ interface RawRequest {
   confirmedAt: Date | null;
   loads: number;
   gallons: number;
+  loadCollections: RawLoadCollection[];
 }
 
 export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
@@ -274,6 +303,17 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       confirmedAt: d.confirmedAt?.toDate?.() ?? null,
       loads: typeof d.loads === "number" ? d.loads : Math.floor((d.gallons ?? appConfig.standardLoadGallons) / LOAD_GALLONS),
       gallons: d.gallons ?? appConfig.standardLoadGallons,
+      loadCollections: Array.isArray(d.loadCollections)
+        ? d.loadCollections.map((lc: Record<string, unknown>) => ({
+            loadNumber: lc.loadNumber as number,
+            fillStationId: lc.fillStationId as string,
+            fillStationName: lc.fillStationName as string,
+            meterCode: lc.meterCode as string,
+            meterNumber: lc.meterNumber as number,
+            driverId: lc.driverId as string,
+            collectedAt: (lc.collectedAt as { toDate?: () => Date })?.toDate?.() ?? null,
+          }))
+        : [],
     };
   });
 
@@ -674,6 +714,57 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     };
   });
 
+  // ---------------------------------------------------------------------------
+  // Fill station and meter metrics — derived from per-load collection
+  // snapshots, NOT from current meter assignments. Each collection record
+  // represents one physical 1,000-gallon fill event. See PRODUCT.md /
+  // TECHNICAL.md "Water Collection Tracking".
+  // ---------------------------------------------------------------------------
+  const allCollections = requests.flatMap((r) => r.loadCollections);
+
+  const stationMap = new Map<string, FillStationMetrics>();
+  const meterMap = new Map<string, MeterMetrics>();
+
+  for (const lc of allCollections) {
+    // Fill station aggregate
+    const existing = stationMap.get(lc.fillStationId);
+    if (existing) {
+      existing.loadsCollected++;
+      existing.gallonsCollected += LOAD_GALLONS;
+    } else {
+      stationMap.set(lc.fillStationId, {
+        fillStationId: lc.fillStationId,
+        fillStationName: lc.fillStationName,
+        loadsCollected: 1,
+        gallonsCollected: LOAD_GALLONS,
+      });
+    }
+
+    // Meter aggregate (keyed by stationId + meterCode)
+    const meterKey = `${lc.fillStationId}::${lc.meterCode}`;
+    const existingMeter = meterMap.get(meterKey);
+    if (existingMeter) {
+      existingMeter.loadsCollected++;
+      existingMeter.gallonsCollected += LOAD_GALLONS;
+    } else {
+      meterMap.set(meterKey, {
+        fillStationId: lc.fillStationId,
+        fillStationName: lc.fillStationName,
+        meterCode: lc.meterCode,
+        meterNumber: lc.meterNumber,
+        loadsCollected: 1,
+        gallonsCollected: LOAD_GALLONS,
+      });
+    }
+  }
+
+  const fillStations: FillStationMetrics[] = [...stationMap.values()].sort(
+    (a, b) => b.loadsCollected - a.loadsCollected,
+  );
+  const meters: MeterMetrics[] = [...meterMap.values()].sort(
+    (a, b) => b.loadsCollected - a.loadsCollected,
+  );
+
   return {
     period,
     summary,
@@ -686,5 +777,7 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     disputes,
     dispatchOffers,
     priorityTiming,
+    fillStations,
+    meters,
   };
 }

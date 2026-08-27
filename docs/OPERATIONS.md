@@ -152,6 +152,14 @@ outage, WhatsApp ordering is affected in the same way. See
 [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) for exactly which
 outages affect which channels.
 
+## Water collection tracking
+
+Before a driver marks a delivery as delivered, they record the fill station
+for each physical load. The meter is resolved automatically from the driver's
+assignment for that station, and The Bottom is the default fill station if no
+other station is recorded. Dispatchers can reconcile missing collections from
+the dispatcher portal, which creates an audit record.
+
 ## End of day
 
 At 8:00 PM Saba time, the system automatically generates and emails an

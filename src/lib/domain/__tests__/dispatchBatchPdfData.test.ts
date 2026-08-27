@@ -50,6 +50,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     dispatchBatchId: "batch-1",
     batchSequence: 1,
     dispatchOverrideRank: null,
+    loadCollections: null,
     ...overrides,
   };
 }

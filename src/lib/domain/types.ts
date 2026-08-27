@@ -281,6 +281,16 @@ export interface WaterRequest {
    * `dispatchQueueCompare()`.
    */
   dispatchOverrideRank: number | null;
+
+  /**
+   * Per-physical-load water collection records. Each entry represents one
+   * 1,000-gallon fill event with a snapshotted fill station and meter.
+   * Empty array until collections are recorded. For a 1-load request,
+   * exactly one entry is required before delivery can be marked; for a
+   * 2-load request, exactly two entries are required. Null on historical
+   * documents that predate this field.
+   */
+  loadCollections: WaterLoadCollection[] | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,7 +394,16 @@ export type WaterRequestEventType =
    * linkage decision, the previous and new customerId, and the acting
    * admin. See TECHNICAL.md "Historical Request Relinking".
    */
-  | "customer_history_linked";
+  | "customer_history_linked"
+  /** Driver recorded water collection for a physical load at a fill
+   * station. Metadata includes loadNumber, fillStationId/Name,
+   * meterCode/Number, driverId. */
+  | "water_collected"
+  /** Staff (dispatcher/admin) recorded water collection on behalf of a
+   * driver — used for paper batch reconciliation or when the driver
+   * could not record it themselves. Same metadata as "water_collected"
+   * plus a required `note`. */
+  | "water_collected_by_staff";
 
 export interface WaterRequestEvent {
   id: string;
@@ -478,6 +497,12 @@ export interface DriverRegistryEntry {
 /** Stable fill-station identifiers. New stations may be added later. */
 export type FillStationId = "bottom" | "wws" | "hells-gate" | string;
 
+/**
+ * The default/primary fill station. The Bottom is the most commonly
+ * used station and should be preselected in driver/staff UIs.
+ */
+export const DEFAULT_FILL_STATION_ID: FillStationId = "bottom";
+
 export interface FillStation {
   id: FillStationId;
   name: string;
@@ -494,6 +519,51 @@ export interface MeterAssignment {
   meterNumber: number;
   updatedAt: string;
   updatedBy: string;
+}
+
+// ---------------------------------------------------------------------------
+// Water load collection (per-physical-load tracking)
+// ---------------------------------------------------------------------------
+
+/**
+ * A snapshot of a single physical 1,000-gallon load collection event.
+ * Stored as an embedded array on the WaterRequest document (max 2
+ * entries). Records WHERE water was filled, WHICH meter was used, and
+ * WHO recorded it. The meter information is snapshotted at collection
+ * time — later changes to driver meter assignments do not affect
+ * historical records. See PRODUCT.md / TECHNICAL.md "Water Collection
+ * Tracking".
+ */
+export interface WaterLoadCollection {
+  /** 1-based physical load number (1 or 2). */
+  loadNumber: 1 | 2;
+
+  /** ISO timestamp when collection was recorded (server timestamp). */
+  collectedAt: string;
+
+  /** Fill station used for this load. */
+  fillStationId: FillStationId;
+  /** Display name of the fill station at the time of collection. */
+  fillStationName: string;
+
+  /** Snapshotted meter code (e.g. "BTM2"). */
+  meterCode: string;
+  /** Snapshotted meter number (e.g. 2). */
+  meterNumber: number;
+
+  /** Firebase uid of the driver who collected (or on whose behalf staff
+   * recorded the collection). */
+  driverId: string;
+
+  /** Firebase uid of the person who actually recorded this collection
+   * entry. Same as `driverId` when the driver records it; differs when
+   * staff enters a reconciliation record on the driver's behalf. */
+  recordedBy: string;
+  /** Role of the actor who recorded it ("driver" or "dispatcher"/"admin"). */
+  recordedByRole: UserRole;
+
+  /** Optional note — required when staff records on behalf of driver. */
+  note: string | null;
 }
 
 // ---------------------------------------------------------------------------

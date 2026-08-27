@@ -176,6 +176,68 @@ export function StatsContent({ stats }: StatsContentProps) {
         </div>
       </Card>
 
+      {/* Fill station usage */}
+      {stats.fillStations.length > 0 && (
+        <Card>
+          <h2 className="text-lg font-bold text-slate-900">Fill Station Usage</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Physical loads collected per fill station (from recorded collection events)
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-medium text-slate-500">
+                  <th className="pb-2 pr-4">Fill Station</th>
+                  <th className="pb-2 pr-4 text-right">Loads</th>
+                  <th className="pb-2 text-right">Gallons</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.fillStations.map((fs) => (
+                  <tr key={fs.fillStationId} className="border-b border-slate-100">
+                    <td className="py-2 pr-4 font-medium text-slate-900">{fs.fillStationName}</td>
+                    <td className="py-2 pr-4 text-right text-slate-700">{fs.loadsCollected}</td>
+                    <td className="py-2 text-right text-slate-700">{fs.gallonsCollected.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Meter usage */}
+      {stats.meters.length > 0 && (
+        <Card>
+          <h2 className="text-lg font-bold text-slate-900">Meter Usage</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Physical loads collected per meter (from recorded collection events)
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-medium text-slate-500">
+                  <th className="pb-2 pr-4">Fill Station</th>
+                  <th className="pb-2 pr-4">Meter</th>
+                  <th className="pb-2 pr-4 text-right">Loads</th>
+                  <th className="pb-2 text-right">Gallons</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.meters.map((m) => (
+                  <tr key={`${m.fillStationId}-${m.meterCode}`} className="border-b border-slate-100">
+                    <td className="py-2 pr-4 text-slate-700">{m.fillStationName}</td>
+                    <td className="py-2 pr-4 font-medium text-slate-900">{m.meterCode} &middot; Meter {m.meterNumber}</td>
+                    <td className="py-2 pr-4 text-right text-slate-700">{m.loadsCollected}</td>
+                    <td className="py-2 text-right text-slate-700">{m.gallonsCollected.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       {/* Disputes */}
       <DisputeSection metrics={stats.disputes} />
     </>

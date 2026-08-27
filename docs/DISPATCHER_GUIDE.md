@@ -138,6 +138,16 @@ marked it delivered — this is recorded as a staff confirmation, not a
 customer confirmation, so the record always reflects what actually
 happened.
 
+## Water Collection Reconciliation
+
+On claimed request detail pages, you can see the water collection status for each load.
+
+- If a driver cannot record collection — for example, a paper batch or phone confirmation — staff can record it on the driver's behalf.
+- Click **Record collection** for each missing load, select the fill station, and verify the meter.
+- A verification note is required when staff record collection for a driver.
+- All loads must have collection records before staff can mark a delivery as complete.
+- Staff collection recordings are tracked separately in the audit trail.
+
 ## Batch Dispatch
 
 Use **Batch Dispatch** (from the dispatcher dashboard) when you need to

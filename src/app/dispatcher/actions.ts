@@ -29,6 +29,7 @@ import {
   getActiveRequestForCustomer,
   getFrequentRequestCountForCustomer,
   markWaterDeliveredByStaff,
+  recordWaterCollection,
   resolveDisputeCompleted,
   resolveDisputeReopened,
 } from "@/lib/domain/waterRequests";
@@ -715,6 +716,8 @@ export async function recordBatchDelivery(
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_CLAIMABLE":
           return { status: "error", message: "This request is not in a deliverable state." };
+        case "LOADS_NOT_COLLECTED":
+          return { status: "error", message: "All physical loads must be recorded as collected before marking delivered. Record the missing load collections first." };
         default:
           throw err;
       }
@@ -755,6 +758,8 @@ export async function markDeliveredByStaff(
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_CLAIMABLE":
           return { status: "error", message: "This request is not in a deliverable state." };
+        case "LOADS_NOT_COLLECTED":
+          return { status: "error", message: "All physical loads must be recorded as collected before marking delivered. Use the Water Collection section to record missing loads." };
         default:
           throw err;
       }
@@ -865,4 +870,79 @@ export async function sendAccountSetupInvitation(
     const message = err instanceof Error ? err.message : "Failed to send invitation.";
     return { status: "error", message };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Staff water collection recording (reconciliation)
+// ---------------------------------------------------------------------------
+
+export interface StaffCollectionActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+/**
+ * Allows dispatcher/admin to record water collection on behalf of a driver
+ * who could not record it themselves (e.g. paper batch reconciliation).
+ */
+export async function recordCollectionByStaff(
+  _prevState: StaffCollectionActionState,
+  formData: FormData,
+): Promise<StaffCollectionActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const loadNumberRaw = Number(formData.get("loadNumber"));
+  const fillStationId = String(formData.get("fillStationId") ?? "").trim();
+  const driverId = String(formData.get("driverId") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (loadNumberRaw !== 1 && loadNumberRaw !== 2) {
+    return { status: "error", message: "Invalid load number." };
+  }
+  if (!fillStationId) return { status: "error", message: "Please select a fill station." };
+  if (!driverId) return { status: "error", message: "Missing driver ID." };
+  if (!note) return { status: "error", message: "A note is required when recording on behalf of a driver." };
+
+  try {
+    await recordWaterCollection({
+      requestId,
+      loadNumber: loadNumberRaw as 1 | 2,
+      fillStationId,
+      driverId,
+      actorId: session.uid,
+      actorRole: session.profile.roles.includes("admin") ? "admin" : "dispatcher",
+      note,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_CLAIMABLE":
+          return { status: "error", message: "This request is not in a deliverable state." };
+        case "INVALID_LOAD_NUMBER":
+          return { status: "error", message: "Invalid load number for this request." };
+        case "LOAD_ALREADY_COLLECTED":
+          return { status: "error", message: "This load has already been recorded as collected." };
+        case "NO_METER_ASSIGNMENT":
+          return { status: "error", message: "No meter is assigned to this driver for the selected fill station." };
+        case "FILL_STATION_NOT_FOUND":
+          return { status: "error", message: "Fill station not found." };
+        case "FILL_STATION_INACTIVE":
+          return { status: "error", message: "This fill station is no longer active." };
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver registry entry not found." };
+        case "STAFF_NOTE_REQUIRED":
+          return { status: "error", message: "A note is required when recording on behalf of a driver." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  revalidatePath(`/dispatcher/${requestId}`);
+  return { status: "success", message: "Water collection recorded on behalf of driver." };
 }

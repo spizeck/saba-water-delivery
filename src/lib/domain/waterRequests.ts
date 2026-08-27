@@ -12,7 +12,8 @@ import {
   isValidRequestedLoads,
 } from "./quantity";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
-import { isDriverImmediatelyAvailable } from "./driverRegistry";
+import { getFillStations } from "./fillStations";
+import { isDriverImmediatelyAvailable, getMeterAssignments } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import type {
   DispatchBatchStatus,
@@ -20,6 +21,7 @@ import type {
   RequestedLoads,
   ReportedUrgency,
   StandardLoadGallons,
+  UserRole,
   VulnerableCircumstance,
   WaterRequest,
   WaterRequestCustomerSnapshot,
@@ -163,6 +165,21 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     batchSequence: typeof data.batchSequence === "number" ? data.batchSequence : null,
     dispatchOverrideRank:
       typeof data.dispatchOverrideRank === "number" ? data.dispatchOverrideRank : null,
+    loadCollections: Array.isArray(data.loadCollections)
+      ? data.loadCollections.map((lc: Record<string, unknown>) => ({
+          loadNumber: lc.loadNumber as 1 | 2,
+          collectedAt: (lc.collectedAt as { toDate?: () => Date })?.toDate?.().toISOString()
+            ?? (lc.collectedAt as string),
+          fillStationId: lc.fillStationId as string,
+          fillStationName: lc.fillStationName as string,
+          meterCode: lc.meterCode as string,
+          meterNumber: lc.meterNumber as number,
+          driverId: lc.driverId as string,
+          recordedBy: lc.recordedBy as string,
+          recordedByRole: lc.recordedByRole as UserRole,
+          note: (lc.note as string | null) ?? null,
+        }))
+      : null,
   };
 }
 
@@ -1050,6 +1067,13 @@ export async function markWaterDelivered(
       throw new Error("NOT_ASSIGNED_DRIVER");
     }
 
+    // Delivery guard: all physical loads must be collected before marking delivered
+    const loads = data.loads ?? 1;
+    const collections: Array<Record<string, unknown>> = data.loadCollections ?? [];
+    if (collections.length < loads) {
+      throw new Error("LOADS_NOT_COLLECTED");
+    }
+
     // If this request belongs to a batch, read the batch's OTHER member
     // statuses now (all reads must happen before any writes in a
     // Firestore transaction) so the batch's derived status can be kept
@@ -1136,6 +1160,13 @@ export async function markWaterDeliveredByStaff(
 
     const data = snap.data()!;
     if (data.status !== "claimed") throw new Error("REQUEST_NOT_CLAIMABLE");
+
+    // Delivery guard: all physical loads must be collected before marking delivered
+    const loads = data.loads ?? 1;
+    const collections: Array<Record<string, unknown>> = data.loadCollections ?? [];
+    if (collections.length < loads) {
+      throw new Error("LOADS_NOT_COLLECTED");
+    }
 
     const assignedDriverId = data.assignedDriverId as string | null | undefined;
     const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
@@ -2155,3 +2186,135 @@ export async function dispatcherReassign(
   const updated = await requestRef.get();
   return toWaterRequest(requestId, updated.data()!);
 }
+
+// ---------------------------------------------------------------------------
+// Water collection tracking (per-physical-load)
+// ---------------------------------------------------------------------------
+
+export interface RecordWaterCollectionInput {
+  requestId: string;
+  loadNumber: 1 | 2;
+  fillStationId: string;
+  /** Firebase uid of the assigned driver. */
+  driverId: string;
+  /** Firebase uid of the person recording (same as driverId for driver, differs for staff). */
+  actorId: string;
+  actorRole: UserRole;
+  /** Required when staff records on behalf of driver. */
+  note?: string;
+}
+
+/**
+ * Records that a physical 1,000-gallon load has been collected at a fill
+ * station. Looks up the driver's current meter assignment for the
+ * selected station and snapshots it onto the collection record.
+ *
+ * Validations:
+ * - Request must exist and be in "claimed" status
+ * - The driver must be the assigned driver (or staff can override)
+ * - The load number must not already have a collection record
+ * - The driver must have a meter assignment for the selected fill station
+ * - The fill station must be active
+ * - Staff must provide a note when recording on behalf of driver
+ *
+ * Once recorded, collection records are immutable (no casual unchecking).
+ */
+export async function recordWaterCollection(
+  input: RecordWaterCollectionInput,
+): Promise<WaterRequest> {
+  const { requestId, loadNumber, fillStationId, driverId, actorId, actorRole, note } = input;
+
+  // Staff must provide a note
+  if (actorRole !== "driver" && !note?.trim()) {
+    throw new Error("STAFF_NOTE_REQUIRED");
+  }
+
+  // Resolve fill station
+  const stations = await getFillStations();
+  const station = stations.find((s) => s.id === fillStationId);
+  if (!station) throw new Error("FILL_STATION_NOT_FOUND");
+  if (!station.active) throw new Error("FILL_STATION_INACTIVE");
+
+  // Resolve driver's registry entry to get meter assignments
+  const db = getAdminDb();
+  const driverQuery = await db
+    .collection("driverRegistry")
+    .where("linkedUserId", "==", driverId)
+    .limit(1)
+    .get();
+  if (driverQuery.empty) throw new Error("DRIVER_NOT_FOUND");
+  const driverRegistryId = driverQuery.docs[0].id;
+
+  // Get driver's meter assignment for this station
+  const meters = await getMeterAssignments(driverRegistryId);
+  const meter = meters.find((m) => m.stationId === fillStationId);
+  if (!meter) throw new Error("NO_METER_ASSIGNMENT");
+
+  // Now perform the transactional write
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+    if (data.status !== "claimed") throw new Error("REQUEST_NOT_CLAIMABLE");
+    if (data.assignedDriverId !== driverId && actorRole === "driver") {
+      throw new Error("NOT_ASSIGNED_DRIVER");
+    }
+
+    const loads = data.loads ?? 1;
+    if (loadNumber > loads) throw new Error("INVALID_LOAD_NUMBER");
+
+    // Check for existing collection at this load number
+    const existingCollections: Array<Record<string, unknown>> = data.loadCollections ?? [];
+    const alreadyCollected = existingCollections.some(
+      (lc) => lc.loadNumber === loadNumber,
+    );
+    if (alreadyCollected) throw new Error("LOAD_ALREADY_COLLECTED");
+
+    // Build the new collection record
+    const collectionRecord = {
+      loadNumber,
+      collectedAt: now,
+      fillStationId: station.id,
+      fillStationName: station.name,
+      meterCode: meter.meterCode,
+      meterNumber: meter.meterNumber,
+      driverId,
+      recordedBy: actorId,
+      recordedByRole: actorRole,
+      note: note?.trim() || null,
+    };
+
+    txn.update(requestRef, {
+      loadCollections: [...existingCollections, collectionRecord],
+      updatedAt: now,
+    });
+
+    // Audit event
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: actorRole === "driver" ? "water_collected" : "water_collected_by_staff",
+      actorId,
+      actorRole,
+      createdAt: now,
+      metadata: {
+        loadNumber,
+        fillStationId: station.id,
+        fillStationName: station.name,
+        meterCode: meter.meterCode,
+        meterNumber: meter.meterNumber,
+        driverId,
+        ...(note?.trim() ? { note: note.trim() } : {}),
+      },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// Re-export pure load-collection helpers for server consumers.
+export { areAllLoadsCollected, getMissingLoadNumbers } from "./loadCollection";

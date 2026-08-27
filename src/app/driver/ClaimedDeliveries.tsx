@@ -4,11 +4,13 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { WaterRequest } from "@/lib/domain/types";
+import type { FillStation, MeterAssignment, WaterRequest } from "@/lib/domain/types";
+import { areAllLoadsCollected } from "@/lib/domain/loadCollection";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 import { markDelivered, type MarkDeliveredActionState } from "./actions";
+import { WaterCollectionSection } from "./WaterCollectionSection";
 
 interface CustomerInfo {
   displayName: string;
@@ -18,11 +20,13 @@ interface CustomerInfo {
 interface Props {
   deliveries: WaterRequest[];
   customerInfo: Record<string, CustomerInfo>;
+  stations: FillStation[];
+  meters: MeterAssignment[];
 }
 
 const formatDate = formatSabaDateTime;
 
-export function ClaimedDeliveries({ deliveries, customerInfo }: Props) {
+export function ClaimedDeliveries({ deliveries, customerInfo, stations, meters }: Props) {
   if (deliveries.length === 0) return null;
 
   return (
@@ -42,6 +46,8 @@ export function ClaimedDeliveries({ deliveries, customerInfo }: Props) {
                   ? customerInfo[req.customerId]
                   : undefined
             }
+            stations={stations}
+            meters={meters}
           />
         ))}
       </div>
@@ -54,12 +60,17 @@ const initialState: MarkDeliveredActionState = { status: "idle" };
 function DeliveryCard({
   request,
   customer,
+  stations,
+  meters,
 }: {
   request: WaterRequest;
   customer?: CustomerInfo;
+  stations: FillStation[];
+  meters: MeterAssignment[];
 }) {
   const [confirming, setConfirming] = useState(false);
   const [state, formAction, pending] = useActionState(markDelivered, initialState);
+  const allCollected = areAllLoadsCollected(request.loads, request.loadCollections);
 
   if (state.status === "success") {
     return (
@@ -126,6 +137,15 @@ function DeliveryCard({
         )}
       </dl>
 
+      {/* Water collection section */}
+      <WaterCollectionSection
+        requestId={request.id}
+        loads={request.loads}
+        loadCollections={request.loadCollections}
+        stations={stations}
+        meters={meters}
+      />
+
       {state.status === "error" && (
         <p role="alert" className="mt-2 text-sm font-medium text-red-700">
           {state.message}
@@ -133,7 +153,13 @@ function DeliveryCard({
       )}
 
       {/* Mark delivered with confirmation step */}
-      {!confirming ? (
+      {!allCollected ? (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
+          <p className="text-xs text-slate-600">
+            Record water collection for all loads before marking delivered.
+          </p>
+        </div>
+      ) : !confirming ? (
         <div className="mt-3">
           <Button
             size="md"

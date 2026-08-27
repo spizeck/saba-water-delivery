@@ -345,6 +345,29 @@ referencing driver IDs inconsistently.
 }
 ```
 
+## Water Collection Tracking
+
+Each `WaterRequest` stores a `loadCollections: WaterLoadCollection[]` array with one immutable snapshot per physical load:
+
+```ts
+type WaterLoadCollection = {
+  loadNumber: 1 | 2
+  collectedAt: string
+  fillStationId: string
+  fillStationName: string
+  meterCode: string
+  meterNumber: number
+  driverId: string
+  recordedBy: string
+  recordedByRole: UserRole
+  note: string | null
+}
+```
+
+The server-side `recordWaterCollection()` domain function validates request status, driver assignment, load number, active fill-station status, and meter assignment, then records the collection in a Firestore transaction. The driver's meter is resolved from `driverRegistry/{registryId}/meters/{stationId}` and snapshotted with the station details at collection time; statistics aggregate these snapshots rather than current meter assignments. Driver and staff reconciliation actions emit distinct `water_collected` and `water_collected_by_staff` audit events.
+
+Delivery requires every requested load to have a collection record. Both `markWaterDelivered` and `markWaterDeliveredByStaff` reject with `LOADS_NOT_COLLECTED` when a load is missing. The pure, client-safe `loadCollection.ts` module (with no `server-only` import) exports `areAllLoadsCollected()` and `getMissingLoadNumbers()` for consistent enforcement and display. `types.ts` defines `DEFAULT_FILL_STATION_ID = "bottom"`, and all fill-station UI lists sort The Bottom first.
+
 ## users/{uid}/propertyPhotos/{photoId}
 
 ```ts

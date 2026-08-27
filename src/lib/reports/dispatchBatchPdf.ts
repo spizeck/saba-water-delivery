@@ -45,7 +45,9 @@ function formatAge(ageMinutes: number): string {
 }
 
 function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
-  if (doc.y > doc.page.height - doc.page.margins.bottom - 130) {
+  // Account for extra lines with 2-load requests (collection areas)
+  const extraHeight = row.loads === 2 ? 40 : 20;
+  if (doc.y > doc.page.height - doc.page.margins.bottom - 130 - extraHeight) {
     doc.addPage();
   }
 
@@ -89,6 +91,15 @@ function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
 
   if (row.status === "claimed") {
     doc.moveDown(0.3);
+    // Per-load collection areas
+    for (let i = 1; i <= row.loads; i++) {
+      doc
+        .font("Helvetica")
+        .fontSize(9)
+        .fillColor("#0f172a")
+        .text(`Load ${i}:  Fill station: ________________  Meter: ________________  [ ] Water collected  Time: __________`);
+    }
+    doc.moveDown(0.2);
     doc
       .font("Helvetica")
       .fontSize(9)

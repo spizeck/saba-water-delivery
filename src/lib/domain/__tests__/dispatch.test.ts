@@ -49,6 +49,7 @@ function makeRequest(
     dispatchBatchId: null,
     batchSequence: null,
     dispatchOverrideRank: null,
+    loadCollections: null,
     ...overrides,
   };
 }
