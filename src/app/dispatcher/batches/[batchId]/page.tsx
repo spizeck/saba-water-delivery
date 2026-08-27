@@ -199,6 +199,11 @@ export default async function BatchDetailPage({ params }: PageProps) {
                       </span>
                     </div>
                     {r.status === "claimed" && (
+                      <div className="mt-2 text-xs text-slate-600">
+                        Water collected: {r.loadCollections?.length ?? 0}/{r.loads} loads
+                      </div>
+                    )}
+                    {r.status === "claimed" && (
                       <div className="mt-3">
                         <RecordBatchDeliveryButton requestId={r.id} batchId={batch.id} />
                       </div>

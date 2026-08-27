@@ -15,7 +15,7 @@
  */
 
 import { priorityRankFor } from "./priority";
-import type { DispatchPriority, RequestedLoads, WaterRequest, WaterRequestStatus } from "./types";
+import type { DispatchPriority, RequestedLoads, WaterLoadCollection, WaterRequest, WaterRequestStatus } from "./types";
 
 /** Statuses that represent a load still waiting for a driver to claim it. */
 const UNASSIGNED_STATUSES: WaterRequestStatus[] = [
@@ -61,6 +61,15 @@ export interface AssignedReportRow {
    * outage — batch-assigned undelivered loads must still appear here
    * like any other assigned load, never be hidden. */
   isBatchAssigned: boolean;
+  /** Number of physical loads already collected (0, 1, or 2). */
+  loadsCollected: number;
+  /** Per-load collection snapshots (compact summary for operational recovery). */
+  collectionDetails: Array<{
+    loadNumber: 1 | 2;
+    fillStationName: string;
+    meterCode: string;
+    meterNumber: number;
+  }>;
 }
 
 export interface ContinuityReportData {
@@ -121,22 +130,32 @@ export function buildContinuityReportData(
     gallons: r.gallons,
   }));
 
-  const assigned: AssignedReportRow[] = assignedRequests.map((r) => ({
-    requestId: r.id,
-    priority: r.dispatchPriority,
-    customerName: r.customer?.displayName || "Unknown",
-    phone: r.customer?.phone ?? null,
-    village: r.village,
-    deliveryDirections: r.deliveryDirections,
-    assignedDriverName: r.assignedDriverId
-      ? (driverNamesByUserId.get(r.assignedDriverId) ?? "Unknown driver")
-      : null,
-    requestedAt: r.requestedAt,
-    claimedAt: r.claimedAt,
-    loads: r.loads,
-    gallons: r.gallons,
-    isBatchAssigned: Boolean(r.dispatchBatchId),
-  }));
+  const assigned: AssignedReportRow[] = assignedRequests.map((r) => {
+    const collections: WaterLoadCollection[] = r.loadCollections ?? [];
+    return {
+      requestId: r.id,
+      priority: r.dispatchPriority,
+      customerName: r.customer?.displayName || "Unknown",
+      phone: r.customer?.phone ?? null,
+      village: r.village,
+      deliveryDirections: r.deliveryDirections,
+      assignedDriverName: r.assignedDriverId
+        ? (driverNamesByUserId.get(r.assignedDriverId) ?? "Unknown driver")
+        : null,
+      requestedAt: r.requestedAt,
+      claimedAt: r.claimedAt,
+      loads: r.loads,
+      gallons: r.gallons,
+      isBatchAssigned: Boolean(r.dispatchBatchId),
+      loadsCollected: collections.length,
+      collectionDetails: collections.map((lc) => ({
+        loadNumber: lc.loadNumber,
+        fillStationName: lc.fillStationName,
+        meterCode: lc.meterCode,
+        meterNumber: lc.meterNumber,
+      })),
+    };
+  });
 
   return { generatedAt: generatedAt.toISOString(), unassigned, assigned };
 }

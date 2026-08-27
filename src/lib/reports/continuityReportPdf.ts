@@ -115,6 +115,14 @@ function drawAssignedRow(doc: PDFKit.PDFDocument, row: AssignedReportRow) {
       .filter(Boolean)
       .join("   |   "),
   );
+  // Collection progress
+  doc.text(`Water collected: ${row.loadsCollected}/${row.loads} loads`);
+  if (row.collectionDetails.length > 0) {
+    const details = row.collectionDetails
+      .map((d) => `Load ${d.loadNumber}: ${d.fillStationName} (${d.meterCode})`)
+      .join("  |  ");
+    doc.text(details);
+  }
   doc.moveDown(0.6);
 }
 

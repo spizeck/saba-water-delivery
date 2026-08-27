@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
-import type { DispatchPriority, WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+import type { DispatchPriority, WaterLoadCollection, WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
 
 const PRIORITY_LABELS: Record<DispatchPriority, string> = {
   normal: "Normal",
@@ -98,6 +98,9 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                           awaiting confirmation
                         </span>
                       )}
+                      {req.status === "claimed" && (
+                        <CollectionProgress loads={req.loads} loadCollections={req.loadCollections} />
+                      )}
                     </td>
                     <td className="py-2 pr-3">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[req.dispatchPriority]}`}>
@@ -183,5 +186,26 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
         </Card>
       )}
     </>
+  );
+}
+
+function CollectionProgress({
+  loads,
+  loadCollections,
+}: {
+  loads: number;
+  loadCollections: WaterLoadCollection[] | null;
+}) {
+  const collected = loadCollections?.length ?? 0;
+  const colorClass =
+    collected === 0
+      ? "text-slate-500"
+      : collected >= loads
+        ? "text-green-700"
+        : "text-amber-700";
+  return (
+    <span className={`ml-1.5 text-[10px] font-medium ${colorClass}`}>
+      {collected}/{loads} collected
+    </span>
   );
 }
