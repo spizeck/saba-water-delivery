@@ -18,6 +18,7 @@ import {
 } from "@/lib/domain/waterRequests";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
+import { formatRequestEventDetails, REQUEST_EVENT_LABELS } from "@/lib/utils/formatAuditEvent";
 
 import { RequestActions } from "./RequestActions";
 import { WaterCollectionDisplay } from "./WaterCollectionDisplay";
@@ -46,38 +47,6 @@ const STATUS_COLORS: Record<WaterRequestStatus, string> = {
   confirmed: "bg-green-50 text-green-700",
   disputed: "bg-red-100 text-red-900",
   cancelled: "bg-slate-100 text-slate-500",
-};
-
-const EVENT_LABELS: Record<string, string> = {
-  request_created: "Request created",
-  request_created_by_dispatcher: "Request created by staff",
-  preferred_driver_selected: "Preferred driver selected",
-  preferred_driver_expired: "Preferred driver hold expired",
-  preferred_driver_declined: "Preferred driver declined",
-  request_opened: "Opened to queue",
-  driver_claimed: "Driver claimed",
-  marked_delivered: "Marked delivered",
-  customer_confirmed: "Customer confirmed",
-  delivery_confirmed_by_dispatcher: "Delivery confirmed by staff",
-  customer_disputed: "Customer disputed",
-  delivery_auto_confirmed: "Automatically confirmed (no response within window)",
-  dispute_resolved_completed: "Dispute resolved (completed)",
-  dispute_resolved_reopened: "Dispute resolved (reopened)",
-  request_cancelled: "Request cancelled",
-  dispatcher_assigned: "Dispatcher assigned",
-  dispatcher_reassigned: "Dispatcher reassigned",
-  request_priority_changed: "Priority changed",
-  preferred_driver_bypassed_for_priority: "Preferred driver bypassed (priority)",
-  preferred_driver_hold_released_for_priority: "Preferred driver hold released (priority)",
-  dispatcher_batch_assigned: "Assigned via delivery run",
-  dispatcher_batch_membership_removed: "Removed from delivery run",
-  marked_delivered_by_dispatcher_batch: "Marked delivered by staff (delivery run reconciliation)",
-  marked_delivered_by_dispatcher: "Marked delivered by staff",
-  dispatch_order_overridden: "Dispatch order overridden by staff",
-  water_collected: "Water collected",
-  water_collected_by_staff: "Water collected (recorded by staff)",
-  customer_history_linked: "Customer history linked",
-  request_edited: "Request edited",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -456,31 +425,34 @@ export default async function RequestDetailPage({ params }: PageProps) {
               <p className="mt-2 text-sm text-slate-600">No events recorded.</p>
             ) : (
               <div className="mt-4 flex flex-col gap-2">
-                {events.map((event) => (
-                  <div key={event.id} className="flex items-start gap-3 rounded-lg border border-slate-100 p-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-900">
-                        {EVENT_LABELS[event.type] ?? event.type}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {formatDate(event.createdAt)}
-                        {event.actorId && (
-                          <> &mdash; {actorNames[event.actorId] ?? event.actorId}</>
-                        )}
-                        {event.actorRole && (
-                          <> ({event.actorRole})</>
-                        )}
-                      </p>
-                      {event.metadata && Object.keys(event.metadata).length > 0 && (
-                        <p className="mt-1 text-xs text-slate-600">
-                          {Object.entries(event.metadata)
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(" · ")}
+                {events.map((event) => {
+                  const details = formatRequestEventDetails(
+                    event.type,
+                    event.metadata,
+                    { nameMap: actorNames, actorId: event.actorId },
+                  );
+                  return (
+                    <div key={event.id} className="flex items-start gap-3 rounded-lg border border-slate-100 p-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900">
+                          {REQUEST_EVENT_LABELS[event.type] ?? event.type}
                         </p>
-                      )}
+                        <p className="text-xs text-slate-500">
+                          {formatDate(event.createdAt)}
+                          {event.actorId && (
+                            <> &mdash; {actorNames[event.actorId] ?? event.actorId}</>
+                          )}
+                          {event.actorRole && (
+                            <> ({event.actorRole})</>
+                          )}
+                        </p>
+                        {details && (
+                          <p className="mt-1 text-xs text-slate-600">{details}</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>

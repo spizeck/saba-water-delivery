@@ -59,6 +59,21 @@ export default async function DriverDetailPage({ params }: PageProps) {
     driver.linkedUserId ? getUserProfile(driver.linkedUserId) : Promise.resolve(null),
   ]);
 
+  // Resolve actor names for event history
+  const eventActorIds = [...new Set(
+    events.map((e) => e.actorId).filter(Boolean),
+  )] as string[];
+  const nameMap: Record<string, string> = {};
+  if (linkedUser) nameMap[linkedUser.uid] = linkedUser.displayName;
+  await Promise.all(
+    eventActorIds
+      .filter((id) => !nameMap[id])
+      .map(async (id) => {
+        const p = await getUserProfile(id);
+        if (p) nameMap[id] = p.displayName;
+      }),
+  );
+
   return (
     <>
       <PortalHeader portalName="Admin" roles={profile.roles} />
@@ -78,7 +93,7 @@ export default async function DriverDetailPage({ params }: PageProps) {
           <AccountLinkPanel driver={driver} residents={residents} linkedUser={linkedUser} />
           <EligibilityPanel driver={driver} />
           <MeterAssignmentsPanel driverId={driverId} stations={stations} meters={meters} />
-          <DriverEventHistory events={events} />
+          <DriverEventHistory events={events} nameMap={nameMap} />
         </Container>
       </main>
     </>
