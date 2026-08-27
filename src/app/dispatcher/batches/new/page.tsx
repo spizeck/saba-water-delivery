@@ -12,10 +12,10 @@ import { getBatchEligibleRequests } from "@/lib/domain/waterRequests";
 import { NewBatchForm } from "./NewBatchForm";
 
 export const metadata: Metadata = {
-  title: "New Batch — Dispatcher",
+  title: "New Delivery Run — Dispatcher",
 };
 
-export default async function NewBatchPage() {
+export default async function NewDeliveryRunPage() {
   const { profile } = await requireRole(["dispatcher", "admin"]);
 
   const [allDrivers, eligibleRequests] = await Promise.all([
@@ -64,9 +64,9 @@ export default async function NewBatchPage() {
         <Container className="flex flex-col gap-6 max-w-3xl">
           <div>
             <Link href="/dispatcher/batches" className="text-blue-700 hover:underline text-sm">
-              &larr; Back to Batch Dispatch
+              &larr; Back to Delivery Runs
             </Link>
-            <h1 className="mt-2 text-2xl font-bold text-slate-900">New Batch</h1>
+            <h1 className="mt-2 text-2xl font-bold text-slate-900">New Delivery Run</h1>
             <p className="mt-1 text-sm text-slate-600">
               Select a driver, then choose the requests to assign them at once.
             </p>
@@ -78,14 +78,14 @@ export default async function NewBatchPage() {
                 No eligible, account-linked drivers are available. A driver
                 must be entered in the Driver Registry, have signed in and
                 been linked to their account, and be marked eligible before
-                they can receive a batch.
+                they can receive a delivery run.
               </p>
             </Card>
           ) : sortedRequests.length === 0 ? (
             <Card>
               <p className="text-sm text-slate-600">
-                There are no outstanding requests eligible for batch
-                assignment right now.
+                There are no outstanding requests eligible for a delivery run
+                right now.
               </p>
             </Card>
           ) : (

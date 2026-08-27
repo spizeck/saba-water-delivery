@@ -40,6 +40,31 @@ Smoke-test fixes:
 - Logout now uses `router.replace` to prevent the back button from
   returning to the portal after signing out.
 
+Delivery Runs (formerly "Batch Dispatch"):
+- Renamed "Batch Dispatch" to "Delivery Runs" throughout the dispatcher
+  and driver UIs for operational clarity. Backend field names unchanged.
+- Active delivery run cards now show driver name, request count, load
+  count, delivery progress bar, and a "View Run" action.
+- Run detail page shows an operational progress summary (requests, loads,
+  loads delivered) with a visual progress bar.
+- New three-state derived lifecycle: **In Progress** (claimed loads
+  remain), **Awaiting Confirmation** (all delivered, confirmation
+  pending), **Completed** (all resolved). A run no longer stays "Active"
+  solely because resident confirmation is pending.
+- Driver display name is now snapshotted on the batch document at
+  creation time. Historical runs without a snapshot fall back to the
+  live registry; if the registry entry is missing, "Unknown driver" is
+  shown without fabricating a name.
+- New "Close Run" action for dispatchers to manually complete an
+  orphaned or stuck active run whose requests have all been resolved.
+  Refuses to close if any request is still claimed.
+- Run sheet PDF header updated from "Driver Dispatch Sheet" to "Delivery
+  Run Sheet."
+- Continuity report label updated from "(Batch)" to "(Delivery Run)."
+- New Delivery Run review step now shows request count, load count, and
+  total gallons before final creation.
+- Create button changed from "Confirm & Assign" to "Create Delivery Run."
+
 Water Collection Tracking:
 - Per-load fill station and meter recording before a delivery can be marked
   complete; the delivery is blocked until every load is collected.

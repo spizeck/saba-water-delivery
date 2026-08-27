@@ -90,7 +90,7 @@ function DeliveryCard({
         </p>
         {request.dispatchBatchId && (
           <span className="inline-flex shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-900">
-            Batch assignment
+            Delivery run
           </span>
         )}
         {request.dispatchPriority === "critical" && (

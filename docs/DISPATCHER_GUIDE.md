@@ -149,75 +149,96 @@ happened.
 
 On claimed request detail pages, you can see the water collection status for each load.
 
-- If a driver cannot record collection — for example, a paper batch or phone confirmation — staff can record it on the driver's behalf.
+- If a driver cannot record collection — for example, a paper delivery run or phone confirmation — staff can record it on the driver's behalf.
 - Click **Record collection** for each missing load, select the fill station, and verify the meter.
 - A verification note is required when staff record collection for a driver.
 - All loads must have collection records before staff can mark a delivery as complete.
 - Staff collection recordings are tracked separately in the audit trail.
 
-## Batch Dispatch
+## Delivery Runs
 
-Use **Batch Dispatch** (from the dispatcher dashboard) when you need to
-assign several loads to one driver at once instead of letting them
+Use **Delivery Runs** (from the dispatcher dashboard) when you need to
+assign several deliveries to one driver at once instead of letting them
 come in one at a time through the app — most often for a driver whose
-phone or data connection is unreliable. This is a separate, deliberate
-tool from the normal driver dispatch flow; it does not change how
-individual drivers normally receive one offer at a time.
+phone or data connection is unreliable, or for a planned delivery
+route. The driver can use the app, or you can print a run sheet for
+them. This is a separate, deliberate tool from the normal driver
+dispatch flow; it does not change how individual drivers normally
+receive one offer at a time.
 
-### Creating a batch
+### Creating a delivery run
 
-1. Open **Batch Dispatch** and select **+ New Batch**.
+1. From the dispatcher dashboard, select **New Delivery Run**.
 2. **Choose a driver.** Only eligible, account-linked drivers appear.
    The driver does not need to be online, and being in a decline
-   cooldown does not stop you from assigning them a batch — this is a
+   cooldown does not stop you from assigning them a run — this is a
    deliberate override of the normal offer flow. Their online/offline
    and cooldown status, and whether they already have an active
    delivery, are shown so you can decide with full information.
 3. **Choose requests.** The list shows every outstanding request not yet
    claimed by anyone, in the normal fairness order (highest priority
    first, oldest first within a priority). Check as many as you need —
-   there is a generous maximum per batch, shown on screen. Each request
+   there is a generous maximum per run, shown on screen. Each request
    displays its quantity (e.g., 2 loads / 2,000 gallons) as one entry.
 4. If a request is held for a **different** resident's preferred driver,
    it is clearly flagged. Selecting it requires you to check a box
    acknowledging that you are overriding that preference — it is never
    overridden silently.
-5. **Review** the full list, driver, and total gallons, then confirm.
+5. **Review** the summary showing the driver name, request count, load
+   count, and total gallons. Click **Create Delivery Run** to confirm.
 
 If anything about a selected request changed while you were reviewing it
-(for example, another driver claimed it in the meantime), the batch
+(for example, another driver claimed it in the meantime), the run
 will not be created and you will need to review and try again — this
-is intentional, so a batch is never partially assigned.
+is intentional, so a run is never partially assigned.
 
-### The dispatch sheet
+### The run sheet
 
-Confirming a batch takes you to its detail page, where you can
-download a printable **Driver Dispatch Sheet** — a simple PDF listing
+Creating a delivery run takes you to its detail page, where you can
+download a printable **Delivery Run Sheet** — a simple PDF listing
 every request in order with the customer's name, phone, village,
 quantity (loads and gallons), directions, and a checkbox/notes area for
 tracking completion on paper. You can **reprint** it at any time; a
-reprint always reflects the batch's current state (for example, a
+reprint always reflects the run's current state (for example, a
 request already delivered shows as delivered rather than a blank
 checkbox), not a frozen copy of the original assignment.
 
-### Completing batch loads
+### Run lifecycle
+
+Each delivery run has an operational state derived from its member
+requests:
+
+- **In Progress** — at least one request is still claimed (not yet
+  delivered). The driver's workload reflects these outstanding loads.
+- **Awaiting Confirmation** — every request has been physically
+  delivered, but at least one is still awaiting resident confirmation.
+  The driver is no longer operationally busy.
+- **Completed** — every request is confirmed or disputed, or no
+  requests remain in the run. The run is no longer shown as active.
+
+### Completing deliveries in a run
 
 Each request is still delivered and confirmed individually — there is no
-single button that marks a whole batch delivered. A two-load request
+single button that marks a whole run delivered. A two-load request
 appears as one entry; marking it delivered means the full requested
 quantity (2,000 gallons) was delivered. If the driver has app access,
 they mark each request delivered themselves, exactly like any other
-claimed delivery. If the driver cannot use the app, open the batch and
-use **Record Delivery (paper reconciliation)** on that specific request
-after verifying with the driver that it was actually delivered. This is
-only available for batch-assigned loads.
+claimed delivery. If the driver cannot use the app, open the run and
+use **Mark Delivered** on that specific request after verifying with the
+driver that it was actually delivered.
 
-### Reassigning or cancelling a batch request
+### Reassigning or cancelling a run request
 
-If one request in a batch needs to go to a different driver, or needs to
+If one request in a run needs to go to a different driver, or needs to
 be cancelled, use the same **Reassign** or **Cancel** actions you would
 use for any request from its detail page. That request simply leaves the
-batch — the rest of the batch is unaffected.
+run — the rest of the run is unaffected.
+
+### Closing an orphaned run
+
+If a delivery run shows as active but all its requests have already been
+reassigned or cancelled, use **Close Run** on the run's detail page to
+mark it completed. This is only available when no requests remain claimed.
 
 ## Statistics
 
@@ -231,8 +252,8 @@ month/year, or all time).
 - **Generate Continuity Report** downloads a PDF snapshot of every
   request that has not yet been delivered, for your own reference or
   to prepare for an outage. It does not send any email. This includes
-  batch-assigned loads (marked "(Batch)") alongside normal claims — a
-  batch assignment never hides a load from this report.
+  delivery-run-assigned loads (marked "(Delivery Run)") alongside
+  normal claims — a delivery run never hides a load from this report.
 - **Send Continuity Report Now** immediately emails that same snapshot
   to the configured government recipients, without waiting for the
   automatic 8:00 PM send. Use this before an expected outage or to

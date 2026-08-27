@@ -28,7 +28,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
   const batch = await getDispatchBatch(batchId);
   if (!batch) {
-    return new Response("Batch not found.", { status: 404 });
+    return new Response("Delivery run not found.", { status: 404 });
   }
 
   const [requests, allDrivers] = await Promise.all([
@@ -40,7 +40,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
   for (const d of allDrivers) {
     if (d.linkedUserId) driverNamesByUserId.set(d.linkedUserId, d.displayName);
   }
-  const driverName = driverNamesByUserId.get(batch.driverId) ?? "Unknown driver";
+  const driverName = batch.driverDisplayName || driverNamesByUserId.get(batch.driverId) || "Unknown driver";
 
   const data = buildDispatchBatchPdfData(
     batch.id,

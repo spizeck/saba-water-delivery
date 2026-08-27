@@ -82,7 +82,7 @@ function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
       row.preferredDriverName
         ? row.preferredDriverIsBatchDriver
           ? `Preferred driver: ${row.preferredDriverName}`
-          : `Originally preferred: ${row.preferredDriverName} (reassigned to this batch)`
+          : `Originally preferred: ${row.preferredDriverName} (reassigned to this run)`
         : null,
     ]
       .filter(Boolean)
@@ -134,7 +134,7 @@ export function renderDispatchBatchPdf(data: DispatchBatchPdfData): Promise<Buff
     doc.on("error", reject);
 
     doc.font("Helvetica-Bold").fontSize(18).fillColor("#0f172a").text("Saba Water Delivery");
-    doc.font("Helvetica-Bold").fontSize(14).text("Driver Dispatch Sheet");
+    doc.font("Helvetica-Bold").fontSize(14).text("Delivery Run Sheet");
     doc.moveDown(0.5);
     doc
       .font("Helvetica")
@@ -142,7 +142,7 @@ export function renderDispatchBatchPdf(data: DispatchBatchPdfData): Promise<Buff
       .fillColor("#334155")
       .text(`Driver: ${data.driverName}`);
     doc.text(`Generated: ${formatSabaDateTime(data.generatedAt)} Saba Time`);
-    doc.text(`Batch: ${data.batchId.slice(0, 8)}`);
+    doc.text(`Run ID: ${data.batchId.slice(0, 8)}`);
     doc
       .font("Helvetica-Oblique")
       .fontSize(9)
@@ -160,7 +160,7 @@ export function renderDispatchBatchPdf(data: DispatchBatchPdfData): Promise<Buff
     doc.moveDown(0.25);
 
     if (data.rows.length === 0) {
-      doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("No requests in this batch.");
+      doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("No requests in this delivery run.");
     } else {
       for (const row of data.rows) drawRow(doc, row);
     }

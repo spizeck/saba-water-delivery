@@ -667,7 +667,12 @@ the cooldown by toggling online/offline; it is enforced using server time.
 
 ---
 
-# Batch Dispatch
+# Batch Dispatch (UI: "Delivery Runs")
+
+> **UI terminology:** dispatchers and drivers see "Delivery Runs" in the
+> interface. The internal/backend name remains "Batch Dispatch" and
+> Firestore field names (`dispatchBatchId`, `dispatchBatches` collection)
+> are unchanged.
 
 The normal driver workflow above — one offer at a time, one active
 self-claimed delivery — remains unchanged and is the default for every

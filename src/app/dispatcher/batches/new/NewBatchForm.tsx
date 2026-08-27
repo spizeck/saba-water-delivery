@@ -108,9 +108,9 @@ export function NewBatchForm({
         <div className="mt-4 flex flex-col gap-2">
           <p className="text-sm font-medium text-slate-700">Select a driver</p>
           <p className="text-xs text-slate-500">
-            The driver does not need to be online — a batch assignment is a
-            deliberate staff decision, not a normal offer. Offline/cooldown
-            status is shown so you can decide with full information.
+            The driver does not need to be online — a delivery run is a
+            deliberate staff decision. Offline/cooldown status is shown so
+            you can decide with full information.
           </p>
           <div className="mt-2 flex flex-col gap-2">
             {drivers.map((d) => (
@@ -244,18 +244,35 @@ export function NewBatchForm({
             ))}
 
           <p className="text-sm font-medium text-slate-700">
-            Review batch for {selectedDriver.displayName}
+            Review delivery run for {selectedDriver.displayName}
           </p>
-          <p className="text-xs text-slate-500">
-            {selectedIds.length} request{selectedIds.length === 1 ? "" : "s"} selected &middot;{" "}
-            {selectedRequests.reduce((sum, r) => sum + r.loads * LOAD_GALLONS, 0).toLocaleString("en-US")} gallons total
-          </p>
+
+          {/* Summary */}
+          <div className="rounded-lg bg-slate-50 p-3">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <span className="text-slate-700">
+                <span className="font-bold">Driver:</span> {selectedDriver.displayName}
+              </span>
+              <span className="text-slate-700">
+                <span className="font-semibold">{selectedIds.length}</span>{" "}
+                request{selectedIds.length !== 1 ? "s" : ""}
+              </span>
+              <span className="text-slate-700">
+                <span className="font-semibold">{selectedRequests.reduce((sum, r) => sum + r.loads, 0)}</span>{" "}
+                load{selectedRequests.reduce((sum, r) => sum + r.loads, 0) !== 1 ? "s" : ""}
+              </span>
+              <span className="text-slate-500">
+                {selectedRequests.reduce((sum, r) => sum + r.loads * LOAD_GALLONS, 0).toLocaleString("en-US")} gallons
+              </span>
+            </div>
+          </div>
 
           <ol className="flex flex-col gap-1.5 rounded-lg border border-slate-200 p-3 text-sm">
             {selectedRequests.map((r, i) => (
               <li key={r.id} className="flex items-center justify-between gap-2">
                 <span>
                   {i + 1}. {r.customerName} &mdash; {r.village}
+                  <span className="ml-1.5 text-xs text-slate-500">{formatWaterQuantity(r.loads)}</span>
                 </span>
                 <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLOR[r.priority]}`}>
                   {PRIORITY_LABEL[r.priority]}
@@ -298,7 +315,7 @@ export function NewBatchForm({
 
           <div className="flex gap-2">
             <Button type="submit" size="md" disabled={pending || !canSubmit} className="text-sm !h-9 !px-3">
-              {pending ? "Assigning\u2026" : "Confirm & Assign"}
+              {pending ? "Assigning\u2026" : "Create Delivery Run"}
             </Button>
             <Button
               type="button"

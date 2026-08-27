@@ -7,6 +7,8 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import {
   type BatchCandidateSnapshot,
   type BatchValidationIssue,
+  type DeliveryRunDerivedState,
+  deriveRunState,
   validateBatchSelection,
 } from "./dispatchBatchSelection";
 import type { DispatchBatch, DispatchBatchStatus, WaterRequestStatus } from "./types";
@@ -34,6 +36,7 @@ function toDispatchBatch(id: string, data: DocumentData): DispatchBatch {
   return {
     id,
     driverId: data.driverId,
+    driverDisplayName: (data.driverDisplayName as string) ?? null,
     createdBy: data.createdBy,
     createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     status: (data.status as DispatchBatchStatus) ?? "active",
@@ -117,6 +120,7 @@ export async function createDispatchBatch(
     if (driverSnap.empty) throw new Error("DRIVER_NOT_FOUND");
     const driverData = driverSnap.docs[0].data();
     if (driverData.eligibilityStatus !== "eligible") throw new Error("DRIVER_INELIGIBLE");
+    const driverDisplayName = (driverData.displayName as string) || "Unknown driver";
 
     const requestRefs = requestIds.map((id) => db.collection(REQUESTS_COLLECTION).doc(id));
     const requestSnaps = await Promise.all(requestRefs.map((ref) => txn.get(ref)));
@@ -136,6 +140,7 @@ export async function createDispatchBatch(
     // fully commits every write below, or none of them) ----
     txn.set(batchRef, {
       driverId,
+      driverDisplayName,
       createdBy: actorId,
       createdAt: now,
       status: "active",
@@ -219,6 +224,73 @@ export async function getAllDispatchBatches(limitCount = 50): Promise<DispatchBa
   return snapshot.docs.map((doc) => toDispatchBatch(doc.id, doc.data()));
 }
 
+/** Enriched batch summary with live progress derived from member requests. */
+export interface DispatchBatchSummary extends DispatchBatch {
+  /** Driver display name — from snapshot if available, else from live
+   * registry lookup, else "Unknown driver". */
+  resolvedDriverName: string;
+  /** Total requests currently belonging to this batch. */
+  currentRequestCount: number;
+  /** Total physical loads across all current members. */
+  totalLoads: number;
+  /** Physical loads whose request status has left "claimed" (delivered,
+   * confirmed, disputed — NOT cancelled/reassigned-out, which are no
+   * longer members). */
+  loadsDelivered: number;
+  /** Derived operational state — see `DeliveryRunDerivedState`. */
+  derivedState: DeliveryRunDerivedState;
+}
+
+/**
+ * Returns enriched batch summaries with live progress, resolving
+ * driver names from snapshots first and falling back to the registry.
+ */
+export async function getAllDispatchBatchSummaries(
+  driverNames: Record<string, string>,
+  limitCount = 50,
+): Promise<DispatchBatchSummary[]> {
+  const batches = await getAllDispatchBatches(limitCount);
+  if (batches.length === 0) return [];
+
+  const db = getAdminDb();
+
+  // Fetch all current members for each batch in parallel.
+  const membersByBatch = await Promise.all(
+    batches.map(async (batch) => {
+      const snap = await db
+        .collection("waterRequests")
+        .where("dispatchBatchId", "==", batch.id)
+        .get();
+      return {
+        batchId: batch.id,
+        members: snap.docs.map((d) => ({
+          loads: (d.data().loads as number) ?? 1,
+          status: (d.data().status as string) ?? "cancelled",
+        })),
+      };
+    }),
+  );
+
+  const memberMap = new Map(membersByBatch.map((m) => [m.batchId, m.members]));
+
+  return batches.map((batch) => {
+    const members = memberMap.get(batch.id) ?? [];
+    const { derivedState, totalLoads, loadsDelivered } = deriveRunState(members);
+
+    const resolvedDriverName =
+      batch.driverDisplayName || driverNames[batch.driverId] || "Unknown driver";
+
+    return {
+      ...batch,
+      resolvedDriverName,
+      currentRequestCount: members.length,
+      totalLoads,
+      loadsDelivered,
+      derivedState,
+    };
+  });
+}
+
 export interface DispatchBatchEventRecord {
   id: string;
   type: string;
@@ -267,4 +339,54 @@ export async function recordBatchGenerated(batchId: string, actorId: string): Pr
     createdAt: now,
     metadata: null,
   });
+}
+
+/**
+ * Staff-only close/cancel for a delivery run that no longer has any
+ * outstanding claimed requests — e.g. orphaned prelaunch data or a run
+ * whose requests were all individually reassigned/cancelled. Forces
+ * the batch status to "completed" so it no longer appears as active.
+ *
+ * Does NOT touch individual requests — it only updates the batch
+ * document status. If any request is still "claimed" in this batch,
+ * the operation is refused to avoid hiding genuinely active work.
+ */
+export async function closeDeliveryRun(
+  batchId: string,
+  actorId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const db = getAdminDb();
+  const batchRef = db.collection(BATCHES_COLLECTION).doc(batchId);
+  const batchSnap = await batchRef.get();
+  if (!batchSnap.exists) return { ok: false, reason: "BATCH_NOT_FOUND" };
+
+  const data = batchSnap.data()!;
+  if (data.status === "completed") return { ok: true };
+
+  // Check that no member is still "claimed".
+  const membersSnap = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("dispatchBatchId", "==", batchId)
+    .get();
+  const claimedMembers = membersSnap.docs.filter(
+    (d) => d.data().status === "claimed",
+  );
+  if (claimedMembers.length > 0) {
+    return {
+      ok: false,
+      reason: `Cannot close: ${claimedMembers.length} request(s) still claimed. Reassign or cancel them individually first.`,
+    };
+  }
+
+  const now = FieldValue.serverTimestamp();
+  await batchRef.update({ status: "completed", updatedAt: now });
+  await batchRef.collection("events").add({
+    type: "dispatch_batch_closed",
+    actorId,
+    actorRole: "dispatcher",
+    createdAt: now,
+    metadata: { reason: "manual_close" },
+  });
+
+  return { ok: true };
 }

@@ -176,13 +176,13 @@ export default async function DispatcherPortalPage() {
                 href="/dispatcher/batches/new"
                 className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
               >
-                Batch Dispatch
+                New Delivery Run
               </Link>
               <Link
                 href="/dispatcher/batches"
                 className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
               >
-                View Open Batches
+                Delivery Runs
               </Link>
             </div>
             <div className="flex flex-wrap items-center gap-2">

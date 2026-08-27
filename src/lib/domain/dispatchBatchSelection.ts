@@ -166,3 +166,37 @@ export function computeDispatchBatchStatus(
 ): DispatchBatchStatus {
   return memberStatuses.some((s) => s === "claimed") ? "active" : "completed";
 }
+
+/** Operational state visible to dispatchers on the delivery runs list.
+ * - `"in_progress"`: at least one member is still `"claimed"` (not yet delivered).
+ * - `"all_delivered"`: every member has been physically delivered, but at
+ *    least one is awaiting resident confirmation (`"delivered"` status).
+ * - `"completed"`: all members are fully resolved (confirmed/disputed)
+ *    or no members remain.
+ */
+export type DeliveryRunDerivedState = "in_progress" | "all_delivered" | "completed";
+
+/** Pure derivation of the run's operational state from its member
+ * statuses and load counts. Used by `getAllDispatchBatchSummaries`
+ * and testable without Firestore. */
+export function deriveRunState(
+  members: ReadonlyArray<{ loads: number; status: string }>,
+): { derivedState: DeliveryRunDerivedState; totalLoads: number; loadsDelivered: number } {
+  const totalLoads = members.reduce((sum, m) => sum + m.loads, 0);
+  const claimed = members.filter((m) => m.status === "claimed");
+  const delivered = members.filter((m) =>
+    ["delivered", "confirmed", "disputed"].includes(m.status),
+  );
+  const loadsDelivered = delivered.reduce((sum, m) => sum + m.loads, 0);
+
+  let derivedState: DeliveryRunDerivedState;
+  if (claimed.length > 0) {
+    derivedState = "in_progress";
+  } else if (delivered.length > 0 && delivered.some((m) => m.status === "delivered")) {
+    derivedState = "all_delivered";
+  } else {
+    derivedState = "completed";
+  }
+
+  return { derivedState, totalLoads, loadsDelivered };
+}

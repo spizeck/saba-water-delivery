@@ -240,12 +240,15 @@ driver dispatch model, not a replacement for it. See
 [`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) "Batch Dispatch."
 
 **Key fields:** `driverId` (the assigned driver's Firebase uid, same
-convention as `waterRequests.assignedDriverId`), `createdBy`, `status`
-(`"active"` while any current member load is still `"claimed"`,
-otherwise `"completed"`), `originalRequestIds` (the immutable list of
-request IDs assigned when the batch was created — historical record
-only, not the live membership list), `generatedAt` (last time its PDF
-was generated or reprinted).
+convention as `waterRequests.assignedDriverId`), `driverDisplayName`
+(driver name snapshotted at creation time; null on legacy runs
+created before snapshotting was added — fall back to live registry
+lookup), `createdBy`, `status` (`"active"` while any current member
+load is still `"claimed"`, otherwise `"completed"`),
+`originalRequestIds` (the immutable list of request IDs assigned when
+the batch was created — historical record only, not the live
+membership list), `generatedAt` (last time its PDF was generated or
+reprinted).
 
 **Reads:** dispatcher, admin, viewer. **Writes:** only through
 `src/lib/domain/dispatchBatches.ts` (Admin SDK).
@@ -261,7 +264,8 @@ complete, reprintable record.
 ### `dispatchBatches/{batchId}/events/{eventId}`
 
 Audit trail: batch creation (`dispatch_batch_created`, with the full
-original request list) and every reprint (`dispatch_batch_reprinted`).
+original request list), every reprint (`dispatch_batch_reprinted`), and
+manual close (`dispatch_batch_closed`).
 Per-load events (assignment, removal from the batch, staff delivery
 reconciliation) are recorded on the request's own `events`
 subcollection instead — see `waterRequests/{requestId}/events` above.

@@ -5,6 +5,7 @@ import {
   BATCH_ELIGIBLE_STATUSES,
   MAX_BATCH_SIZE,
   computeDispatchBatchStatus,
+  deriveRunState,
   sortForBatchSelection,
   validateBatchSelection,
 } from "@/lib/domain/dispatchBatchSelection";
@@ -266,5 +267,105 @@ describe("computeDispatchBatchStatus", () => {
 
   it("is completed for an empty member set (all left the batch)", () => {
     expect(computeDispatchBatchStatus([])).toBe("completed");
+  });
+});
+
+describe("deriveRunState", () => {
+  it("is in_progress when any member is still claimed (single request, single load)", () => {
+    const result = deriveRunState([{ loads: 1, status: "claimed" }]);
+    expect(result.derivedState).toBe("in_progress");
+    expect(result.totalLoads).toBe(1);
+    expect(result.loadsDelivered).toBe(0);
+  });
+
+  it("is in_progress for a partially delivered run with mixed loads", () => {
+    const result = deriveRunState([
+      { loads: 2, status: "delivered" },
+      { loads: 1, status: "claimed" },
+      { loads: 1, status: "confirmed" },
+    ]);
+    expect(result.derivedState).toBe("in_progress");
+    expect(result.totalLoads).toBe(4);
+    expect(result.loadsDelivered).toBe(3);
+  });
+
+  it("is all_delivered when no member is claimed but some are awaiting confirmation", () => {
+    const result = deriveRunState([
+      { loads: 2, status: "delivered" },
+      { loads: 1, status: "confirmed" },
+    ]);
+    expect(result.derivedState).toBe("all_delivered");
+    expect(result.totalLoads).toBe(3);
+    expect(result.loadsDelivered).toBe(3);
+  });
+
+  it("is completed when every member is confirmed or disputed", () => {
+    const result = deriveRunState([
+      { loads: 1, status: "confirmed" },
+      { loads: 2, status: "disputed" },
+    ]);
+    expect(result.derivedState).toBe("completed");
+    expect(result.totalLoads).toBe(3);
+    expect(result.loadsDelivered).toBe(3);
+  });
+
+  it("is completed for an empty member set (all requests removed)", () => {
+    const result = deriveRunState([]);
+    expect(result.derivedState).toBe("completed");
+    expect(result.totalLoads).toBe(0);
+    expect(result.loadsDelivered).toBe(0);
+  });
+
+  it("does not count cancelled requests as delivered loads", () => {
+    const result = deriveRunState([
+      { loads: 1, status: "confirmed" },
+      { loads: 1, status: "cancelled" },
+    ]);
+    expect(result.derivedState).toBe("completed");
+    expect(result.totalLoads).toBe(2);
+    expect(result.loadsDelivered).toBe(1);
+  });
+
+  it("is completed when all are confirmed — run is not stuck by pending confirmation", () => {
+    const result = deriveRunState([
+      { loads: 1, status: "confirmed" },
+      { loads: 1, status: "confirmed" },
+    ]);
+    expect(result.derivedState).toBe("completed");
+    expect(result.totalLoads).toBe(2);
+    expect(result.loadsDelivered).toBe(2);
+  });
+
+  it("handles a run with a mix of one-load and two-load requests", () => {
+    const result = deriveRunState([
+      { loads: 1, status: "claimed" },
+      { loads: 2, status: "delivered" },
+      { loads: 1, status: "confirmed" },
+    ]);
+    expect(result.derivedState).toBe("in_progress");
+    expect(result.totalLoads).toBe(4);
+    expect(result.loadsDelivered).toBe(3);
+  });
+
+  it("correctly computes all_delivered with a single disputed request", () => {
+    const result = deriveRunState([
+      { loads: 1, status: "delivered" },
+      { loads: 1, status: "disputed" },
+    ]);
+    expect(result.derivedState).toBe("all_delivered");
+    expect(result.loadsDelivered).toBe(2);
+  });
+
+  it("customer confirmation pending after physical delivery does not keep run active", () => {
+    // This is a key requirement: physical delivery is done, resident
+    // has not confirmed, but the driver should NOT appear busy.
+    const result = deriveRunState([
+      { loads: 2, status: "delivered" },
+      { loads: 1, status: "delivered" },
+    ]);
+    expect(result.derivedState).toBe("all_delivered");
+    expect(result.totalLoads).toBe(3);
+    expect(result.loadsDelivered).toBe(3);
+    // Not "in_progress" — driver is operationally free.
   });
 });

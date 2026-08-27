@@ -81,13 +81,13 @@ You can go offline whenever you are done for the day, or any time in
 between deliveries. Going offline simply means you will not be offered
 new deliveries until you go back online.
 
-## Batch assignments
+## Delivery runs
 
 Occasionally, government staff may assign you several deliveries at
 once instead of one at a time — you will see each one listed under "My
-deliveries" with a "Batch assignment" label. This is a deliberate
-staff decision, usually because you were preparing for a day with
-unreliable phone or data access, and it does not change how you
-complete each delivery — mark each one delivered individually, exactly
-as you would any other delivery. You will not be offered new normal
-deliveries until your batch deliveries are completed.
+deliveries" with a "Delivery run" label. This is a deliberate staff
+decision, usually because you were preparing for a day with unreliable
+phone or data access, and it does not change how you complete each
+delivery — mark each one delivered individually, exactly as you would
+any other delivery. You will not be offered new normal deliveries
+until your delivery run is completed.

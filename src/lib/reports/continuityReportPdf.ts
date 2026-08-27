@@ -109,7 +109,7 @@ function drawAssignedRow(doc: PDFKit.PDFDocument, row: AssignedReportRow) {
   doc.text(`Directions: ${row.deliveryDirections}`);
   doc.text(
     [
-      `Driver: ${row.assignedDriverName ?? "Unknown driver"}${row.isBatchAssigned ? " (Batch)" : ""}`,
+      `Driver: ${row.assignedDriverName ?? "Unknown driver"}${row.isBatchAssigned ? " (Delivery Run)" : ""}`,
       `Requested: ${formatSabaDateTime(row.requestedAt)}`,
       row.claimedAt ? `Claimed: ${formatSabaDateTime(row.claimedAt)}` : null,
     ]

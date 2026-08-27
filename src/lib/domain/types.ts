@@ -631,6 +631,10 @@ export interface DispatchBatch {
    * to (never the driverRegistry document ID — see TECHNICAL.md
    * "Canonical Driver ID"). */
   driverId: string;
+  /** Snapshot of the driver's display name at creation time. Present
+   * on newly created runs; null on legacy runs created before
+   * snapshotting was added (fall back to live registry lookup). */
+  driverDisplayName: string | null;
   /** uid of the dispatcher/admin who created this batch. */
   createdBy: string;
   createdAt: string;
@@ -654,7 +658,8 @@ export interface DispatchBatch {
 
 export type DispatchBatchEventType =
   | "dispatch_batch_created"
-  | "dispatch_batch_reprinted";
+  | "dispatch_batch_reprinted"
+  | "dispatch_batch_closed";
 
 export interface DispatchBatchEvent {
   id: string;

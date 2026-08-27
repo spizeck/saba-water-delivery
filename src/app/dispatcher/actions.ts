@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
-import { createDispatchBatch } from "@/lib/domain/dispatchBatches";
+import { closeDeliveryRun, createDispatchBatch } from "@/lib/domain/dispatchBatches";
 import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
 import {
   getDriverByLinkedUserId,
@@ -732,7 +732,7 @@ export async function createBatch(
         case "TOO_MANY_REQUESTS":
           return {
             status: "error",
-            message: `A batch can include at most ${MAX_BATCH_SIZE} loads. Split this into more than one batch.`,
+            message: `A delivery run can include at most ${MAX_BATCH_SIZE} requests. Split this into more than one run.`,
           };
         case "DUPLICATE_REQUEST_ID":
         case "REQUEST_NOT_FOUND":
@@ -804,6 +804,31 @@ export async function recordBatchDelivery(
   if (batchId) revalidatePath(`/dispatcher/batches/${batchId}`);
   revalidatePath(`/dispatcher/${requestId}`);
   return { status: "success", message: "Delivery recorded." };
+}
+
+/**
+ * Close/cancel an orphaned or completed delivery run that is
+ * incorrectly still marked active. Only succeeds when no member
+ * requests are still "claimed" — the dispatcher must individually
+ * resolve those first.
+ */
+export async function closeRun(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const batchId = String(formData.get("batchId") ?? "").trim();
+  if (!batchId) return { status: "error", message: "Missing run ID." };
+
+  const result = await closeDeliveryRun(batchId, session.uid);
+  if (!result.ok) {
+    return { status: "error", message: result.reason };
+  }
+
+  revalidatePath("/dispatcher/batches");
+  revalidatePath(`/dispatcher/batches/${batchId}`);
+  revalidatePath("/dispatcher");
+  return { status: "success", message: "Delivery run closed." };
 }
 
 /**
