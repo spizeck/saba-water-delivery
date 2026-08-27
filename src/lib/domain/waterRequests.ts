@@ -13,6 +13,7 @@ import {
 } from "./quantity";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { getFillStations } from "./fillStations";
+import { assertQuantityEditable } from "./loadCollection";
 import { isDriverImmediatelyAvailable, getMeterAssignments } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import type {
@@ -1009,6 +1010,106 @@ export async function changeRequestPriority(
         },
       });
     }
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Edit request
+// ---------------------------------------------------------------------------
+
+/** Statuses that allow editing request fields. Once a request is
+ * claimed or further along the lifecycle, field edits are not allowed
+ * (only priority override and queue escalation remain available). */
+const EDITABLE_STATUSES: WaterRequestStatus[] = [
+  "requested",
+  "preferred_driver_hold",
+  "available",
+];
+
+export interface EditWaterRequestInput {
+  requestId: string;
+  actorId: string;
+  /** New quantity (loads). Null means "do not change". */
+  loads?: RequestedLoads | null;
+  /** New village. Null means "do not change". */
+  village?: string | null;
+  /** New delivery directions. Null means "do not change". */
+  deliveryDirections?: string | null;
+}
+
+/**
+ * Allows a dispatcher/admin to edit certain request fields before the
+ * request has been claimed. Records a `request_edited` audit event
+ * listing each changed field with its previous and new value.
+ *
+ * Throws:
+ * - REQUEST_NOT_FOUND
+ * - REQUEST_NOT_EDITABLE — status is beyond the editable window
+ * - INVALID_LOADS
+ * - INVALID_VILLAGE
+ * - QUANTITY_LOCKED_BY_COLLECTION — collection records exist
+ * - NO_CHANGES — nothing was actually changed
+ */
+export async function editWaterRequest(
+  input: EditWaterRequestInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+    const data = snap.data()!;
+
+    if (!EDITABLE_STATUSES.includes(data.status as WaterRequestStatus)) {
+      throw new Error("REQUEST_NOT_EDITABLE");
+    }
+
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    const updates: Record<string, unknown> = { updatedAt: now };
+
+    // Quantity
+    if (input.loads != null && input.loads !== data.loads) {
+      if (!isValidRequestedLoads(input.loads)) throw new Error("INVALID_LOADS");
+      assertQuantityEditable(data.loadCollections);
+      changes.loads = { from: data.loads, to: input.loads };
+      updates.loads = input.loads;
+      updates.gallons = gallonsForLoads(input.loads);
+    }
+
+    // Village
+    if (input.village != null && input.village !== data.village) {
+      const trimmed = input.village.trim();
+      if (!trimmed || !isValidSabaVillage(trimmed)) throw new Error("INVALID_VILLAGE");
+      changes.village = { from: data.village, to: trimmed };
+      updates.village = trimmed;
+    }
+
+    // Delivery directions
+    if (input.deliveryDirections != null && input.deliveryDirections !== data.deliveryDirections) {
+      const trimmed = input.deliveryDirections.trim();
+      if (!trimmed) throw new Error("DIRECTIONS_REQUIRED");
+      changes.deliveryDirections = { from: data.deliveryDirections, to: trimmed };
+      updates.deliveryDirections = trimmed;
+    }
+
+    if (Object.keys(changes).length === 0) {
+      throw new Error("NO_CHANGES");
+    }
+
+    txn.update(requestRef, updates);
+    txn.create(requestRef.collection("events").doc(), {
+      type: "request_edited",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: changes,
+    });
   });
 
   const updated = await requestRef.get();
@@ -2317,29 +2418,4 @@ export async function recordWaterCollection(
 }
 
 // Re-export pure load-collection helpers for server consumers.
-export { areAllLoadsCollected, getMissingLoadNumbers } from "./loadCollection";
-
-// ---------------------------------------------------------------------------
-// Quantity-edit guard
-// ---------------------------------------------------------------------------
-
-/**
- * Validates that a request's quantity (loads) may be changed.
- * Once any water collection has been recorded, the quantity is locked.
- *
- * This prevents:
- * - A 2-load request with Load 1 collected being changed to 1 load
- * - Silent deletion of collection records due to quantity changes
- *
- * Throws:
- * - QUANTITY_LOCKED_BY_COLLECTION — collection records exist
- *
- * Call this check BEFORE writing any quantity change to Firestore.
- */
-export function assertQuantityEditable(
-  loadCollections: unknown[] | null | undefined,
-): void {
-  if (Array.isArray(loadCollections) && loadCollections.length > 0) {
-    throw new Error("QUANTITY_LOCKED_BY_COLLECTION");
-  }
-}
+export { areAllLoadsCollected, assertQuantityEditable, getMissingLoadNumbers } from "./loadCollection";

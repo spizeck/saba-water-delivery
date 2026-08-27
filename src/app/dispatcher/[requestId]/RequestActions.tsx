@@ -7,11 +7,15 @@ import { Card } from "@/components/ui/Card";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 
+import { SABA_VILLAGES } from "@/lib/domain/villages";
+import type { RequestedLoads } from "@/lib/domain/quantity";
+
 import {
   assignRequest,
   cancelRequest,
   changePriority,
   confirmUnregisteredDelivery,
+  editRequest,
   escalateRequest,
   markDeliveredByStaff,
   reassignRequest,
@@ -29,6 +33,12 @@ interface Props {
   /** True when this is an unregistered customer's delivered (awaiting confirmation) request. */
   canConfirmUnregisteredDelivery: boolean;
   currentPriority: DispatchPriority;
+  /** Current field values for the edit form. */
+  currentLoads: RequestedLoads;
+  currentVillage: string;
+  currentDeliveryDirections: string;
+  /** Whether collection records exist (locks quantity editing). */
+  hasCollections: boolean;
 }
 
 export function RequestActions({
@@ -37,12 +47,17 @@ export function RequestActions({
   eligibleDrivers,
   canConfirmUnregisteredDelivery,
   currentPriority,
+  currentLoads,
+  currentVillage,
+  currentDeliveryDirections,
+  hasCollections,
 }: Props) {
   const [activePanel, setActivePanel] = useState<string | null>(null);
 
   const isDisputed = status === "disputed";
   const isAssignable = status === "available" || status === "preferred_driver_hold";
   const isClaimed = status === "claimed";
+  const isEditable = ["requested", "preferred_driver_hold", "available"].includes(status);
   const isUnresolved = !["confirmed", "cancelled"].includes(status);
 
   return (
@@ -130,6 +145,16 @@ export function RequestActions({
             Cancel request
           </Button>
         )}
+        {isEditable && (
+          <Button
+            size="md"
+            variant="outline"
+            onClick={() => setActivePanel(activePanel === "edit" ? null : "edit")}
+            className="text-sm !h-9 !px-3"
+          >
+            Edit request
+          </Button>
+        )}
         <Button
           size="md"
           variant="outline"
@@ -143,6 +168,16 @@ export function RequestActions({
         )}
       </div>
 
+      {activePanel === "edit" && (
+        <EditRequestPanel
+          requestId={requestId}
+          currentLoads={currentLoads}
+          currentVillage={currentVillage}
+          currentDeliveryDirections={currentDeliveryDirections}
+          hasCollections={hasCollections}
+          onDone={() => setActivePanel(null)}
+        />
+      )}
       {activePanel === "priority" && (
         <ChangePriorityPanel
           requestId={requestId}
@@ -181,6 +216,83 @@ export function RequestActions({
 // ---------------------------------------------------------------------------
 // Sub-panels
 // ---------------------------------------------------------------------------
+
+function EditRequestPanel({
+  requestId,
+  currentLoads,
+  currentVillage,
+  currentDeliveryDirections,
+  hasCollections,
+  onDone,
+}: {
+  requestId: string;
+  currentLoads: RequestedLoads;
+  currentVillage: string;
+  currentDeliveryDirections: string;
+  hasCollections: boolean;
+  onDone: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(editRequest, initialState);
+  if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-3 rounded-lg border border-slate-200 p-3">
+      <input type="hidden" name="requestId" value={requestId} />
+      <p className="text-sm font-medium text-slate-700">Edit request</p>
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">
+          Quantity
+          {hasCollections && (
+            <span className="ml-1 text-xs font-normal text-slate-500">(locked — water already collected)</span>
+          )}
+        </span>
+        <select
+          name="loads"
+          defaultValue={currentLoads}
+          disabled={hasCollections}
+          className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+        >
+          <option value="1">1 load (1,000 gal)</option>
+          <option value="2">2 loads (2,000 gal)</option>
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">Village</span>
+        <select
+          name="village"
+          defaultValue={currentVillage}
+          className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none"
+        >
+          {SABA_VILLAGES.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">Delivery directions</span>
+        <textarea
+          name="deliveryDirections"
+          defaultValue={currentDeliveryDirections}
+          rows={2}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none"
+        />
+      </label>
+
+      {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+          {pending ? "Saving\u2026" : "Save changes"}
+        </Button>
+        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
 
 function ResolveCompletePanel({ requestId, onDone }: { requestId: string; onDone: () => void }) {
   const [state, formAction, pending] = useActionState(resolveDisputeAsCompleted, initialState);

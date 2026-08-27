@@ -77,6 +77,7 @@ const EVENT_LABELS: Record<string, string> = {
   water_collected: "Water collected",
   water_collected_by_staff: "Water collected (recorded by staff)",
   customer_history_linked: "Customer history linked",
+  request_edited: "Request edited",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -431,6 +432,10 @@ export default async function RequestDetailPage({ params }: PageProps) {
             eligibleDrivers={eligibleDriverOptions}
             canConfirmUnregisteredDelivery={!isRegisteredCustomer && status === "delivered"}
             currentPriority={(data.dispatchPriority as DispatchPriority) ?? "normal"}
+            currentLoads={(data.loads as RequestedLoads) ?? 1}
+            currentVillage={(data.village as string) ?? ""}
+            currentDeliveryDirections={(data.deliveryDirections as string) ?? ""}
+            hasCollections={Array.isArray(data.loadCollections) && data.loadCollections.length > 0}
           />
 
           {/* Event history */}

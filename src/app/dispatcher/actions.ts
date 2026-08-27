@@ -24,6 +24,7 @@ import {
   createWaterRequest,
   dispatcherAssign,
   dispatcherReassign,
+  editWaterRequest,
   escalateDispatchRequest,
   findActiveRequestsByPhone,
   getActiveRequestForCustomer,
@@ -138,6 +139,64 @@ export async function cancelRequest(
 
   revalidatePath("/dispatcher");
   return { status: "success", message: "Request cancelled." };
+}
+
+// ---------------------------------------------------------------------------
+// Edit request
+// ---------------------------------------------------------------------------
+
+export async function editRequest(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+
+  const loadsRaw = formData.get("loads");
+  const villageRaw = formData.get("village");
+  const directionsRaw = formData.get("deliveryDirections");
+
+  const loads = loadsRaw != null ? parseRequestedLoads(loadsRaw) : null;
+  const village = villageRaw != null ? String(villageRaw).trim() || null : null;
+  const deliveryDirections = directionsRaw != null ? String(directionsRaw).trim() || null : null;
+
+  try {
+    await editWaterRequest({
+      requestId,
+      actorId: session.uid,
+      loads,
+      village,
+      deliveryDirections,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_EDITABLE":
+          return { status: "error", message: "This request can no longer be edited. It has already been claimed or further along." };
+        case "INVALID_LOADS":
+          return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+        case "INVALID_VILLAGE":
+          return { status: "error", message: "Please select a valid village from the list." };
+        case "DIRECTIONS_REQUIRED":
+          return { status: "error", message: "Delivery directions are required." };
+        case "QUANTITY_LOCKED_BY_COLLECTION":
+          return { status: "error", message: "Quantity cannot be changed because water collection has already been recorded for this request." };
+        case "NO_CHANGES":
+          return { status: "error", message: "No changes were made." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  revalidatePath(`/dispatcher/${requestId}`);
+  return { status: "success", message: "Request updated." };
 }
 
 export async function resolveDisputeAsCompleted(

@@ -54,9 +54,10 @@ function drawUnassignedRow(doc: PDFKit.PDFDocument, row: UnassignedReportRow) {
     .font("Helvetica-Bold")
     .fontSize(10)
     .fillColor(row.priority === "critical" ? "#991b1b" : "#0f172a")
-    .text(`${PRIORITY_LABEL[row.priority] ?? row.priority} — ${row.customerName}`, {
-      continued: false,
-    });
+    .text(
+      `${PRIORITY_LABEL[row.priority] ?? row.priority}${row.isEscalated ? " [ESCALATED]" : ""} — ${row.customerName}`,
+      { continued: false },
+    );
   doc
     .font("Helvetica")
     .fontSize(9)

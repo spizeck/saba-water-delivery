@@ -25,7 +25,7 @@ export const EMPTY_WATER_SITUATION: WaterSituationValue = {
   personsAffected: "",
   availableStorageCapacity: "",
   vulnerableCircumstances: [],
-  reportedUrgency: "",
+  reportedUrgency: "normal",
   criticalExplanation: "",
 };
 

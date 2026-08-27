@@ -11,7 +11,7 @@ import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { checkDeliveryConfirmationTimeout, getAllRequests } from "@/lib/domain/waterRequests";
 
-import { DriverList } from "./DriverList";
+import { DriverList, type DriverWorkload } from "./DriverList";
 import { RequestList } from "./RequestList";
 import { SendContinuityReportButton } from "./SendContinuityReportButton";
 
@@ -123,6 +123,34 @@ export default async function DispatcherPortalPage() {
       }),
   );
 
+  // Build per-driver workload summaries from claimed requests.
+  const driverWorkloads: Record<string, DriverWorkload> = {};
+  // Map from linkedUserId -> registryId for driver lookup.
+  const uidToRegistryId = new Map<string, string>();
+  for (const d of allDrivers) {
+    if (d.linkedUserId) uidToRegistryId.set(d.linkedUserId, d.id);
+  }
+  for (const req of allRequests) {
+    if (req.status !== "claimed" || !req.assignedDriverId) continue;
+    const registryId = uidToRegistryId.get(req.assignedDriverId);
+    if (!registryId) continue;
+    if (!driverWorkloads[registryId]) {
+      driverWorkloads[registryId] = { openRequests: 0, openLoads: 0, requests: [] };
+    }
+    const wl = driverWorkloads[registryId];
+    wl.openRequests += 1;
+    wl.openLoads += req.loads;
+    wl.requests.push({
+      requestId: req.id,
+      customerName: customerNames[req.id] ?? "Unknown",
+      village: req.village,
+      loads: req.loads,
+      loadsCollected: req.loadCollections?.length ?? 0,
+      isBatchAssigned: Boolean(req.dispatchBatchId),
+      isEscalated: req.dispatchOverrideRank != null,
+    });
+  }
+
   return (
     <>
       <PortalHeader portalName="Dispatcher" roles={profile.roles} />
@@ -170,7 +198,7 @@ export default async function DispatcherPortalPage() {
             customerNames={customerNames}
             driverNames={driverNames}
           />
-          <DriverList drivers={allDrivers} />
+          <DriverList drivers={allDrivers} workloads={driverWorkloads} />
         </Container>
       </main>
     </>

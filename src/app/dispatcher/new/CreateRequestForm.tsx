@@ -69,7 +69,7 @@ export function CreateRequestForm({
   const [emailStatus, setEmailStatus] = useState<EmailAccountStatus | null>(null);
   const [emailStatusLoading, setEmailStatusLoading] = useState(false);
   const [useExistingResidentUid, setUseExistingResidentUid] = useState<string | null>(null);
-  const [sendInvitation, setSendInvitation] = useState(false);
+  const [sendInvitation, setSendInvitation] = useState(true);
 
   const possibleMatches = useMemo(() => {
     if (customerType !== "new") return [];

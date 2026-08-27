@@ -37,3 +37,18 @@ export function getMissingLoadNumbers(
   }
   return missing;
 }
+
+/**
+ * Validates that a request's quantity (loads) may be changed.
+ * Once any water collection has been recorded, the quantity is locked.
+ *
+ * Throws:
+ * - QUANTITY_LOCKED_BY_COLLECTION — collection records exist
+ */
+export function assertQuantityEditable(
+  loadCollections: unknown[] | null | undefined,
+): void {
+  if (Array.isArray(loadCollections) && loadCollections.length > 0) {
+    throw new Error("QUANTITY_LOCKED_BY_COLLECTION");
+  }
+}

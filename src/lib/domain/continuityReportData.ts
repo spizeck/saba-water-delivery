@@ -38,6 +38,8 @@ export interface UnassignedReportRow {
   preferredDriverName: string | null;
   loads: RequestedLoads;
   gallons: number;
+  /** True when dispatch order was manually escalated by staff. */
+  isEscalated: boolean;
 }
 
 export interface AssignedReportRow {
@@ -128,6 +130,7 @@ export function buildContinuityReportData(
       : null,
     loads: r.loads,
     gallons: r.gallons,
+    isEscalated: r.dispatchOverrideRank != null,
   }));
 
   const assigned: AssignedReportRow[] = assignedRequests.map((r) => {

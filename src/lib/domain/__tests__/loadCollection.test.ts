@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { areAllLoadsCollected, getMissingLoadNumbers } from "../loadCollection";
+import { areAllLoadsCollected, assertQuantityEditable, getMissingLoadNumbers } from "../loadCollection";
 import type { WaterLoadCollection } from "../types";
 
 function makeCollection(loadNumber: 1 | 2): WaterLoadCollection {
@@ -131,5 +131,31 @@ describe("Statistics computation from collections", () => {
     }
     expect(stationMap.get("bottom")).toBe(1000);
     expect(stationMap.get("wws")).toBe(1000);
+  });
+});
+
+describe("assertQuantityEditable", () => {
+  it("allows edit when loadCollections is null", () => {
+    expect(() => assertQuantityEditable(null)).not.toThrow();
+  });
+
+  it("allows edit when loadCollections is undefined", () => {
+    expect(() => assertQuantityEditable(undefined)).not.toThrow();
+  });
+
+  it("allows edit when loadCollections is empty", () => {
+    expect(() => assertQuantityEditable([])).not.toThrow();
+  });
+
+  it("throws QUANTITY_LOCKED_BY_COLLECTION when collections exist", () => {
+    expect(() => assertQuantityEditable([makeCollection(1)])).toThrow(
+      "QUANTITY_LOCKED_BY_COLLECTION",
+    );
+  });
+
+  it("throws when multiple collections exist", () => {
+    expect(() => assertQuantityEditable([makeCollection(1), makeCollection(2)])).toThrow(
+      "QUANTITY_LOCKED_BY_COLLECTION",
+    );
   });
 });

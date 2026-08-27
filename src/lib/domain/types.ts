@@ -403,7 +403,11 @@ export type WaterRequestEventType =
    * driver — used for paper batch reconciliation or when the driver
    * could not record it themselves. Same metadata as "water_collected"
    * plus a required `note`. */
-  | "water_collected_by_staff";
+  | "water_collected_by_staff"
+  /** Staff edited request fields (village, delivery directions, or
+   * quantity). Metadata records each changed field with its previous
+   * and new value. */
+  | "request_edited";
 
 export interface WaterRequestEvent {
   id: string;

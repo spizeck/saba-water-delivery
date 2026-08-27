@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { DriverRegistryEntry } from "@/lib/domain/types";
 
 import {
@@ -14,11 +16,31 @@ import {
 
 const initialState: DriverActionState = { status: "idle" };
 
-interface Props {
-  drivers: DriverRegistryEntry[];
+/** Compact summary of one claimed request, computed server-side. */
+export interface DriverRequestSummary {
+  requestId: string;
+  customerName: string;
+  village: string;
+  loads: number;
+  loadsCollected: number;
+  isBatchAssigned: boolean;
+  isEscalated: boolean;
 }
 
-export function DriverList({ drivers }: Props) {
+/** Per-driver workload summary, keyed by registry ID. */
+export interface DriverWorkload {
+  openRequests: number;
+  openLoads: number;
+  requests: DriverRequestSummary[];
+}
+
+interface Props {
+  drivers: DriverRegistryEntry[];
+  /** Workload keyed by driver registry ID. */
+  workloads: Record<string, DriverWorkload>;
+}
+
+export function DriverList({ drivers, workloads }: Props) {
   if (drivers.length === 0) {
     return (
       <Card>
@@ -35,24 +57,42 @@ export function DriverList({ drivers }: Props) {
       </h2>
       <div className="mt-4 flex flex-col gap-3">
         {drivers.map((driver) => (
-          <DriverRow key={driver.id} driver={driver} />
+          <DriverRow
+            key={driver.id}
+            driver={driver}
+            workload={workloads[driver.id] ?? null}
+          />
         ))}
       </div>
     </Card>
   );
 }
 
-function DriverRow({ driver }: { driver: DriverRegistryEntry }) {
+function DriverRow({
+  driver,
+  workload,
+}: {
+  driver: DriverRegistryEntry;
+  workload: DriverWorkload | null;
+}) {
   const [action, setAction] = useState<"restrict" | "restore" | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const isEligible = driver.eligibilityStatus === "eligible";
   const isOnline = driver.availabilityStatus === "online";
+  const hasWork = workload && workload.openRequests > 0;
 
   return (
     <div className="rounded-lg border border-slate-200 p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium text-slate-900">{driver.displayName}</p>
+          <button
+            type="button"
+            onClick={() => hasWork && setExpanded(!expanded)}
+            className={`text-left font-medium text-slate-900 ${hasWork ? "hover:underline cursor-pointer" : ""}`}
+          >
+            {driver.displayName}
+          </button>
           <div className="mt-0.5 flex flex-wrap gap-2 text-xs">
             <span className={isEligible ? "text-green-700" : "text-red-700 font-medium"}>
               {isEligible ? "Eligible" : "Ineligible"}
@@ -65,6 +105,11 @@ function DriverRow({ driver }: { driver: DriverRegistryEntry }) {
             )}
             {driver.ineligibilityReason && (
               <span className="text-red-600">{driver.ineligibilityReason}</span>
+            )}
+            {hasWork && (
+              <span className="font-medium text-indigo-700">
+                {workload.openRequests} request{workload.openRequests !== 1 ? "s" : ""} &middot; {workload.openLoads} load{workload.openLoads !== 1 ? "s" : ""}
+              </span>
             )}
           </div>
         </div>
@@ -90,6 +135,47 @@ function DriverRow({ driver }: { driver: DriverRegistryEntry }) {
           )}
         </div>
       </div>
+
+      {expanded && hasWork && (
+        <div className="mt-3 border-t border-slate-100 pt-2">
+          <div className="flex flex-col gap-2">
+            {workload.requests.map((req) => (
+              <div key={req.requestId} className="flex items-start justify-between gap-2 text-xs">
+                <div className="min-w-0">
+                  <Link
+                    href={`/dispatcher/${req.requestId}`}
+                    className="font-medium text-blue-700 hover:underline"
+                  >
+                    {req.customerName}
+                  </Link>
+                  <span className="ml-1.5 text-slate-500">
+                    {req.village} &middot; {formatWaterQuantity(req.loads as 1 | 2)}
+                  </span>
+                  {req.isBatchAssigned && (
+                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                      batch
+                    </span>
+                  )}
+                  {req.isEscalated && (
+                    <span className="ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                      escalated
+                    </span>
+                  )}
+                </div>
+                <span className={`shrink-0 text-[10px] font-medium ${
+                  req.loadsCollected >= req.loads
+                    ? "text-green-700"
+                    : req.loadsCollected > 0
+                      ? "text-amber-700"
+                      : "text-slate-500"
+                }`}>
+                  {req.loadsCollected}/{req.loads} collected
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {action === "restrict" && (
         <RestrictForm driverId={driver.id} onDone={() => setAction(null)} />

@@ -220,6 +220,61 @@ describe("buildContinuityReportData", () => {
     expect(oneLoad?.gallons).toBe(1000);
   });
 
+  it("marks escalated unassigned requests", () => {
+    const data = buildContinuityReportData(
+      [
+        makeRequest("escalated", "available", { dispatchOverrideRank: 0 }),
+        makeRequest("normal", "available"),
+      ],
+      driverNames,
+      generatedAt,
+    );
+    const escalated = data.unassigned.find((r) => r.requestId === "escalated");
+    const normal = data.unassigned.find((r) => r.requestId === "normal");
+    expect(escalated?.isEscalated).toBe(true);
+    expect(normal?.isEscalated).toBe(false);
+  });
+
+  it("includes collection progress on assigned rows", () => {
+    const data = buildContinuityReportData(
+      [
+        makeRequest("partial", "claimed", {
+          assignedDriverId: "driver-1",
+          loads: 2,
+          gallons: 2000 as StandardLoadGallons,
+          loadCollections: [
+            {
+              loadNumber: 1,
+              collectedAt: baseTime.toISOString(),
+              fillStationId: "bottom",
+              fillStationName: "Bottom Fill Station",
+              meterCode: "BTM1",
+              meterNumber: 101,
+              driverId: "driver-1",
+              recordedBy: "driver-1",
+              recordedByRole: "driver",
+              note: null,
+            },
+          ],
+        }),
+        makeRequest("none-collected", "claimed", {
+          assignedDriverId: "driver-2",
+          loadCollections: null,
+        }),
+      ],
+      driverNames,
+      generatedAt,
+    );
+    const partial = data.assigned.find((r) => r.requestId === "partial");
+    const none = data.assigned.find((r) => r.requestId === "none-collected");
+    expect(partial?.loadsCollected).toBe(1);
+    expect(partial?.collectionDetails).toHaveLength(1);
+    expect(partial?.collectionDetails[0].fillStationName).toBe("Bottom Fill Station");
+    expect(partial?.collectionDetails[0].meterCode).toBe("BTM1");
+    expect(none?.loadsCollected).toBe(0);
+    expect(none?.collectionDetails).toHaveLength(0);
+  });
+
   it("orders by priority then age within each section", () => {
     const data = buildContinuityReportData(
       [
