@@ -5,7 +5,7 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { isConfirmationWindowExpired } from "@/lib/domain/deliveryConfirmation";
-import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getAllDriverRegistryEntries, reconcileActiveRequest } from "@/lib/domain/driverRegistry";
 import { priorityRankFor } from "@/lib/domain/priority";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
@@ -150,6 +150,14 @@ export default async function DispatcherPortalPage() {
       isEscalated: req.dispatchOverrideRank != null,
     });
   }
+
+  // Reconcile any driver with a stale activeRequestId but no real open
+  // workload. This prevents the "0 open requests but blocked" state.
+  await Promise.all(
+    allDrivers
+      .filter((d) => d.activeRequestId && !driverWorkloads[d.id]?.openRequests)
+      .map((d) => reconcileActiveRequest(d.id)),
+  );
 
   return (
     <>

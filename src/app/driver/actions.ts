@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { acceptDriverOffer, declineDriverOffer } from "@/lib/domain/dispatch";
-import { setAvailabilityByLinkedUser } from "@/lib/domain/driverRegistry";
+import { reconcileActiveRequestByUserId, setAvailabilityByLinkedUser } from "@/lib/domain/driverRegistry";
 import { markWaterDelivered, recordWaterCollection } from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
 import { formatSabaTime } from "@/lib/utils/datetime";
@@ -76,6 +76,10 @@ export async function acceptOffer(
   if (!offerId) {
     return { status: "error", message: "Missing offer ID." };
   }
+
+  // Reconcile stale activeRequestId before attempting the claim so a
+  // deleted/completed request does not permanently block this driver.
+  await reconcileActiveRequestByUserId(session.uid);
 
   try {
     await acceptDriverOffer({ offerId, driverId: session.uid });

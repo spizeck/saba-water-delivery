@@ -87,9 +87,39 @@ the issue is resolved.
 
 ## Meta/Facebook Login outage
 
-If Facebook sign-in is unavailable, residents and staff can still sign
-in with Google or email/password, whichever they have set up on their
-account. There is no single point of failure for authentication.
+Facebook Login is currently shown as **Coming Soon** on the login page
+while Meta business verification is pending. No OAuth attempt is
+possible. Once verification is complete, the provider will be
+re-enabled without a code change (the underlying Firebase integration
+is preserved).
+
+If Facebook sign-in is enabled and later becomes unavailable, residents
+and staff can still sign in with Google or email/password, whichever
+they have set up on their account. There is no single point of failure
+for authentication.
+
+## Stale driver activeRequestId
+
+If a driver's `activeRequestId` points to a request that no longer
+exists (deleted prelaunch data), or to a request that has been
+delivered, cancelled, confirmed, or reassigned to another driver, the
+lock is stale and would permanently block the driver from receiving new
+offers or being assigned by a dispatcher.
+
+**Runtime self-healing:** The application automatically detects and
+clears stale locks before rendering the driver portal, selecting an
+offer, accepting a delivery, and processing a dispatcher assignment.
+When a stale lock is cleared, a `stale_active_request_cleared` event is
+recorded on the driver registry with the stale request ID and reason.
+
+**Manual diagnostic:** For bulk prelaunch cleanup, run:
+
+```
+node --env-file=.env.local scripts/reconcile-stale-driver-locks.mjs          # dry run
+node --env-file=.env.local scripts/reconcile-stale-driver-locks.mjs --write  # apply
+```
+
+No staff action is required — the system repairs itself transparently.
 
 ## Suspected security incident
 

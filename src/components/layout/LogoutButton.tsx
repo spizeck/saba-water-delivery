@@ -14,7 +14,7 @@ export function LogoutButton() {
     setSigningOut(true);
     const auth = getFirebaseAuth();
     await Promise.all([auth?.signOut(), clearSession()]);
-    router.push("/login");
+    router.replace("/login");
     router.refresh();
   }
 

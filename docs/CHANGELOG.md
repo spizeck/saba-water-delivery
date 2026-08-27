@@ -21,6 +21,25 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+Smoke-test fixes:
+- Facebook Login is now shown as **Coming Soon** (disabled, greyed out)
+  on the login page while Meta business verification is pending. The
+  underlying Firebase Facebook provider integration is preserved.
+- Stale `activeRequestId` self-healing: if a driver's registry lock
+  points to a deleted, delivered, cancelled, confirmed, or reassigned
+  request, the system automatically clears it before rendering the
+  driver portal, selecting an offer, accepting a delivery, or
+  processing a dispatcher assignment. A `stale_active_request_cleared`
+  audit event is recorded. Drivers are no longer permanently blocked by
+  orphaned prelaunch data.
+- New `scripts/reconcile-stale-driver-locks.mjs` diagnostic for
+  bulk prelaunch stale-lock identification and cleanup.
+- Dispatcher workload view now reconciles stale locks — a driver with
+  0 open requests is no longer simultaneously blocked for a nonexistent
+  active delivery.
+- Logout now uses `router.replace` to prevent the back button from
+  returning to the portal after signing out.
+
 Water Collection Tracking:
 - Per-load fill station and meter recording before a delivery can be marked
   complete; the delivery is blocked until every load is collected.

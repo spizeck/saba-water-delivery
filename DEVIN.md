@@ -598,7 +598,10 @@ rationale. Summary for maintainers:
 ## Domain logic
 
 - `src/lib/domain/driverRegistry.ts` — all registry/linking/eligibility/
-  meter/migration logic
+  meter/migration logic, plus `reconcileActiveRequest()` /
+  `reconcileActiveRequestByUserId()` for stale-lock self-healing
+- `src/lib/domain/activeRequestValidation.ts` — pure
+  `checkActiveRequestValidity()` (no Firestore; tested with Vitest)
 - `src/lib/domain/fillStations.ts` — fill-station reference data
 - `src/app/admin/drivers/` — list, add-driver form, registry tools
 - `src/app/admin/drivers/[driverId]/` — detail page and panels

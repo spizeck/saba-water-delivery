@@ -5,7 +5,11 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getNextOfferForDriver } from "@/lib/domain/dispatch";
-import { getDriverByLinkedUserId, getMeterAssignments } from "@/lib/domain/driverRegistry";
+import {
+  getDriverByLinkedUserId,
+  getMeterAssignments,
+  reconcileActiveRequestByUserId,
+} from "@/lib/domain/driverRegistry";
 import { getFillStations } from "@/lib/domain/fillStations";
 import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
@@ -71,6 +75,11 @@ export default async function DriverPortalPage() {
       </>
     );
   }
+
+  // Reconcile stale activeRequestId before rendering — if the driver's
+  // lock points to a missing/completed/reassigned request, clear it so
+  // the portal does not permanently block the driver.
+  await reconcileActiveRequestByUserId(uid);
 
   const now = new Date();
   const isOnline = driverEntry.availabilityStatus === "online";

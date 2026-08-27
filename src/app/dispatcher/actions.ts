@@ -7,7 +7,12 @@ import { requireRole } from "@/lib/auth/session";
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
 import { createDispatchBatch } from "@/lib/domain/dispatchBatches";
 import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
-import { restrictDriver as restrictDriverEntry, restoreDriver as restoreDriverEntry } from "@/lib/domain/driverRegistry";
+import {
+  getDriverByLinkedUserId,
+  reconcileActiveRequest,
+  restrictDriver as restrictDriverEntry,
+  restoreDriver as restoreDriverEntry,
+} from "@/lib/domain/driverRegistry";
 import {
   createAccountInvitation,
   getEmailAccountStatus,
@@ -260,6 +265,12 @@ export async function assignRequest(
   if (!requestId) return { status: "error", message: "Missing request ID." };
   if (!driverId) return { status: "error", message: "Select a driver." };
 
+  // Reconcile stale activeRequestId before attempting assignment so an
+  // orphaned lock from a deleted/completed request does not block the
+  // dispatcher.
+  const driverEntry = await getDriverByLinkedUserId(driverId);
+  if (driverEntry) await reconcileActiveRequest(driverEntry.id);
+
   try {
     await dispatcherAssign({ requestId, driverId, actorId: session.uid });
   } catch (err: unknown) {
@@ -296,6 +307,10 @@ export async function reassignRequest(
   if (!requestId) return { status: "error", message: "Missing request ID." };
   if (!newDriverId) return { status: "error", message: "Select a new driver." };
   if (!reason) return { status: "error", message: "A reason is required." };
+
+  // Reconcile stale activeRequestId on the new driver before reassignment.
+  const newDriverEntry = await getDriverByLinkedUserId(newDriverId);
+  if (newDriverEntry) await reconcileActiveRequest(newDriverEntry.id);
 
   try {
     await dispatcherReassign({ requestId, newDriverId, actorId: session.uid, reason });

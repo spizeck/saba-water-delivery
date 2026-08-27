@@ -12,6 +12,10 @@ import type {
   FillStationId,
   MeterAssignment,
 } from "./types";
+import {
+  checkActiveRequestValidity,
+  type StaleReason,
+} from "./activeRequestValidation";
 
 /**
  * Government-managed Driver Registry (see PRODUCT.md / TECHNICAL.md
@@ -107,7 +111,12 @@ export async function isDriverImmediatelyAvailable(userId: string): Promise<bool
   if (entry.eligibilityStatus !== "eligible") return false;
   if (entry.availabilityStatus !== "online") return false;
   if (entry.cooldownUntil && new Date(entry.cooldownUntil) > new Date()) return false;
-  if (entry.activeRequestId) return false;
+  if (entry.activeRequestId) {
+    // Reconcile before blocking — the lock may be stale.
+    const result = await reconcileActiveRequest(entry.id);
+    if (!result.repaired) return false;
+    // Lock was stale and cleared; driver is available.
+  }
   return true;
 }
 
@@ -577,6 +586,109 @@ export async function getDriverEvents(driverId: string): Promise<DriverEvent[]> 
       metadata: data.metadata ?? null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Stale activeRequestId reconciliation
+// ---------------------------------------------------------------------------
+
+export interface ReconcileResult {
+  /** Whether a stale lock was found and cleared. */
+  repaired: boolean;
+  /** The stale request ID that was cleared, if any. */
+  staleRequestId?: string;
+  /** Why the lock was considered stale. */
+  reason?: StaleReason;
+}
+
+/**
+ * Validates a driver's `activeRequestId` lock against the actual request
+ * state and clears it if stale. This is the **single canonical entry
+ * point** for stale-lock reconciliation — call sites must not scatter
+ * this logic elsewhere.
+ *
+ * A lock is stale when the referenced request no longer represents
+ * active driver work: the request is missing (deleted), delivered,
+ * confirmed, cancelled, disputed, reassigned away, or returned to an
+ * un-owned state. See `activeRequestValidation.ts` for the full rule.
+ *
+ * When a stale lock is repaired the function:
+ *   1. Clears `activeRequestId` on the registry document.
+ *   2. Records a `stale_active_request_cleared` audit event with the
+ *      stale request ID, reason, and `actor: "system"`.
+ *
+ * Call this before any operation that would be blocked by
+ * `activeRequestId` — driver offer selection, claim, dispatcher
+ * assignment, and driver portal rendering.
+ *
+ * @param driverId  The registry document ID (NOT the Firebase uid).
+ */
+export async function reconcileActiveRequest(
+  driverId: string,
+): Promise<ReconcileResult> {
+  const db = getAdminDb();
+  const driverRef = db.collection(REGISTRY_COLLECTION).doc(driverId);
+  const driverSnap = await driverRef.get();
+  if (!driverSnap.exists) return { repaired: false };
+
+  const driverData = driverSnap.data()!;
+  const activeRequestId: string | null = driverData.activeRequestId ?? null;
+  if (!activeRequestId) return { repaired: false };
+
+  const linkedUserId: string | null = driverData.linkedUserId ?? null;
+  if (!linkedUserId) {
+    // Registry entry has an activeRequestId but no linked account — the
+    // lock is inherently stale (no user can ever clear it normally).
+    const now = FieldValue.serverTimestamp();
+    await driverRef.update({ activeRequestId: null, updatedAt: now, updatedBy: "system" });
+    await driverRef.collection("events").add({
+      type: "stale_active_request_cleared",
+      actorId: "system",
+      actorRole: "system",
+      createdAt: now,
+      metadata: { staleRequestId: activeRequestId, reason: "not_active" as StaleReason },
+    });
+    return { repaired: true, staleRequestId: activeRequestId, reason: "not_active" };
+  }
+
+  // Fetch the referenced request to check validity.
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(activeRequestId);
+  const requestSnap = await requestRef.get();
+
+  const snapshot = requestSnap.exists
+    ? {
+        status: requestSnap.data()!.status,
+        assignedDriverId: requestSnap.data()!.assignedDriverId ?? null,
+      }
+    : null;
+
+  const check = checkActiveRequestValidity(linkedUserId, snapshot);
+  if (!check.stale) return { repaired: false };
+
+  const now = FieldValue.serverTimestamp();
+  await driverRef.update({ activeRequestId: null, updatedAt: now, updatedBy: "system" });
+  await driverRef.collection("events").add({
+    type: "stale_active_request_cleared",
+    actorId: "system",
+    actorRole: "system",
+    createdAt: now,
+    metadata: { staleRequestId: activeRequestId, reason: check.reason },
+  });
+
+  return { repaired: true, staleRequestId: activeRequestId, reason: check.reason };
+}
+
+/**
+ * Convenience wrapper: reconcile by linked Firebase uid instead of
+ * registry document ID. Returns `{ repaired: false }` if no registry
+ * entry exists for this user.
+ */
+export async function reconcileActiveRequestByUserId(
+  userId: string,
+): Promise<ReconcileResult> {
+  const entry = await getDriverByLinkedUserId(userId);
+  if (!entry) return { repaired: false };
+  return reconcileActiveRequest(entry.id);
 }
 
 // ---------------------------------------------------------------------------

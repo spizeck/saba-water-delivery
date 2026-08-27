@@ -70,6 +70,11 @@ You may only hold one active delivery at a time. If you already have a
 delivery in progress, you will not be offered another one until you
 mark the current one delivered.
 
+If the system shows you have an active delivery but you do not
+recognize it (for example, from old testing data), simply load the
+Driver portal — the system will automatically detect and clear the
+outdated reference so you can receive new offers normally.
+
 ## Going offline
 
 You can go offline whenever you are done for the day, or any time in

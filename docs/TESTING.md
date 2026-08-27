@@ -87,6 +87,14 @@ any of these areas.
 - Confirm a delivered request ("Yes, received").
 - Dispute a delivered request ("No, there is a problem").
 
+### Login / logout
+
+- Facebook button appears greyed out with "Coming Soon" badge.
+- Clicking the Facebook button does nothing (no OAuth attempt).
+- Google and email/password login work normally.
+- Log out from any portal and confirm you are returned to the login
+  page. The back button should not return to the portal.
+
 ### Driver
 
 - Go online.
@@ -101,6 +109,14 @@ any of these areas.
   load appears as its own claimed delivery with a "Batch assignment"
   label, and that no new normal offer is made while any batch load
   remains claimed.
+- If a driver has a stale `activeRequestId` (pointing to a deleted or
+  completed request), load the driver portal and confirm the stale
+  lock is automatically cleared and the driver can receive the next
+  offer normally.
+- Accept an offer after stale-lock repair and confirm the request is
+  claimed with a valid `activeRequestId`.
+- Decline an offer after stale-lock repair and confirm the decline is
+  recorded normally without a stale-active-delivery warning.
 
 ### Dispatcher
 
@@ -151,6 +167,14 @@ any of these areas.
   confirm it proceeds through the normal confirmation window.
 - Reassign one load out of an active batch and confirm the rest of the
   batch is unaffected.
+- Select a driver with a stale `activeRequestId` (no real active
+  delivery) and confirm the assignment succeeds after automatic
+  reconciliation.
+- Select a driver with a real active delivery and confirm the
+  assignment is still blocked.
+- Confirm the driver workload view shows 0 open requests for a driver
+  whose stale lock was cleared, not a contradictory "0 requests but
+  blocked" state.
 
 ### Admin
 

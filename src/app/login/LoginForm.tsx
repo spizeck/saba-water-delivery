@@ -187,14 +187,21 @@ export function LoginForm({ intendedPortal }: LoginFormProps) {
         >
           Continue with Google
         </Button>
-        <Button
-          variant="outline"
-          size="lg"
-          disabled={submitting}
-          onClick={() => handleProviderSignIn(new FacebookAuthProvider())}
-        >
-          Continue with Facebook
-        </Button>
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="lg"
+            disabled
+            aria-disabled="true"
+            aria-label="Facebook login will be available soon."
+            className="w-full opacity-50 cursor-not-allowed"
+          >
+            Continue with Facebook
+          </Button>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
+            Coming Soon
+          </span>
+        </div>
       </div>
 
       <div className="my-6 flex items-center gap-3 text-sm text-slate-400">

@@ -66,7 +66,8 @@ Residents can:
 Authentication should initially support:
 
 - Google
-- Facebook
+- Facebook (shown as "Coming Soon" while Meta business verification is
+  pending; the Firebase provider integration is preserved)
 - Email/password
 
 ## Driver Registry

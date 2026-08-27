@@ -20,6 +20,7 @@ import {
   isOfferableToDriver,
   selectNextDispatchCandidate,
 } from "./dispatchSelection";
+import { reconcileActiveRequestByUserId } from "./driverRegistry";
 import {
   claimWaterRequest,
   expirePreferredDriverHold,
@@ -79,6 +80,11 @@ export interface NextOffer {
 export async function getNextOfferForDriver(driverId: string): Promise<NextOffer | null> {
   const db = getAdminDb();
   const now = new Date();
+
+  // Reconcile stale activeRequestId before checking claimed deliveries.
+  // If the lock points to a deleted/completed/reassigned request, clear
+  // it so the driver is not permanently blocked from receiving offers.
+  await reconcileActiveRequestByUserId(driverId);
 
   // Load the driver's current claimed delivery (if any). This is used both to
   // enforce the one-active-delivery rule and to avoid issuing a duplicate

@@ -541,6 +541,39 @@ built on top of it, not a replacement for it — an offer never reserves a
 request, so `claimWaterRequest()` must still validate live request state
 at accept time.
 
+## Stale activeRequestId reconciliation
+
+`activeRequestId` can become stale if the referenced request is deleted
+(e.g. prelaunch data cleanup), delivered, cancelled, confirmed,
+disputed, or reassigned to another driver without clearing the lock.
+
+**Canonical validity rule:** `activeRequestId` is valid only when the
+referenced request (1) exists, (2) has status `"claimed"`, (3) is
+assigned to the same driver (`assignedDriverId === linkedUserId`).
+Every other state is stale.
+
+**Runtime self-healing:** `reconcileActiveRequest(driverId)` in
+`src/lib/domain/driverRegistry.ts` checks the referenced request and
+clears the lock if stale, recording a `stale_active_request_cleared`
+audit event on the driver registry. The convenience wrapper
+`reconcileActiveRequestByUserId(uid)` accepts a Firebase uid.
+
+Pure validation logic is in `src/lib/domain/activeRequestValidation.ts`
+(`checkActiveRequestValidity()`), separated for testability.
+
+**Call sites** — reconciliation runs before:
+- Rendering the driver portal (`src/app/driver/page.tsx`)
+- Selecting the next offer (`getNextOfferForDriver` in `dispatch.ts`)
+- Accepting an offer (`acceptOffer` in `src/app/driver/actions.ts`)
+- Dispatcher assignment (`assignRequest` / `reassignRequest` in
+  `src/app/dispatcher/actions.ts`)
+- Determining driver immediate availability (`isDriverImmediatelyAvailable`)
+- Computing dispatcher workload view (`src/app/dispatcher/page.tsx`)
+
+**Prelaunch diagnostic:** `scripts/reconcile-stale-driver-locks.mjs`
+identifies and optionally clears stale locks in bulk. Runtime
+self-healing is required regardless; the script is for one-time cleanup.
+
 ---
 
 # Dispatch Offers

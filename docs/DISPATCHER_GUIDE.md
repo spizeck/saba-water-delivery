@@ -124,6 +124,13 @@ operationally necessary (for example, a driver becomes unavailable
 mid-delivery). Reassignment preserves the request's original submitted
 time in the fairness queue.
 
+If you see "Selected driver already has an active delivery" but the
+driver believes they have no active work, the system will
+automatically check and clear the outdated reference the next time the
+driver opens the driver portal or you attempt the assignment again.
+This can happen when old prelaunch test data was deleted without
+clearing the driver's internal reference.
+
 ## Delivery state and disputes
 
 Once a driver marks a request delivered, the resident has 24 hours to
