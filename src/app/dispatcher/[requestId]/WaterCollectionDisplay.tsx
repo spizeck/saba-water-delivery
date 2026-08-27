@@ -24,6 +24,8 @@ interface Props {
   driverMeters: MeterAssignment[];
   /** Whether the request is in "claimed" status (reconciliation only allowed when claimed). */
   isClaimed: boolean;
+  /** Map of UIDs to display names for resolving driverId/recordedBy in collection records. */
+  nameMap?: Record<string, string>;
 }
 
 /**
@@ -40,6 +42,7 @@ export function WaterCollectionDisplay({
   stations,
   driverMeters,
   isClaimed,
+  nameMap = {},
 }: Props) {
   const collections = loadCollections ?? [];
 
@@ -51,7 +54,7 @@ export function WaterCollectionDisplay({
           const loadNumber = (i + 1) as 1 | 2;
           const existing = collections.find((c) => c.loadNumber === loadNumber);
           return existing ? (
-            <CollectedLoadDisplay key={loadNumber} loadNumber={loadNumber} record={existing} />
+            <CollectedLoadDisplay key={loadNumber} loadNumber={loadNumber} record={existing} nameMap={nameMap} />
           ) : (
             <UncollectedLoad
               key={loadNumber}
@@ -73,10 +76,15 @@ export function WaterCollectionDisplay({
 function CollectedLoadDisplay({
   loadNumber,
   record,
+  nameMap,
 }: {
   loadNumber: 1 | 2;
   record: WaterLoadCollection;
+  nameMap: Record<string, string>;
 }) {
+  const driverName = nameMap[record.driverId] ?? record.driverId;
+  const recorderName = nameMap[record.recordedBy] ?? record.recordedBy;
+
   return (
     <div className="rounded-lg border border-green-200 bg-green-50 p-3">
       <div className="flex items-center gap-2">
@@ -94,7 +102,7 @@ function CollectedLoadDisplay({
         </div>
         <div className="flex gap-1">
           <dt className="font-medium">Driver:</dt>
-          <dd>{record.driverId}</dd>
+          <dd>{driverName}</dd>
         </div>
         <div className="flex gap-1">
           <dt className="font-medium">Collected:</dt>
@@ -103,7 +111,7 @@ function CollectedLoadDisplay({
         {record.recordedByRole !== "driver" && (
           <div className="flex gap-1">
             <dt className="font-medium">Recorded by staff:</dt>
-            <dd>{record.recordedBy}</dd>
+            <dd>{recorderName}</dd>
           </div>
         )}
         {record.note && (

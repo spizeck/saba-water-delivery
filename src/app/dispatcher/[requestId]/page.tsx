@@ -193,8 +193,18 @@ export default async function RequestDetailPage({ params }: PageProps) {
     if (p) driverNames[data.preferredDriverId] = p.displayName;
   }
 
-  // Resolve actor names in events.
-  const actorIds = [...new Set(events.map((e) => e.actorId).filter(Boolean))] as string[];
+  // Resolve actor names in events and load collections.
+  const collections: Array<{ driverId?: string; recordedBy?: string }> =
+    Array.isArray(data.loadCollections) ? data.loadCollections : [];
+  const collectionUids = collections.flatMap((c) =>
+    [c.driverId, c.recordedBy].filter(Boolean),
+  ) as string[];
+  const actorIds = [
+    ...new Set([
+      ...events.map((e) => e.actorId).filter(Boolean),
+      ...collectionUids,
+    ]),
+  ] as string[];
   const actorNames: Record<string, string> = { ...driverNames };
   if (customer && data.customerId) actorNames[data.customerId] = customer.displayName;
   await Promise.all(
@@ -422,6 +432,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
               stations={fillStations}
               driverMeters={assignedDriverMeters}
               isClaimed={status === "claimed"}
+              nameMap={actorNames}
             />
           )}
 
