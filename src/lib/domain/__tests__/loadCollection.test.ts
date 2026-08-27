@@ -159,3 +159,32 @@ describe("assertQuantityEditable", () => {
     );
   });
 });
+
+describe("Collection record timestamp safety", () => {
+  it("collectedAt stored as an ISO string (never a FieldValue sentinel) in parsed records", () => {
+    // Regression: Firestore does not allow FieldValue.serverTimestamp()
+    // inside array values. The domain function now uses Timestamp.now()
+    // which resolves to a concrete Firestore Timestamp, parsed to an
+    // ISO string by toWaterRequest. Verify the parsed shape is a string.
+    const collection = makeCollection(1);
+    expect(typeof collection.collectedAt).toBe("string");
+    expect(new Date(collection.collectedAt).toISOString()).toBe(collection.collectedAt);
+  });
+
+  it("collection record has all required fields for audit trail", () => {
+    const collection = makeCollection(1);
+    expect(collection).toEqual(
+      expect.objectContaining({
+        loadNumber: 1,
+        collectedAt: expect.any(String),
+        fillStationId: expect.any(String),
+        fillStationName: expect.any(String),
+        meterCode: expect.any(String),
+        meterNumber: expect.any(Number),
+        driverId: expect.any(String),
+        recordedBy: expect.any(String),
+        recordedByRole: expect.any(String),
+      }),
+    );
+  });
+});

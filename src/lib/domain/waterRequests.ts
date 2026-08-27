@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type DocumentData, FieldValue } from "firebase-admin/firestore";
+import { type DocumentData, FieldValue, Timestamp } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 
@@ -2353,7 +2353,6 @@ export async function recordWaterCollection(
 
   // Now perform the transactional write
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-  const now = FieldValue.serverTimestamp();
 
   await db.runTransaction(async (txn) => {
     const snap = await txn.get(requestRef);
@@ -2375,10 +2374,15 @@ export async function recordWaterCollection(
     );
     if (alreadyCollected) throw new Error("LOAD_ALREADY_COLLECTED");
 
-    // Build the new collection record
+    // Use Timestamp.now() for collectedAt inside the array — Firestore
+    // does not allow FieldValue.serverTimestamp() sentinels nested inside
+    // array values. FieldValue.serverTimestamp() is still used for
+    // top-level fields (updatedAt) and audit events (createdAt).
+    const collectedAt = Timestamp.now();
+
     const collectionRecord = {
       loadNumber,
-      collectedAt: now,
+      collectedAt,
       fillStationId: station.id,
       fillStationName: station.name,
       meterCode: meter.meterCode,
@@ -2391,16 +2395,17 @@ export async function recordWaterCollection(
 
     txn.update(requestRef, {
       loadCollections: [...existingCollections, collectionRecord],
-      updatedAt: now,
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Audit event
+    // Audit event — FieldValue.serverTimestamp() is fine here (top-level
+    // document field, not inside an array).
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
       type: actorRole === "driver" ? "water_collected" : "water_collected_by_staff",
       actorId,
       actorRole,
-      createdAt: now,
+      createdAt: FieldValue.serverTimestamp(),
       metadata: {
         loadNumber,
         fillStationId: station.id,

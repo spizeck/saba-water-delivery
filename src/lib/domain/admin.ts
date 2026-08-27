@@ -33,6 +33,8 @@ export interface AdminUserListItem {
     eligibilityStatus: "eligible" | "ineligible";
     availabilityStatus: "online" | "offline";
   } | null;
+  /** Whether the person has portal login access. */
+  authStatus: "claimed" | "unclaimed";
   createdAt: string;
 }
 
@@ -65,6 +67,7 @@ export async function getAllUsers(): Promise<AdminUserListItem[]> {
       phone: data.phone ?? null,
       roles,
       driverStatus: null,
+      authStatus: data.authStatus === "unclaimed" ? "unclaimed" : "claimed",
       createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     });
   }
@@ -305,6 +308,9 @@ function toUserProfileFromDoc(uid: string, data: Record<string, unknown>): UserP
     deliveryProfileConfirmedAt:
       (data.deliveryProfileConfirmedAt as { toDate?: () => Date })?.toDate?.().toISOString() ??
       null,
+    accountOrigin:
+      data.accountOrigin === "staff_registered" ? "staff_registered" : "self_registered",
+    authStatus: data.authStatus === "unclaimed" ? "unclaimed" : "claimed",
     createdAt:
       (data.createdAt as { toDate?: () => Date })?.toDate?.().toISOString() ??
       new Date(0).toISOString(),

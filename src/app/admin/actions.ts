@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { redirect } from "next/navigation";
+
 import { requireRole } from "@/lib/auth/session";
 import { addRole, removeRole } from "@/lib/domain/admin";
 import { updateDispatchSettings } from "@/lib/domain/dispatchSettings";
@@ -15,6 +17,7 @@ import {
 } from "@/lib/domain/identity";
 import { isUserRole } from "@/lib/auth/roles";
 import type { UserRole } from "@/lib/domain/types";
+import { findUsersByPhone, registerPerson } from "@/lib/domain/users";
 
 // ---------------------------------------------------------------------------
 // Helper: verify admin access
@@ -298,6 +301,91 @@ export async function mergeAccounts(
           return { status: "error", message: "Select the final roles for explicit merge." };
         default:
           return { status: "error", message: err.message };
+      }
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Staff person registration
+// ---------------------------------------------------------------------------
+
+export interface RegisterPersonActionState {
+  status: "idle" | "success" | "error" | "duplicate_warning";
+  message?: string;
+  duplicates?: Array<{ uid: string; displayName: string; phone: string | null; email: string | null }>;
+  createdUid?: string;
+}
+
+/**
+ * Registers a new person in the system without requiring Firebase Auth
+ * credentials. The person can immediately receive water and appear in
+ * the resident directory, but cannot log in until a future auth method
+ * (e.g. SMS) is linked.
+ */
+export async function registerPersonAction(
+  _prevState: RegisterPersonActionState,
+  formData: FormData,
+): Promise<RegisterPersonActionState> {
+  const session = await requireRole(["admin", "dispatcher"]);
+
+  const displayName = String(formData.get("displayName") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim() || null;
+  const village = String(formData.get("village") ?? "").trim() || null;
+  const deliveryDirections = String(formData.get("deliveryDirections") ?? "").trim() || null;
+  const overrideDuplicate = formData.get("overrideDuplicate") === "true";
+
+  // Parse roles from form
+  const rolesRaw = formData.getAll("roles").map((v) => String(v));
+  const roles: UserRole[] = rolesRaw.filter(isUserRole) as UserRole[];
+
+  if (!displayName) return { status: "error", message: "Full name is required." };
+  if (!phone) return { status: "error", message: "Phone number is required." };
+
+  // Check for existing accounts with the same phone
+  if (!overrideDuplicate) {
+    const existing = await findUsersByPhone(phone);
+    if (existing.length > 0) {
+      return {
+        status: "duplicate_warning",
+        message: `${existing.length} existing account(s) found with this phone number.`,
+        duplicates: existing.map((u) => ({
+          uid: u.uid,
+          displayName: u.displayName,
+          phone: u.phone,
+          email: u.email,
+        })),
+      };
+    }
+  }
+
+  try {
+    const { profile } = await registerPerson({
+      displayName,
+      phone,
+      email,
+      village,
+      deliveryDirections,
+      roles,
+      registeredBy: session.uid,
+    });
+
+    revalidatePath("/admin");
+    redirect(`/admin/users/${profile.uid}`);
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "DISPLAY_NAME_REQUIRED":
+          return { status: "error", message: "Full name is required." };
+        case "PHONE_REQUIRED":
+          return { status: "error", message: "Phone number is required." };
+        case "INVALID_VILLAGE":
+          return { status: "error", message: "Please select a valid village." };
+        default:
+          // Re-throw Next.js redirect errors
+          throw err;
       }
     }
     throw err;

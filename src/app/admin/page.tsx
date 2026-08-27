@@ -51,6 +51,12 @@ export default async function AdminPortalPage() {
                   View Statistics
                 </Link>
                 <Link
+                  href="/admin/register"
+                  className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  Register Person
+                </Link>
+                <Link
                   href="/admin/users/merge"
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >

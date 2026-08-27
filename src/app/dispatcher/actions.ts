@@ -1035,10 +1035,12 @@ export async function recordCollectionByStaff(
         case "STAFF_NOTE_REQUIRED":
           return { status: "error", message: "A note is required when recording on behalf of a driver." };
         default:
-          throw err;
+          console.error("[recordCollectionByStaff] unexpected error:", err.message);
+          return { status: "error", message: "Failed to record collection. Please try again." };
       }
     }
-    throw err;
+    console.error("[recordCollectionByStaff] unexpected error:", err);
+    return { status: "error", message: "Failed to record collection. Please try again." };
   }
 
   revalidatePath("/dispatcher");

@@ -121,6 +121,14 @@ export default async function UserDetailPage({ params }: PageProps) {
                   {formatSabaDate(targetUser.createdAt)}
                 </dd>
               </div>
+              <div>
+                <dt className="font-medium text-slate-500">Portal access</dt>
+                <dd className="text-slate-900">
+                  {targetUser.authStatus === "unclaimed"
+                    ? "No portal access (staff-registered)"
+                    : "Active"}
+                </dd>
+              </div>
             </dl>
           </Card>
 

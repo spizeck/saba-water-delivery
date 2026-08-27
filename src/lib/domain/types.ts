@@ -14,6 +14,35 @@
  */
 export type UserRole = "resident" | "driver" | "dispatcher" | "admin" | "viewer";
 
+/**
+ * How the account was created:
+ * - `"self_registered"` — the person signed in through Firebase Auth
+ *   (Google, Facebook, email/password, or a staff-sent invitation link).
+ * - `"staff_registered"` — an admin or dispatcher created the
+ *   operational record. The person does NOT have Firebase Auth
+ *   credentials yet and cannot log in until a future authentication
+ *   method (e.g. SMS/phone) is linked. See PRODUCT.md / TECHNICAL.md.
+ *
+ * Missing on historical documents that predate this field; treated as
+ * `"self_registered"` (all prelaunch accounts were created through
+ * Firebase Auth).
+ */
+export type AccountOrigin = "self_registered" | "staff_registered";
+
+/**
+ * Whether the operational record has been linked to Firebase Auth
+ * credentials the person can use to log in:
+ * - `"claimed"` — linked to a Firebase Auth account (the normal state
+ *   for anyone who has ever signed in, or whose staff-created record
+ *   was later claimed via SMS/phone auth).
+ * - `"unclaimed"` — staff-created operational record with no Firebase
+ *   Auth account. The person exists in the system and can receive water,
+ *   but cannot log in to any portal.
+ *
+ * Missing on historical documents; treated as `"claimed"`.
+ */
+export type AuthStatus = "claimed" | "unclaimed";
+
 export interface UserProfile {
   uid: string;
   displayName: string;
@@ -37,6 +66,11 @@ export interface UserProfile {
    * confirmed), never backfilled.
    */
   deliveryProfileConfirmedAt: string | null;
+
+  /** How this account was created. See `AccountOrigin`. */
+  accountOrigin: AccountOrigin;
+  /** Whether the person has linked Firebase Auth credentials. See `AuthStatus`. */
+  authStatus: AuthStatus;
 
   createdAt: string;
   updatedAt: string;

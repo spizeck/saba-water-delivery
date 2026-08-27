@@ -28,12 +28,13 @@ export function UserList({ users }: UserListProps) {
     if (roleFilter !== "all" && !user.roles.includes(roleFilter)) {
       return false;
     }
-    // Text search
+    // Text search (name, email, or phone)
     if (search) {
       const q = search.toLowerCase();
       return (
         user.displayName.toLowerCase().includes(q) ||
-        (user.email?.toLowerCase().includes(q) ?? false)
+        (user.email?.toLowerCase().includes(q) ?? false) ||
+        (user.phone?.toLowerCase().includes(q) ?? false)
       );
     }
     return true;
@@ -45,7 +46,7 @@ export function UserList({ users }: UserListProps) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
             type="text"
-            placeholder="Search by name or email..."
+            placeholder="Search by name, email, or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-10 flex-1 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
@@ -91,6 +92,11 @@ export function UserList({ users }: UserListProps) {
                       {(ROLE_LABELS as Record<string, string>)[role]}
                     </span>
                   ))}
+                  {user.authStatus === "unclaimed" && (
+                    <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      No portal access
+                    </span>
+                  )}
                   {user.driverStatus && (
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${

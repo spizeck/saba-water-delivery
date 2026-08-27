@@ -264,10 +264,12 @@ export async function recordCollection(
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver profile not found. Contact the water office." };
         default:
-          throw err;
+          console.error("[recordCollection] unexpected error:", err.message);
+          return { status: "error", message: "Failed to record collection. Please try again." };
       }
     }
-    throw err;
+    console.error("[recordCollection] unexpected error:", err);
+    return { status: "error", message: "Failed to record collection. Please try again." };
   }
 
   revalidatePath("/driver");

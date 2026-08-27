@@ -4,7 +4,7 @@ import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 
-import type { UserProfile, UserRole } from "./types";
+import type { AccountOrigin, AuthStatus, UserProfile, UserRole } from "./types";
 import { toUserRoles } from "@/lib/auth/roles";
 import { isValidSabaVillage } from "./villages";
 
@@ -19,6 +19,13 @@ const USERS_COLLECTION = "users";
 function toUserProfile(uid: string, data: DocumentData): UserProfile {
   const roles = toUserRoles(data.roles);
 
+  // Historical documents predate accountOrigin/authStatus — treat as
+  // self-registered + claimed (all prelaunch accounts came from Firebase Auth).
+  const accountOrigin: AccountOrigin =
+    data.accountOrigin === "staff_registered" ? "staff_registered" : "self_registered";
+  const authStatus: AuthStatus =
+    data.authStatus === "unclaimed" ? "unclaimed" : "claimed";
+
   return {
     uid,
     displayName: data.displayName ?? "",
@@ -31,6 +38,8 @@ function toUserProfile(uid: string, data: DocumentData): UserProfile {
     // as "never confirmed" (null), never backfilled (see PRODUCT.md
     // "Delivery Profile Confirmation Reminder").
     deliveryProfileConfirmedAt: data.deliveryProfileConfirmedAt?.toDate?.().toISOString() ?? null,
+    accountOrigin,
+    authStatus,
     createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
   };
@@ -138,6 +147,8 @@ export async function ensureUserProfile(
     village: null,
     deliveryDirections: null,
     deliveryProfileConfirmedAt: null,
+    accountOrigin: "self_registered",
+    authStatus: "claimed",
     createdAt: now,
     updatedAt: now,
   };
@@ -246,4 +257,119 @@ export async function confirmDeliveryProfile(uid: string): Promise<UserProfile> 
   await ref.update({ deliveryProfileConfirmedAt: FieldValue.serverTimestamp() });
   const updated = await ref.get();
   return toUserProfile(uid, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Staff-created person registration
+// ---------------------------------------------------------------------------
+
+export interface RegisterPersonInput {
+  displayName: string;
+  phone: string;
+  email?: string | null;
+  village: string | null;
+  deliveryDirections: string | null;
+  roles: UserRole[];
+  /** Firebase uid of the staff member performing the registration. */
+  registeredBy: string;
+}
+
+export interface RegisterPersonResult {
+  profile: UserProfile;
+}
+
+/**
+ * Creates an operational person record without Firebase Auth credentials.
+ *
+ * The document gets an auto-generated Firestore ID (not a Firebase Auth
+ * UID). The person exists immediately in the system: they can receive
+ * water, appear in the resident directory, and be assigned as a driver
+ * (if given the driver role and linked through the Driver Registry).
+ *
+ * They cannot log in to any portal until a future authentication method
+ * (e.g. SMS/phone auth) is linked, which would set `authStatus` to
+ * `"claimed"` and optionally migrate the document to use the Firebase
+ * Auth UID as its key (or maintain a secondary index).
+ *
+ * Phone number is treated as the primary operational identifier for
+ * staff-created accounts. Duplicate phone numbers are surfaced as a
+ * warning but not blocked — the same phone can legitimately appear on
+ * multiple household members.
+ */
+export async function registerPerson(
+  input: RegisterPersonInput,
+): Promise<RegisterPersonResult> {
+  const {
+    displayName,
+    phone,
+    email,
+    village,
+    deliveryDirections,
+    roles,
+    registeredBy,
+  } = input;
+
+  if (!displayName.trim()) throw new Error("DISPLAY_NAME_REQUIRED");
+  if (!phone.trim()) throw new Error("PHONE_REQUIRED");
+  if (village !== null && !isValidSabaVillage(village)) {
+    throw new Error("INVALID_VILLAGE");
+  }
+
+  // Ensure resident is always the baseline role.
+  const finalRoles: UserRole[] = roles.includes("resident")
+    ? [...roles]
+    : ["resident", ...roles];
+
+  const db = getAdminDb();
+  const ref = db.collection(USERS_COLLECTION).doc(); // auto-generated ID
+
+  const now = FieldValue.serverTimestamp();
+  const newData = {
+    displayName: displayName.trim(),
+    email: email?.trim() || null,
+    phone: phone.trim(),
+    roles: finalRoles,
+    village,
+    deliveryDirections: deliveryDirections?.trim() || null,
+    deliveryProfileConfirmedAt: null,
+    accountOrigin: "staff_registered" as const,
+    authStatus: "unclaimed" as const,
+    registeredBy,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await ref.set(newData);
+
+  // Audit event
+  await ref.collection("roleEvents").add({
+    type: "person_registered",
+    actorId: registeredBy,
+    createdAt: now,
+    metadata: {
+      roles: finalRoles,
+      phone: phone.trim(),
+      email: email?.trim() || null,
+    },
+  });
+
+  const created = await ref.get();
+  return { profile: toUserProfile(ref.id, created.data()!) };
+}
+
+/**
+ * Find existing users by phone number. Used for duplicate detection
+ * when staff registers a new person.
+ */
+export async function findUsersByPhone(phone: string): Promise<UserProfile[]> {
+  const normalized = phone.trim();
+  if (!normalized) return [];
+
+  const db = getAdminDb();
+  const snapshot = await db
+    .collection(USERS_COLLECTION)
+    .where("phone", "==", normalized)
+    .get();
+
+  return snapshot.docs.map((doc) => toUserProfile(doc.id, doc.data()));
 }
