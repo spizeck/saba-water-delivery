@@ -246,13 +246,15 @@ export function LoginForm({ intendedPortal }: LoginFormProps) {
         </Button>
       </form>
 
-      <button
+      <Button
         type="button"
-        className="mt-4 text-sm font-medium text-blue-700 hover:underline"
+        variant="outline"
+        size="lg"
+        className="mt-4"
         onClick={() => setMode(mode === "sign-in" ? "create-account" : "sign-in")}
       >
         {mode === "sign-in" ? "Need an account? Create one" : "Already have an account? Log in"}
-      </button>
+      </Button>
     </Card>
   );
 }
