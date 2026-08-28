@@ -198,6 +198,23 @@ describe("dispatch selection", () => {
     expect(result).toBeNull();
   });
 
+  it("does not reuse a pending offer for a request the driver has recently declined", () => {
+    const requestA = makeRequest("req-a", "available");
+    const requestB = makeRequest("req-b", "available");
+
+    const result = selectNextDispatchCandidate({
+      activeDelivery: null,
+      pendingOffer: makePendingOffer(requestA),
+      holds: [],
+      available: [requestA, requestB],
+      declinedRequestIds: new Set([requestA.id]),
+      driverId,
+      now: baseTime,
+    });
+
+    expect(result).toEqual(requestB);
+  });
+
   it("returns higher-priority requests before lower-priority requests", () => {
     const normal = makeRequest("req-normal", "available", {
       dispatchPriority: "normal",
