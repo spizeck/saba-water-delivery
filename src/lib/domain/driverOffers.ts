@@ -40,22 +40,35 @@ function toDriverOffer(id: string, data: DocumentData): DriverOffer {
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a new pending offer of `requestId` to `driverId`.
+ * Creates a new pending offer of `requestId` to `driverId`, or returns
+ * the existing one. The transaction serializes concurrent page loads so
+ * at most one pending offer exists per (driver, request).
  */
 export async function createDriverOffer(
   driverId: string,
   requestId: string,
 ): Promise<DriverOffer> {
   const db = getAdminDb();
-  const ref = db.collection(DRIVER_OFFERS_COLLECTION).doc();
-  const now = FieldValue.serverTimestamp();
+  const collection = db.collection(DRIVER_OFFERS_COLLECTION);
 
-  await ref.set({
-    requestId,
-    driverId,
-    offeredAt: now,
-    response: null,
-    respondedAt: null,
+  const ref = await db.runTransaction(async (txn) => {
+    const existing = await txn.get(
+      collection
+        .where("driverId", "==", driverId)
+        .where("requestId", "==", requestId)
+        .where("response", "==", null),
+    );
+    if (!existing.empty) return existing.docs[0].ref;
+
+    const newRef = collection.doc();
+    txn.set(newRef, {
+      requestId,
+      driverId,
+      offeredAt: FieldValue.serverTimestamp(),
+      response: null,
+      respondedAt: null,
+    });
+    return newRef;
   });
 
   const created = await ref.get();
