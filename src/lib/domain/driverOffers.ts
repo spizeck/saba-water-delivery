@@ -56,7 +56,8 @@ export async function createDriverOffer(
       collection
         .where("driverId", "==", driverId)
         .where("requestId", "==", requestId)
-        .where("response", "==", null),
+        .where("response", "==", null)
+        .limit(1),
     );
     if (!existing.empty) return existing.docs[0].ref;
 
