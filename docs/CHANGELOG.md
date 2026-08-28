@@ -21,6 +21,13 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+Documentation:
+- Reviewed project documentation to clarify volunteer development for the
+  Public Entity Saba, government supervision and approval, intended
+  handover to the Public Entity Saba for ownership and operation, and
+  operational-ownership language throughout the guides. No application
+  behavior changed.
+
 Smoke-test fixes:
 - Facebook Login is now shown as **Coming Soon** (disabled, greyed out)
   on the login page while Meta business verification is pending. The

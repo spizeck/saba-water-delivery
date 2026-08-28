@@ -15,6 +15,14 @@ is used for and its failure impact.
 | Meta (WhatsApp Business Platform / Cloud API) | Resident WhatsApp ordering. |
 | DNS | A verified sending domain in Resend requires DNS records at your domain registrar; Vercel's default `*.vercel.app` domain requires no DNS setup, a custom domain does. |
 
+Production deployments should use accounts, API keys, sending domains,
+and project memberships controlled by the Public Entity Saba or its
+authorized technical administrators. Avoid relying on personal accounts
+or credentials belonging to an individual developer for ongoing
+government operation; if a handover is still in progress, document who
+holds each credential and the planned transfer so ongoing operation does
+not depend on one person.
+
 ## Environment variables
 
 Never commit real values. Copy `.env.example` to `.env.local` for local

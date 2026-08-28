@@ -2,7 +2,10 @@
 
 ## Project
 
-This repository contains a Next.js web application for managing government RO water delivery requests.
+This repository contains a Next.js web application for managing
+government-produced RO water delivery requests, developed for the Public
+Entity Saba. For project provenance, volunteer basis, and intended
+handover, see `README.md`.
 
 Read `PRODUCT.md` and `TECHNICAL.md` before making architectural or product decisions.
 
@@ -805,9 +808,9 @@ Before making a significant architectural decision:
 
 ---
 
-# Definition of Done for Initial Web MVP
+# Definition of Done for V1
 
-The MVP is successful when:
+The V1 application is successful when:
 
 - A resident can authenticate.
 - A resident can save delivery information.

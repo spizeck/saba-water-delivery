@@ -1,10 +1,25 @@
 # Saba Water Delivery
 
-A Government of Saba system for requesting and dispatching government
-RO water deliveries. It replaces the previous process where residents
-called individual drivers directly: a resident requests a standard
-1,000-gallon load, an eligible driver claims and delivers it, and
-government staff retain full operational visibility over the process.
+Saba Water Delivery is a system for requesting and dispatching
+government-produced RO water deliveries on Saba. It replaces the previous
+process where residents called individual drivers directly: a resident
+requests a standard 1,000-gallon load, an eligible driver claims and
+delivers it, and government staff retain full operational visibility
+over the process.
+
+## Project Provenance and Handover
+
+Saba Water Delivery was developed on a volunteer basis for the Public
+Entity Saba. The application's requirements, workflows, operational
+rules, and subsequent changes were developed in consultation with and
+under the supervision and approval of representatives of the Public
+Entity Saba.
+
+The project is intended to be handed over to the Public Entity Saba for
+its ownership, administration, continued development, and operation.
+The repository and its documentation are therefore written to support
+government staff and future technical maintainers rather than continued
+dependence on the original volunteer developer.
 
 ## Interfaces
 

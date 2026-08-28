@@ -1,8 +1,13 @@
 # Water Delivery System Technical Guide
 
+This document describes the implemented technical architecture of Saba
+Water Delivery, developed for the Public Entity Saba. For project
+provenance, volunteer basis, and intended handover, see
+[`README.md`](../README.md).
+
 ## Architecture
 
-Initial application stack:
+Application stack:
 
 - Next.js App Router
 - TypeScript
@@ -23,7 +28,7 @@ Future integrations, including WhatsApp, must operate against the same domain lo
 
 Use Firebase Authentication.
 
-Initial providers:
+Supported sign-in providers:
 
 - Google
 - Facebook
@@ -39,7 +44,7 @@ Never treat a hidden UI element as authorization.
 
 # Roles
 
-Initial roles:
+Current roles:
 
 ```text
 resident
@@ -78,7 +83,9 @@ and must not be conflated.
 
 # Suggested Firestore Model
 
-This is a starting model, not an instruction to blindly reproduce every field.
+This is the implemented model as of the current codebase; use it as a
+reference, but verify the exact fields in `src/lib/domain/types.ts` and
+the domain modules before treating it as exhaustive.
 
 ## users/{uid}
 

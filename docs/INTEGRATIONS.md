@@ -4,6 +4,12 @@ Every external service this application depends on, in one place. See
 [`DEPLOYMENT.md`](./DEPLOYMENT.md) for setup steps and environment
 variables.
 
+Production accounts, API keys, sending domains, and project memberships
+for these services should ultimately be controlled by the Public Entity
+Saba or its authorized technical administrators. Until a formal handover
+is complete, document who holds each credential so ongoing government
+operation does not depend on an individual developer.
+
 ## Firebase
 
 - **Purpose:** authentication, Firestore (the application's source of
