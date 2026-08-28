@@ -20,9 +20,6 @@ export default function PrivacyPage() {
             <div className="flex flex-col gap-6">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">Privacy Policy</h1>
-                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  <strong>Draft for government review.</strong> This policy must be approved before public launch.
-                </p>
               </div>
 
               <section>
@@ -56,7 +53,7 @@ export default function PrivacyPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Data storage and security</h2>
                 <p className="mt-2 text-slate-600">
-                  The application uses Firebase (Authentication, Firestore, and Storage) and is hosted on Vercel. Technical safeguards include server-side authorization, httpOnly session cookies, and deny-by-default Firestore Security Rules. The government is reviewing the final security and data-processing arrangements.
+                  The application uses Firebase (Authentication, Firestore, and Storage) and is hosted on Vercel. Technical safeguards include server-side authorization, httpOnly session cookies, and deny-by-default Firestore Security Rules.
                 </p>
               </section>
 
@@ -70,14 +67,14 @@ export default function PrivacyPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Retention</h2>
                 <p className="mt-2 text-slate-600">
-                  Retention periods are under government review. Operational records are kept as long as required for service delivery, audit, and oversight purposes.
+                  Operational records are kept as long as required for service delivery, audit, and oversight purposes.
                 </p>
               </section>
 
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Your rights and contact</h2>
                 <p className="mt-2 text-slate-600">
-                  For questions, corrections, or concerns about your information, please contact the Water Delivery Office. A formal contact and review process is being finalized by the government.
+                  For questions, corrections, or concerns about your information, please contact the Water Delivery Office.
                 </p>
                 <p className="mt-2 text-slate-600">
                   To request deletion of personal data associated with your account, see the{" "}
@@ -91,7 +88,7 @@ export default function PrivacyPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Updates</h2>
                 <p className="mt-2 text-slate-600">
-                  This policy will be updated as the service approaches launch and as government sign-off is completed. The final, approved version will replace this draft.
+                  This policy may be updated from time to time. The latest version will always be available on this page.
                 </p>
               </section>
             </div>
