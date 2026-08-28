@@ -20,9 +20,6 @@ export default function TermsPage() {
             <div className="flex flex-col gap-6">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">Terms of Use</h1>
-                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  <strong>Draft for government review.</strong> These terms must be approved before public launch.
-                </p>
               </div>
 
               <section>
@@ -90,7 +87,7 @@ export default function TermsPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">Changes to these terms</h2>
                 <p className="mt-2 text-slate-600">
-                  These terms will be finalized and may be updated after government review. The approved version will replace this draft before public launch.
+                  These terms may be updated from time to time. The latest version will always be available on this page.
                 </p>
               </section>
             </div>

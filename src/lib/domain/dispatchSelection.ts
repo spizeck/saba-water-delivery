@@ -47,7 +47,11 @@ export function selectNextDispatchCandidate(
   // cannot be offered another until that delivery leaves "claimed" status.
   if (activeDelivery) return null;
 
-  if (pendingOffer && isOfferableToDriver(pendingOffer.request, driverId, now)) {
+  if (
+    pendingOffer &&
+    !declinedRequestIds.has(pendingOffer.request.id) &&
+    isOfferableToDriver(pendingOffer.request, driverId, now)
+  ) {
     return pendingOffer.request;
   }
 

@@ -92,17 +92,27 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
   const activeDeliveries = await getClaimedRequestsForDriver(driverId);
   const activeDelivery = activeDeliveries[0] ?? null;
 
+  // Request IDs this driver declined within the recent dispatch window.
+  // Used both to filter fresh candidates and to invalidate a stale
+  // pending offer for a request the driver has already declined.
+  const declinedIds = await getDeclinedRequestIdsForDriver(driverId);
+
   // Reuse an existing pending offer so reloading the page doesn't
   // manufacture a new offer while one is awaiting a response.
   let pendingPair: { offer: DriverOffer; request: WaterRequest } | null = null;
   const pending = await getPendingOfferForDriver(driverId);
   if (pending) {
     const request = await getWaterRequestById(pending.requestId);
-    if (request && isOfferableToDriver(request, driverId, now)) {
+    if (
+      request &&
+      isOfferableToDriver(request, driverId, now) &&
+      !declinedIds.has(request.id)
+    ) {
       pendingPair = { offer: pending, request };
     } else {
       // The request was claimed/cancelled/reassigned out from under this
-      // offer before the driver responded — expire it and select fresh.
+      // offer before the driver responded, or the driver already declined
+      // this request — expire it and select fresh.
       await recordOfferResponse(pending.id, "expired");
     }
   }
@@ -139,7 +149,6 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
   // Priority 2: highest dispatch-priority open request not already
   // declined by this driver recently, oldest first within the same
   // priority level — see PRODUCT.md "Priority-Based Dispatch".
-  const declinedIds = await getDeclinedRequestIdsForDriver(driverId);
   const availableSnapshot = await db
     .collection(REQUESTS_COLLECTION)
     .where("status", "==", "available")
@@ -162,6 +171,13 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
   });
 
   if (!candidate) return null;
+
+  // When the selected candidate is the request already offered to this
+  // driver, return the existing pending offer instead of minting a
+  // duplicate offer document on every page load.
+  if (pendingPair && pendingPair.request.id === candidate.id) {
+    return pendingPair;
+  }
 
   const offer = await createDriverOffer(driverId, candidate.id);
   return { offer, request: candidate };
@@ -265,6 +281,18 @@ export async function declineDriverOffer(
     const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
     const requestSnap = await txn.get(requestRef);
 
+    // Any other pending offers of this same request to this driver are
+    // duplicates; expire them alongside the decline so the request is not
+    // immediately re-offered from a stale pending record. Equality-only
+    // query — no composite index required.
+    const duplicatePendingSnap = await txn.get(
+      db
+        .collection("driverOffers")
+        .where("driverId", "==", driverId)
+        .where("requestId", "==", requestId)
+        .where("response", "==", null),
+    );
+
     const settingsRef = db.collection("config").doc("dispatchSettings");
     const settingsSnap = await txn.get(settingsRef);
     const settingsData = settingsSnap.data() ?? {};
@@ -311,11 +339,19 @@ export async function declineDriverOffer(
     // ---- All writes after reads ----
     const now = FieldValue.serverTimestamp();
 
-    // 1. Record the offer as declined.
+    // 1. Record the offer as declined; expire duplicate pending offers of
+    // the same request so only one decline is counted.
     txn.update(offerRef, {
       response: "declined",
       respondedAt: now,
     });
+    for (const doc of duplicatePendingSnap.docs) {
+      if (doc.id === offerId) continue;
+      txn.update(doc.ref, {
+        response: "expired",
+        respondedAt: now,
+      });
+    }
 
     // 2. Release an active preferred-driver hold to the general queue.
     if (requestSnap.exists) {
