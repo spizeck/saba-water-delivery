@@ -4,7 +4,7 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getAllRequests } from "@/lib/domain/waterRequests";
@@ -48,7 +48,7 @@ export default async function ViewerPortalPage() {
 
   const [allRequests, allDrivers] = await Promise.all([
     getAllRequests(),
-    getAllDriverRegistryEntries(),
+    getActiveDriverRegistryEntries(),
   ]);
 
   const openRequests = allRequests

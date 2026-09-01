@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getDispatchBatch } from "@/lib/domain/dispatchBatches";
-import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { DispatchPriority, WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
@@ -83,7 +83,7 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
 
   const [requests, allDrivers, createdByProfile] = await Promise.all([
     getRequestsForDispatchBatch(batchId),
-    getAllDriverRegistryEntries(),
+    getActiveDriverRegistryEntries(),
     batch.createdBy ? getUserProfile(batch.createdBy) : null,
   ]);
 

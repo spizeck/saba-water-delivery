@@ -4,11 +4,10 @@ import Link from "next/link";
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries, getArchivedDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 
 import { DriverRegistryList } from "./DriverRegistryList";
 import { NewDriverForm } from "./NewDriverForm";
-import { RegistryTools } from "./RegistryTools";
 
 export const metadata: Metadata = {
   title: "Driver Registry — Admin",
@@ -16,7 +15,10 @@ export const metadata: Metadata = {
 
 export default async function DriverRegistryPage() {
   const { profile } = await requireRole("admin");
-  const drivers = await getAllDriverRegistryEntries();
+  const [activeDrivers, archivedDrivers] = await Promise.all([
+    getActiveDriverRegistryEntries(),
+    getArchivedDriverRegistryEntries(),
+  ]);
 
   return (
     <>
@@ -32,14 +34,16 @@ export default async function DriverRegistryPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Driver Registry</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Government-managed roster of water delivery drivers. A driver
-              can exist here before they ever create an application account.
+              Government-managed roster of water delivery drivers. Active
+              drivers are shown below; archived drivers are listed separately.
             </p>
           </div>
 
           <NewDriverForm />
-          <DriverRegistryList drivers={drivers} />
-          <RegistryTools />
+          <DriverRegistryList drivers={activeDrivers} title="Active drivers" showStatus />
+          {archivedDrivers.length > 0 && (
+            <DriverRegistryList drivers={archivedDrivers} title="Archived drivers" showStatus />
+          )}
         </Container>
       </main>
     </>

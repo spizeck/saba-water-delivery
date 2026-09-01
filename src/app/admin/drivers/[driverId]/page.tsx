@@ -7,6 +7,7 @@ import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getFillStations } from "@/lib/domain/fillStations";
 import {
+  getDeleteDriverEligibility,
   getDriver,
   getDriverEvents,
   getMeterAssignments,
@@ -17,6 +18,7 @@ import { AccountLinkPanel } from "./AccountLinkPanel";
 import { DriverEventHistory } from "./DriverEventHistory";
 import { EditDriverForm } from "./EditDriverForm";
 import { EligibilityPanel } from "./EligibilityPanel";
+import { LifecyclePanel } from "./LifecyclePanel";
 import { MeterAssignmentsPanel } from "./MeterAssignmentsPanel";
 
 export const metadata: Metadata = {
@@ -51,12 +53,13 @@ export default async function DriverDetailPage({ params }: PageProps) {
     );
   }
 
-  const [stations, meters, events, residents, linkedUser] = await Promise.all([
+  const [stations, meters, events, residents, linkedUser, eligibility] = await Promise.all([
     getFillStations(),
     getMeterAssignments(driverId),
     getDriverEvents(driverId),
     driver.linkedUserId ? Promise.resolve([]) : getResidentDirectory(),
     driver.linkedUserId ? getUserProfile(driver.linkedUserId) : Promise.resolve(null),
+    getDeleteDriverEligibility(driverId),
   ]);
 
   // Resolve actor names for event history
@@ -92,6 +95,7 @@ export default async function DriverDetailPage({ params }: PageProps) {
           <EditDriverForm driver={driver} />
           <AccountLinkPanel driver={driver} residents={residents} linkedUser={linkedUser} />
           <EligibilityPanel driver={driver} />
+          <LifecyclePanel driver={driver} eligibility={eligibility} />
           <MeterAssignmentsPanel driverId={driverId} stations={stations} meters={meters} />
           <DriverEventHistory events={events} nameMap={nameMap} />
         </Container>

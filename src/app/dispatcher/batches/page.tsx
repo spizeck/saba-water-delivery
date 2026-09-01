@@ -8,7 +8,7 @@ import {
   getAllDispatchBatchSummaries,
   type DispatchBatchSummary,
 } from "@/lib/domain/dispatchBatches";
-import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 export const metadata: Metadata = {
@@ -30,7 +30,7 @@ const STATE_COLORS: Record<DispatchBatchSummary["derivedState"], string> = {
 export default async function DeliveryRunsPage() {
   const { profile } = await requireRole(["dispatcher", "admin"]);
 
-  const drivers = await getAllDriverRegistryEntries();
+  const drivers = await getActiveDriverRegistryEntries();
   const driverNames: Record<string, string> = {};
   for (const d of drivers) {
     if (d.linkedUserId) driverNames[d.linkedUserId] = d.displayName;

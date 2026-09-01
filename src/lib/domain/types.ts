@@ -465,6 +465,8 @@ export type DriverEventType =
   | "driver_cooldown_started"
   | "driver_registry_created"
   | "driver_registry_updated"
+  | "driver_archived"
+  | "driver_restored_from_archive"
   | "driver_account_linked"
   | "driver_account_unlinked"
   | "meter_assignment_added"
@@ -526,6 +528,12 @@ export interface DriverRegistryEntry {
    * whether a driver can be assigned another request atomically.
    */
   activeRequestId: string | null;
+
+  archivedAt: string | null;
+  archivedBy: string | null;
+  archiveReason: string | null;
+  archivedPreviousEligibilityStatus: DriverEligibilityStatus | null;
+  archivedPreviousIneligibilityReason: string | null;
 
   createdAt: string;
   createdBy: string;

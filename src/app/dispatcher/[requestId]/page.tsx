@@ -5,7 +5,7 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getAllDriverRegistryEntries, getEligibleDriverOptions, getMeterAssignments } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries, getEligibleDriverOptions, getMeterAssignments } from "@/lib/domain/driverRegistry";
 import { getFillStations } from "@/lib/domain/fillStations";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
@@ -120,7 +120,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
     await Promise.all([
       !data.customer && data.customerId ? getUserProfile(data.customerId) : null,
       getRequestEvents(requestId),
-      getAllDriverRegistryEntries(),
+      getActiveDriverRegistryEntries(),
       getEligibleDriverOptions(),
       getFillStations(),
     ]);

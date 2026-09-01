@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { sortForBatchSelection } from "@/lib/domain/dispatchBatchSelection";
-import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { getBatchEligibleRequests } from "@/lib/domain/waterRequests";
 
 import { NewBatchForm } from "./NewBatchForm";
@@ -19,7 +19,7 @@ export default async function NewDeliveryRunPage() {
   const { profile } = await requireRole(["dispatcher", "admin"]);
 
   const [allDrivers, eligibleRequests] = await Promise.all([
-    getAllDriverRegistryEntries(),
+    getActiveDriverRegistryEntries(),
     getBatchEligibleRequests(),
   ]);
 

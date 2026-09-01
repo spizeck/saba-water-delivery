@@ -169,6 +169,41 @@ Manually verify:
 
 The repository cannot verify Firewall/WAF rules, bot protection, rate limiting, Deployment Protection, environment-variable scopes, team MFA/SSO, project role assignments, audit logs, domain certificate health, or branch protections. Vercel normally supplies TLS termination and platform-level DDoS mitigation, but live project and plan settings must be confirmed in the dashboard.
 
+## Driver Registry lifecycle
+
+### Archive / deactivate
+
+Admins can archive a driver to remove them from active registry views, dispatch eligibility, and preferred-driver selection while preserving all historical records. Archiving:
+
+- requires an admin role and a reason;
+- sets the driver ineligible and offline;
+- records the previous eligibility status and reason so the action is reversible;
+- creates an audit event with the actor, timestamp, previous status, and reason;
+- preserves audit history, historical requests, preferred-driver references, and meter history;
+- is blocked while the driver has an active request lock or active claimed deliveries.
+
+Archived drivers can be restored from a separate "Archived drivers" list by an admin. Restoration reinstates the previous eligibility status and records a second audit event.
+
+### Permanent deletion
+
+Permanent deletion is intentionally restricted to unlinked, unreferenced test or duplicate records. Before deletion the server checks for:
+
+- a linked application account (`driverRegistry.linkedUserId`);
+- an active request lock (`driverRegistry.activeRequestId`);
+- active assigned water requests (`waterRequests.assignedDriverId`);
+- historical assigned water requests;
+- preferred-driver references (`waterRequests.preferredDriverId`);
+- dispatch-batch memberships (`dispatchBatches.driverId`);
+- driver-offer references (`driverOffers.driverId`);
+- meter assignments (`driverRegistry/{id}/meters`);
+- registry audit events (`driverRegistry/{id}/events`).
+
+If any reference exists, deletion is blocked and the UI explains which records require preservation, directing the admin to archive the driver instead. When deletion is allowed, the admin must type the exact driver name as a strong confirmation. Deletion removes the `driverRegistry` document, unique-name/phone keys, and any meter/event subdocuments. It does **not** delete any linked Firebase Authentication account; Auth cleanup must be performed separately.
+
+### Seed tool removal
+
+The "Seed initial roster" production UI has been removed. The underlying `seedInitialRoster` domain helper remains available for development or one-off migration scripts but is no longer invoked from a server action or rendered to admins.
+
 ## Data and secrets statement
 
 No production data was modified or deleted during this review. No credentials, tokens, private keys, or sensitive environment values are included in this report.
