@@ -311,6 +311,9 @@ export async function registerPerson(
 
   if (!displayName.trim()) throw new Error("DISPLAY_NAME_REQUIRED");
   if (!phone.trim()) throw new Error("PHONE_REQUIRED");
+  if (roles.some((role) => role !== "resident" && role !== "driver")) {
+    throw new Error("INVALID_REGISTRATION_ROLE");
+  }
   if (village !== null && !isValidSabaVillage(village)) {
     throw new Error("INVALID_VILLAGE");
   }

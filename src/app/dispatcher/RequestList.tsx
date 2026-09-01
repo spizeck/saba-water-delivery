@@ -21,7 +21,7 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   preferred_driver_hold: "Preferred driver hold",
   available: "Available",
   claimed: "Claimed",
-  delivered: "Delivered",
+  delivered: "Delivered — awaiting customer confirmation",
   confirmed: "Confirmed",
   disputed: "DISPUTED",
   cancelled: "Cancelled",

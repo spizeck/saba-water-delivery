@@ -161,6 +161,16 @@ export async function createDriver(input: CreateDriverInput): Promise<DriverRegi
   const { displayName, phone, actorId } = input;
   if (!displayName.trim()) throw new Error("DISPLAY_NAME_REQUIRED");
 
+  const normalizedName = displayName.trim().toLocaleLowerCase();
+  const normalizedPhone = phone?.replace(/\D/g, "") || null;
+  const existing = await getAllDriverRegistryEntries();
+  if (existing.some((driver) => driver.displayName.trim().toLocaleLowerCase() === normalizedName)) {
+    throw new Error("DRIVER_NAME_EXISTS");
+  }
+  if (normalizedPhone && existing.some((driver) => driver.phone?.replace(/\D/g, "") === normalizedPhone)) {
+    throw new Error("DRIVER_PHONE_EXISTS");
+  }
+
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc();
   const now = FieldValue.serverTimestamp();
@@ -204,6 +214,16 @@ export interface UpdateDriverInput {
 export async function updateDriver(input: UpdateDriverInput): Promise<DriverRegistryEntry> {
   const { driverId, displayName, phone, actorId } = input;
   if (!displayName.trim()) throw new Error("DISPLAY_NAME_REQUIRED");
+
+  const normalizedName = displayName.trim().toLocaleLowerCase();
+  const normalizedPhone = phone?.replace(/\D/g, "") || null;
+  const existing = await getAllDriverRegistryEntries();
+  if (existing.some((driver) => driver.id !== driverId && driver.displayName.trim().toLocaleLowerCase() === normalizedName)) {
+    throw new Error("DRIVER_NAME_EXISTS");
+  }
+  if (normalizedPhone && existing.some((driver) => driver.id !== driverId && driver.phone?.replace(/\D/g, "") === normalizedPhone)) {
+    throw new Error("DRIVER_PHONE_EXISTS");
+  }
 
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);

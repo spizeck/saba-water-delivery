@@ -91,6 +91,11 @@ export function OfferCard({ offer, request, customer }: Props) {
         <p className="text-xl font-bold text-slate-900">
           {customer?.displayName ?? "Customer"}
         </p>
+        {customer?.phone && (
+          <a href={`tel:${customer.phone}`} className="text-sm font-medium text-blue-700 underline">
+            {customer.phone}
+          </a>
+        )}
         <p className="text-sm text-slate-600">{request.village}</p>
         <p className="text-sm text-slate-600">
           {formatWaterQuantity(request.loads)} &middot; Requested {formatAge(request.requestedAt)}

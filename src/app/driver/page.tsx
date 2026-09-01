@@ -209,6 +209,7 @@ export default async function DriverPortalPage() {
           {/* Current dispatch offer (only when eligible, online, and not in cooldown) */}
           {canReceiveOffers && nextOffer && (
             <OfferCard
+              key={nextOffer.offer.id}
               offer={nextOffer.offer}
               request={nextOffer.request}
               customer={resolveCustomerInfo(nextOffer.request, customerInfoMap)}

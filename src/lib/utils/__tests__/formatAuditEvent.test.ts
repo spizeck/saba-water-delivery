@@ -158,6 +158,16 @@ describe("formatRequestEventDetails", () => {
     });
   });
 
+  describe("request_returned_to_queue", () => {
+    it("shows the previous driver and reason", () => {
+      const result = formatRequestEventDetails("request_returned_to_queue", {
+        previousDriverId: "driver-uid-1",
+        reason: "Customer requested a different delivery date",
+      }, { nameMap });
+      expect(result).toBe("Previous driver: Demo Driver · Reason: Customer requested a different delivery date");
+    });
+  });
+
   describe("request_cancelled", () => {
     it("shows reason and previous status", () => {
       const result = formatRequestEventDetails("request_cancelled", {
@@ -201,6 +211,14 @@ describe("formatRequestEventDetails", () => {
       });
       expect(result).toContain("Village: St Johns → The Bottom");
       expect(result).toContain("Loads: 1 → 2");
+    });
+
+    it("shows stored from/to customer corrections", () => {
+      const result = formatRequestEventDetails("request_edited", {
+        customerDisplayName: { from: "Info", to: "Jane Resident" },
+        customerPhone: { from: "123", to: "456" },
+      });
+      expect(result).toBe("Customer name: Info → Jane Resident · Customer phone: 123 → 456");
     });
   });
 
@@ -288,7 +306,7 @@ describe("EVENT_LABELS completeness", () => {
       "customer_disputed", "delivery_auto_confirmed",
       "dispute_resolved_completed", "dispute_resolved_reopened",
       "request_cancelled", "dispatcher_assigned",
-      "dispatcher_reassigned", "request_priority_changed",
+      "dispatcher_reassigned", "request_returned_to_queue", "request_priority_changed",
       "preferred_driver_bypassed_for_priority",
       "preferred_driver_hold_released_for_priority",
       "dispatcher_batch_assigned", "dispatcher_batch_membership_removed",

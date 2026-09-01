@@ -87,17 +87,12 @@ describe("GET /api/cron/continuity-report", () => {
     expect(body.error).toBe("Resend down");
   });
 
-  it("allows an unauthenticated request through when CRON_SECRET is unset (documented fallback)", async () => {
+  it("fails closed when CRON_SECRET is unset", async () => {
     delete process.env.CRON_SECRET;
-    generateContinuityReportDataMock.mockResolvedValue({
-      generatedAt: "2026-08-22T00:00:00.000Z",
-      unassigned: [],
-      assigned: [],
-    });
-    renderContinuityReportPdfMock.mockResolvedValue(Buffer.from("pdf"));
-    sendContinuityReportEmailMock.mockResolvedValue({ ok: true });
 
     const response = await GET(makeRequest());
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
+    expect(generateContinuityReportDataMock).not.toHaveBeenCalled();
+    expect(sendContinuityReportEmailMock).not.toHaveBeenCalled();
   });
 });

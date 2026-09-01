@@ -1038,6 +1038,10 @@ export interface EditWaterRequestInput {
   village?: string | null;
   /** New delivery directions. Null means "do not change". */
   deliveryDirections?: string | null;
+  customerDisplayName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  updateCustomerProfile?: boolean;
 }
 
 /**
@@ -1070,6 +1074,13 @@ export async function editWaterRequest(
       throw new Error("REQUEST_NOT_EDITABLE");
     }
 
+    const customerId = (data.customerId as string | null) ?? null;
+    const userRef = input.updateCustomerProfile && customerId
+      ? db.collection("users").doc(customerId)
+      : null;
+    const userSnap = userRef ? await txn.get(userRef) : null;
+    if (userRef && !userSnap?.exists) throw new Error("CUSTOMER_PROFILE_NOT_FOUND");
+
     const changes: Record<string, { from: unknown; to: unknown }> = {};
     const updates: Record<string, unknown> = { updatedAt: now };
 
@@ -1096,6 +1107,44 @@ export async function editWaterRequest(
       if (!trimmed) throw new Error("DIRECTIONS_REQUIRED");
       changes.deliveryDirections = { from: data.deliveryDirections, to: trimmed };
       updates.deliveryDirections = trimmed;
+    }
+
+    const existingCustomer = (data.customer ?? {}) as Record<string, unknown>;
+    const profileData = userSnap?.data() ?? {};
+    const nextCustomer = {
+      displayName: input.customerDisplayName?.trim() || String(existingCustomer.displayName ?? profileData.displayName ?? ""),
+      phone: input.customerPhone?.trim() || String(existingCustomer.phone ?? profileData.phone ?? ""),
+      email: input.customerEmail === undefined
+        ? (existingCustomer.email ?? profileData.email ?? null)
+        : input.customerEmail?.trim() || null,
+      isRegistered: Boolean(customerId),
+    };
+    if (!nextCustomer.displayName) throw new Error("CUSTOMER_NAME_REQUIRED");
+    if (!nextCustomer.phone) throw new Error("CUSTOMER_PHONE_REQUIRED");
+
+    for (const [key, value] of Object.entries({
+      customerDisplayName: nextCustomer.displayName,
+      customerPhone: nextCustomer.phone,
+      customerEmail: nextCustomer.email,
+    })) {
+      const sourceKey = key.replace("customer", "");
+      const currentKey = sourceKey.charAt(0).toLowerCase() + sourceKey.slice(1);
+      const current = existingCustomer[currentKey] ?? profileData[currentKey] ?? null;
+      if (value !== current) changes[key] = { from: current, to: value };
+    }
+    if (Object.keys(changes).some((key) => key.startsWith("customer"))) {
+      updates.customer = nextCustomer;
+      if (userRef) {
+        txn.update(userRef, {
+          displayName: nextCustomer.displayName,
+          phone: nextCustomer.phone,
+          email: nextCustomer.email,
+          village: input.village?.trim() || profileData.village || data.village,
+          deliveryDirections: input.deliveryDirections?.trim() || profileData.deliveryDirections || data.deliveryDirections,
+          updatedAt: now,
+          updatedBy: actorId,
+        });
+      }
     }
 
     if (Object.keys(changes).length === 0) {
@@ -1803,8 +1852,8 @@ export async function cancelWaterRequest(
     if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
 
     const data = snap.data()!;
-    const resolved: WaterRequestStatus[] = ["confirmed", "cancelled"];
-    if (resolved.includes(data.status)) {
+    const cancellable: WaterRequestStatus[] = ["requested", "preferred_driver_hold", "available", "claimed"];
+    if (!cancellable.includes(data.status)) {
       throw new Error("REQUEST_ALREADY_RESOLVED");
     }
 
@@ -1856,7 +1905,7 @@ export async function cancelWaterRequest(
       actorId,
       actorRole: "dispatcher",
       createdAt: now,
-      metadata: { reason, ...(dispatchBatchId ? { leftDispatchBatchId: dispatchBatchId } : {}) },
+      metadata: { reason, previousStatus: data.status, ...(dispatchBatchId ? { leftDispatchBatchId: dispatchBatchId } : {}) },
     });
 
     if (dispatchBatchId) {
@@ -2288,6 +2337,92 @@ export async function dispatcherReassign(
   return toWaterRequest(requestId, updated.data()!);
 }
 
+export async function returnAssignedRequestToQueue(input: {
+  requestId: string;
+  actorId: string;
+  reason: string;
+}): Promise<WaterRequest> {
+  const { requestId, actorId, reason } = input;
+  if (!reason.trim()) throw new Error("REQUEUE_REASON_REQUIRED");
+
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const requestSnap = await txn.get(requestRef);
+    if (!requestSnap.exists) throw new Error("REQUEST_NOT_FOUND");
+    const data = requestSnap.data()!;
+    if (data.status !== "claimed" || !data.assignedDriverId) {
+      throw new Error("REQUEST_NOT_ASSIGNED");
+    }
+    if (Array.isArray(data.loadCollections) && data.loadCollections.length > 0) {
+      throw new Error("REQUEST_HAS_COLLECTIONS");
+    }
+
+    const previousDriverId = data.assignedDriverId as string;
+    const driverQuery = db
+      .collection("driverRegistry")
+      .where("linkedUserId", "==", previousDriverId)
+      .limit(1);
+    const driverSnap = await txn.get(driverQuery);
+    const registryRef = !driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId
+      ? driverSnap.docs[0].ref
+      : null;
+    const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
+    const batchSync = dispatchBatchId
+      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, null)
+      : null;
+
+    txn.update(requestRef, {
+      status: "available",
+      assignedDriverId: null,
+      claimedAt: null,
+      availableAt: now,
+      preferredDriverId: null,
+      preferredDriverExpiresAt: null,
+      dispatchBatchId: null,
+      batchSequence: null,
+      updatedAt: now,
+    });
+
+    if (registryRef) {
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
+    }
+    if (batchSync) {
+      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+    }
+
+    txn.create(requestRef.collection("events").doc(), {
+      type: "request_returned_to_queue",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: {
+        previousDriverId,
+        reason: reason.trim(),
+        ...(dispatchBatchId ? { previousDispatchBatchId: dispatchBatchId } : {}),
+      },
+    });
+    if (dispatchBatchId) {
+      txn.create(requestRef.collection("events").doc(), {
+        type: "dispatcher_batch_membership_removed",
+        actorId,
+        actorRole: "dispatcher",
+        createdAt: now,
+        metadata: { dispatchBatchId, reason: "returned_to_queue" },
+      });
+    }
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
 // ---------------------------------------------------------------------------
 // Water collection tracking (per-physical-load)
 // ---------------------------------------------------------------------------
@@ -2360,7 +2495,7 @@ export async function recordWaterCollection(
 
     const data = snap.data()!;
     if (data.status !== "claimed") throw new Error("REQUEST_NOT_CLAIMABLE");
-    if (data.assignedDriverId !== driverId && actorRole === "driver") {
+    if (data.assignedDriverId !== driverId) {
       throw new Error("NOT_ASSIGNED_DRIVER");
     }
 
