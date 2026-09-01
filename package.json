@@ -40,6 +40,7 @@
   "allowScripts": {
     "@firebase/util@1.15.3": true,
     "protobufjs@7.6.5": true,
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "re2@1.26.1": true
   }
 }

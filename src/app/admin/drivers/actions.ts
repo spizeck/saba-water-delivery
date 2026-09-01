@@ -4,12 +4,15 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import {
+  archiveDriver,
   createDriver,
+  deleteDriver,
+  getDeleteDriverEligibility,
   linkDriverAccount,
   removeMeterAssignment,
+  restoreArchivedDriver,
   restoreDriver,
   restrictDriver,
-  seedInitialRoster,
   setMeterAssignment,
   unlinkDriverAccount,
   updateDriver,
@@ -252,22 +255,103 @@ export async function removeMeterAssignmentAction(
 }
 
 // ---------------------------------------------------------------------------
-// Registry maintenance (manual, explicit — never automatic)
+// Archive / restore / delete
 // ---------------------------------------------------------------------------
 
-export interface MaintenanceActionState {
+export interface DeleteDriverActionState {
   status: "idle" | "success" | "error";
   message?: string;
 }
 
-export async function seedInitialRosterAction(
-  _prevState: MaintenanceActionState,
-): Promise<MaintenanceActionState> {
+export async function archiveDriverAction(
+  _prevState: DriverFormActionState,
+  formData: FormData,
+): Promise<DriverFormActionState> {
   const session = await requireAdmin();
-  const result = await seedInitialRoster(session.uid);
+  const driverId = String(formData.get("driverId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!driverId) return { status: "error", message: "Missing driver ID." };
+  if (!reason) return { status: "error", message: "A reason is required." };
+
+  try {
+    await archiveDriver({ driverId, archivedBy: session.uid, reason });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver not found." };
+        case "DRIVER_ALREADY_ARCHIVED":
+          return { status: "error", message: "This driver is already archived." };
+        case "DRIVER_HAS_ACTIVE_REQUEST":
+          return { status: "error", message: "This driver has an active request. Resolve or reassign it first." };
+        case "DRIVER_HAS_ACTIVE_DELIVERIES":
+          return { status: "error", message: "This driver has active claimed deliveries. Resolve or reassign them first." };
+        case "ARCHIVE_REASON_REQUIRED":
+          return { status: "error", message: "A reason is required." };
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath(`/admin/drivers/${driverId}`);
+  return { status: "success", message: "Driver archived." };
+}
+
+export async function restoreArchivedDriverAction(
+  _prevState: DriverFormActionState,
+  formData: FormData,
+): Promise<DriverFormActionState> {
+  const session = await requireAdmin();
+  const driverId = String(formData.get("driverId") ?? "").trim();
+
+  if (!driverId) return { status: "error", message: "Missing driver ID." };
+
+  try {
+    await restoreArchivedDriver({ driverId, restoredBy: session.uid });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver not found." };
+        case "DRIVER_NOT_ARCHIVED":
+          return { status: "error", message: "This driver is not archived." };
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath(`/admin/drivers/${driverId}`);
+  return { status: "success", message: "Driver restored from archive." };
+}
+
+export async function deleteDriverAction(
+  _prevState: DeleteDriverActionState,
+  formData: FormData,
+): Promise<DeleteDriverActionState> {
+  const session = await requireAdmin();
+  const driverId = String(formData.get("driverId") ?? "").trim();
+  const confirmation = String(formData.get("confirmation") ?? "").trim();
+
+  if (!driverId) return { status: "error", message: "Missing driver ID." };
+  if (!confirmation) return { status: "error", message: "Type the driver name to confirm deletion." };
+
+  try {
+    await deleteDriver({ driverId, deletedBy: session.uid, confirmation });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver not found." };
+        case "DRIVER_NOT_ELIGIBLE_FOR_DELETION":
+          return { status: "error", message: "This driver cannot be deleted. Archive it instead." };
+        case "CONFIRMATION_NAME_MISMATCH":
+          return { status: "error", message: "Confirmation does not match the driver name." };
+      }
+    }
+    throw err;
+  }
+
   revalidatePath("/admin/drivers");
-  return {
-    status: "success",
-    message: `${result.created} driver(s) added, ${result.skipped} already existed.`,
-  };
+  return { status: "success", message: "Driver record deleted." };
 }

@@ -9,10 +9,12 @@ import { toUserRoles } from "@/lib/auth/roles";
 
 import type {
   DriverAvailabilityStatus,
+  DriverEligibilityStatus,
   DriverEvent,
   DriverRegistryEntry,
   FillStationId,
   MeterAssignment,
+  WaterRequestStatus,
 } from "./types";
 import {
   checkActiveRequestValidity,
@@ -60,6 +62,11 @@ function toDriverRegistryEntry(id: string, data: DocumentData): DriverRegistryEn
     restrictedBy: data.restrictedBy ?? null,
     cooldownUntil: data.cooldownUntil?.toDate?.().toISOString() ?? null,
     activeRequestId: data.activeRequestId ?? null,
+    archivedAt: data.archivedAt?.toDate?.().toISOString() ?? null,
+    archivedBy: data.archivedBy ?? null,
+    archiveReason: data.archiveReason ?? null,
+    archivedPreviousEligibilityStatus: data.archivedPreviousEligibilityStatus ?? null,
+    archivedPreviousIneligibilityReason: data.archivedPreviousIneligibilityReason ?? null,
     createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     createdBy: data.createdBy ?? "",
     updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
@@ -116,6 +123,7 @@ export async function getDriverByLinkedUserId(
 export async function isDriverImmediatelyAvailable(userId: string): Promise<boolean> {
   const entry = await getDriverByLinkedUserId(userId);
   if (!entry) return false;
+  if (entry.archivedAt) return false;
   if (entry.eligibilityStatus !== "eligible") return false;
   if (entry.availabilityStatus !== "online") return false;
   if (entry.cooldownUntil && new Date(entry.cooldownUntil) > new Date()) return false;
@@ -136,6 +144,16 @@ export async function getAllDriverRegistryEntries(): Promise<DriverRegistryEntry
   return entries;
 }
 
+export async function getActiveDriverRegistryEntries(): Promise<DriverRegistryEntry[]> {
+  const all = await getAllDriverRegistryEntries();
+  return all.filter((d) => !d.archivedAt);
+}
+
+export async function getArchivedDriverRegistryEntries(): Promise<DriverRegistryEntry[]> {
+  const all = await getAllDriverRegistryEntries();
+  return all.filter((d) => d.archivedAt);
+}
+
 /** Lightweight option for the preferred-driver picker and assign/reassign pickers. */
 export interface EligibleDriverOption {
   uid: string;
@@ -150,7 +168,7 @@ export interface EligibleDriverOption {
 export async function getEligibleDriverOptions(): Promise<EligibleDriverOption[]> {
   const entries = await getAllDriverRegistryEntries();
   return entries
-    .filter((d) => d.eligibilityStatus === "eligible" && d.linkedUserId)
+    .filter((d) => d.eligibilityStatus === "eligible" && d.linkedUserId && !d.archivedAt)
     .map((d) => ({ uid: d.linkedUserId as string, displayName: d.displayName }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
@@ -554,6 +572,319 @@ export async function restoreDriver(input: RestoreDriverInput): Promise<DriverRe
 }
 
 // ---------------------------------------------------------------------------
+// Archive / restore
+// ---------------------------------------------------------------------------
+
+export interface ArchiveDriverInput {
+  driverId: string;
+  archivedBy: string;
+  reason: string;
+}
+
+export async function archiveDriver(input: ArchiveDriverInput): Promise<DriverRegistryEntry> {
+  const { driverId, archivedBy, reason } = input;
+  if (!reason.trim()) throw new Error("ARCHIVE_REASON_REQUIRED");
+
+  const db = getAdminDb();
+  const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+  const data = doc.data()!;
+  if (data.archivedAt) throw new Error("DRIVER_ALREADY_ARCHIVED");
+
+  const activeRequestId: string | null = data.activeRequestId ?? null;
+  if (activeRequestId) {
+    const reconcile = await reconcileActiveRequest(driverId);
+    if (!reconcile.repaired) throw new Error("DRIVER_HAS_ACTIVE_REQUEST");
+  }
+
+  const linkedUserId: string | null = data.linkedUserId ?? null;
+  if (linkedUserId) {
+    const activeCount = await activeDeliveryCountForUser(linkedUserId);
+    if (activeCount > 0) throw new Error("DRIVER_HAS_ACTIVE_DELIVERIES");
+  }
+
+  const now = FieldValue.serverTimestamp();
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(ref);
+    if (!snap.exists) throw new Error("DRIVER_NOT_FOUND");
+    const current = snap.data()!;
+    if (current.archivedAt) throw new Error("DRIVER_ALREADY_ARCHIVED");
+    if (current.activeRequestId) throw new Error("DRIVER_HAS_ACTIVE_REQUEST");
+
+    const currentLinkedUserId = (current.linkedUserId ?? null) as string | null;
+    if (currentLinkedUserId) {
+      const activeDeliveries = await txn.get(
+        db
+          .collection(REQUESTS_COLLECTION)
+          .where("assignedDriverId", "==", currentLinkedUserId)
+          .where("status", "==", "claimed"),
+      );
+      if (activeDeliveries.size > 0) throw new Error("DRIVER_HAS_ACTIVE_DELIVERIES");
+    }
+
+    const previousEligibility = (current.eligibilityStatus ?? "ineligible") as DriverEligibilityStatus;
+    const previousReason = (current.ineligibilityReason ?? null) as string | null;
+
+    txn.update(ref, {
+      eligibilityStatus: "ineligible",
+      availabilityStatus: "offline",
+      ineligibilityReason: `Archived: ${reason.trim()}`,
+      archivedAt: now,
+      archivedBy,
+      archiveReason: reason.trim(),
+      archivedPreviousEligibilityStatus: previousEligibility,
+      archivedPreviousIneligibilityReason: previousReason,
+      updatedAt: now,
+      updatedBy: archivedBy,
+    });
+    txn.create(ref.collection("events").doc(), {
+      type: "driver_archived",
+      actorId: archivedBy,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: {
+        reason: reason.trim(),
+        previousEligibilityStatus: previousEligibility,
+        previousIneligibilityReason: previousReason,
+      },
+    });
+  });
+
+  const updated = await ref.get();
+  return toDriverRegistryEntry(driverId, updated.data()!);
+}
+
+export interface RestoreArchivedDriverInput {
+  driverId: string;
+  restoredBy: string;
+}
+
+export async function restoreArchivedDriver(input: RestoreArchivedDriverInput): Promise<DriverRegistryEntry> {
+  const { driverId, restoredBy } = input;
+  const db = getAdminDb();
+  const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+  const data = doc.data()!;
+  if (!data.archivedAt) throw new Error("DRIVER_NOT_ARCHIVED");
+
+  const now = FieldValue.serverTimestamp();
+  const previousEligibility = (data.archivedPreviousEligibilityStatus ?? "ineligible") as DriverEligibilityStatus;
+  const previousReason = (data.archivedPreviousIneligibilityReason ?? null) as string | null;
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(ref);
+    if (!snap.exists) throw new Error("DRIVER_NOT_FOUND");
+    const current = snap.data()!;
+    if (!current.archivedAt) throw new Error("DRIVER_NOT_ARCHIVED");
+
+    txn.update(ref, {
+      eligibilityStatus: previousEligibility,
+      ineligibilityReason: previousReason,
+      availabilityStatus: "offline",
+      archivedAt: null,
+      archivedBy: null,
+      archiveReason: null,
+      archivedPreviousEligibilityStatus: null,
+      archivedPreviousIneligibilityReason: null,
+      updatedAt: now,
+      updatedBy: restoredBy,
+    });
+    txn.create(ref.collection("events").doc(), {
+      type: "driver_restored_from_archive",
+      actorId: restoredBy,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: {
+        restoredToEligibilityStatus: previousEligibility,
+      },
+    });
+  });
+
+  const updated = await ref.get();
+  return toDriverRegistryEntry(driverId, updated.data()!);
+}
+
+export interface DeleteDriverEligibility {
+  canDelete: boolean;
+  reasons: string[];
+  summary: {
+    displayName: string;
+    linkedAccount: boolean;
+    activeRequestLock: boolean;
+    activeAssignments: number;
+    historicalAssignments: number;
+    preferredDriverReferences: number;
+    dispatchBatchMemberships: number;
+    driverOfferReferences: number;
+    meterAssignments: number;
+    registryEvents: number;
+  };
+}
+
+const ACTIVE_REQUEST_STATUSES: WaterRequestStatus[] = ["claimed", "preferred_driver_hold"];
+
+async function getReferenceCounts(linkedUserId: string | null) {
+  const db = getAdminDb();
+  if (!linkedUserId) {
+    return {
+      activeAssignments: 0,
+      historicalAssignments: 0,
+      preferredDriverReferences: 0,
+      dispatchBatchMemberships: 0,
+      driverOfferReferences: 0,
+    };
+  }
+
+  const BATCHES_COLLECTION = "dispatchBatches";
+  const OFFERS_COLLECTION = "driverOffers";
+
+  const [assignmentsSnap, preferredSnap, batchesSnap, offersSnap] = await Promise.all([
+    db.collection(REQUESTS_COLLECTION).where("assignedDriverId", "==", linkedUserId).get(),
+    db.collection(REQUESTS_COLLECTION).where("preferredDriverId", "==", linkedUserId).get(),
+    db.collection(BATCHES_COLLECTION).where("driverId", "==", linkedUserId).get(),
+    db.collection(OFFERS_COLLECTION).where("driverId", "==", linkedUserId).get(),
+  ]);
+
+  const activeStatuses = new Set(ACTIVE_REQUEST_STATUSES as string[]);
+  const activeAssignments = assignmentsSnap.docs.filter((d) => activeStatuses.has(d.data().status)).length;
+
+  return {
+    activeAssignments,
+    historicalAssignments: assignmentsSnap.size,
+    preferredDriverReferences: preferredSnap.size,
+    dispatchBatchMemberships: batchesSnap.size,
+    driverOfferReferences: offersSnap.size,
+  };
+}
+
+export async function getDeleteDriverEligibility(driverId: string): Promise<DeleteDriverEligibility> {
+  const db = getAdminDb();
+  const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+
+  const data = doc.data()!;
+  const linkedUserId: string | null = data.linkedUserId ?? null;
+
+  const [metersSnap, eventsSnap, references] = await Promise.all([
+    ref.collection("meters").get(),
+    ref.collection("events").get(),
+    getReferenceCounts(linkedUserId),
+  ]);
+
+  const activeRequestLock = Boolean(data.activeRequestId);
+  const linkedAccount = Boolean(linkedUserId);
+  const meterAssignments = metersSnap.size;
+  const registryEvents = eventsSnap.size;
+
+  const reasons: string[] = [];
+  if (linkedAccount) {
+    reasons.push(
+      "This driver has a linked application account. Unlink it first; delete the Firebase Auth account separately if required.",
+    );
+  }
+  if (activeRequestLock) {
+    reasons.push("This driver has an active request lock.");
+  }
+  if (references.activeAssignments > 0) {
+    reasons.push(`This driver has ${references.activeAssignments} active assigned request(s).`);
+  }
+  if (references.historicalAssignments > 0) {
+    reasons.push(
+      `Cannot permanently delete this driver because ${references.historicalAssignments} historical water request(s) reference this record. Archive the driver instead.`,
+    );
+  }
+  if (references.preferredDriverReferences > 0) {
+    reasons.push(`${references.preferredDriverReferences} request(s) list this driver as preferred.`);
+  }
+  if (references.dispatchBatchMemberships > 0) {
+    reasons.push(`${references.dispatchBatchMemberships} dispatch batch(es) reference this driver.`);
+  }
+  if (references.driverOfferReferences > 0) {
+    reasons.push(`${references.driverOfferReferences} dispatch offer(s) reference this driver.`);
+  }
+  if (meterAssignments > 0) {
+    reasons.push(`${meterAssignments} meter assignment(s) exist. Remove them first or archive the driver.`);
+  }
+  if (registryEvents > 0) {
+    reasons.push(
+      `Cannot permanently delete this driver because the registry audit trail contains ${registryEvents} event(s). Archive the driver instead.`,
+    );
+  }
+
+  return {
+    canDelete: reasons.length === 0,
+    reasons,
+    summary: {
+      displayName: data.displayName ?? "",
+      linkedAccount,
+      activeRequestLock,
+      activeAssignments: references.activeAssignments,
+      historicalAssignments: references.historicalAssignments,
+      preferredDriverReferences: references.preferredDriverReferences,
+      dispatchBatchMemberships: references.dispatchBatchMemberships,
+      driverOfferReferences: references.driverOfferReferences,
+      meterAssignments,
+      registryEvents,
+    },
+  };
+}
+
+export interface DeleteDriverInput {
+  driverId: string;
+  deletedBy: string;
+  confirmation: string;
+}
+
+export async function deleteDriver(input: DeleteDriverInput): Promise<void> {
+  const { driverId, confirmation } = input;
+  const db = getAdminDb();
+  const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
+  const confirmedName = confirmation.trim().toLowerCase();
+
+  await db.runTransaction(async (txn) => {
+    const driverSnap = await txn.get(ref);
+    if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
+
+    const data = driverSnap.data()!;
+    const displayName = (data.displayName ?? "").trim();
+    if (confirmedName !== displayName.toLowerCase()) {
+      throw new Error("CONFIRMATION_NAME_MISMATCH");
+    }
+
+    if (data.linkedUserId) {
+      throw new Error("DRIVER_NOT_ELIGIBLE_FOR_DELETION");
+    }
+    if (data.activeRequestId) {
+      throw new Error("DRIVER_NOT_ELIGIBLE_FOR_DELETION");
+    }
+
+    // Re-validate all deletable references inside the transaction to prevent
+    // concurrent operational or audit writes from creating dangling references.
+    const [meters, events] = await Promise.all([
+      txn.get(ref.collection("meters")),
+      txn.get(ref.collection("events")),
+    ]);
+    if (meters.size > 0 || events.size > 0) {
+      throw new Error("DRIVER_NOT_ELIGIBLE_FOR_DELETION");
+    }
+
+    const normalizedName = displayName.toLowerCase();
+    const normalizedPhone = (data.phone?.replace(/\D/g, "") || null) as string | null;
+    const nameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
+    const phoneKeyRef = normalizedPhone
+      ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
+      : null;
+
+    txn.delete(ref);
+    txn.delete(nameKeyRef);
+    if (phoneKeyRef) txn.delete(phoneKeyRef);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Availability / cooldown (by linked user — called from the driver portal)
 // ---------------------------------------------------------------------------
 
@@ -864,8 +1195,11 @@ export async function removeMeterAssignment(input: RemoveMeterAssignmentInput): 
 }
 
 // ---------------------------------------------------------------------------
-// Initial roster seed (manual, admin-triggered — never automatic)
+// Initial roster seed (development / one-off tooling only)
 // ---------------------------------------------------------------------------
+//
+// Not exposed in the production admin UI. Use this from a local script or
+// development command to idempotently create the known current roster.
 
 interface SeedDriverSpec {
   displayName: string;

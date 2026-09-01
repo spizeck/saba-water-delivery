@@ -5,7 +5,7 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { isConfirmationWindowExpired } from "@/lib/domain/deliveryConfirmation";
-import { getAllDriverRegistryEntries, reconcileActiveRequest } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries, reconcileActiveRequest } from "@/lib/domain/driverRegistry";
 import { priorityRankFor } from "@/lib/domain/priority";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
@@ -36,7 +36,7 @@ export default async function DispatcherPortalPage() {
 
   const [initialRequests, allDrivers] = await Promise.all([
     getAllRequests(),
-    getAllDriverRegistryEntries(),
+    getActiveDriverRegistryEntries(),
   ]);
 
   // Lazily auto-confirm any "delivered" request whose confirmation
