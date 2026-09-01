@@ -4,7 +4,8 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { DeleteDriverEligibility, DriverRegistryEntry } from "@/lib/domain/types";
+import type { DeleteDriverEligibility } from "@/lib/domain/driverRegistry";
+import type { DriverRegistryEntry } from "@/lib/domain/types";
 
 import {
   archiveDriverAction,

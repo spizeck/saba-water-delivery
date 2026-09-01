@@ -504,6 +504,18 @@ const DRIVER_EVENT_FORMATTERS: Record<DriverEventType, EventFormatter | undefine
     return join(parts);
   },
 
+  driver_archived: (m) => {
+    const parts: (string | null)[] = [];
+    if (m.reason) parts.push(`Reason: ${m.reason}`);
+    if (m.previousEligibilityStatus) parts.push(`Previous: ${m.previousEligibilityStatus}`);
+    return join(parts);
+  },
+
+  driver_restored_from_archive: (m) => {
+    if (m.restoredToEligibilityStatus) return `Restored to: ${m.restoredToEligibilityStatus}`;
+    return "";
+  },
+
   driver_account_linked: (m, o) => {
     const name = resolveName(m.linkedUserId, o);
     return name ? `Linked to: ${name}` : "";
