@@ -265,25 +265,8 @@ export function CreateRequestForm({
   const inputClasses =
     "h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none";
 
-  function resetFormAndRefresh() {
-    setStep("form");
-    setSelectedResident(null);
-    setSearch("");
-    setVillage("");
-    setDeliveryDirections("");
-    setCustomerName("");
-    setCustomerPhone("");
-    setCustomerEmail("");
-    setPreferredDriverId("none");
-    setOverrideDuplicate(false);
-    setWaterSituation(EMPTY_WATER_SITUATION);
-    setAttestationChecked(false);
-    setFrequentCount(null);
-    setEmailStatus(null);
-    setEmailStatusLoading(false);
-    setUseExistingResidentUid(null);
-    setSendInvitation(false);
-    router.refresh();
+  function startAnotherRequest() {
+    router.push(`/dispatcher/new?fresh=${Date.now()}`);
   }
 
   if (state.status === "success" || state.status === "invitation_warning") {
@@ -311,8 +294,8 @@ export function CreateRequestForm({
           <Button size="md" onClick={() => router.push("/dispatcher")}>
             Back to dashboard
           </Button>
-          <Button variant="outline" size="md" onClick={resetFormAndRefresh}>
-            Create another
+          <Button variant="outline" size="md" onClick={startAnotherRequest}>
+            Next / New Registration/Request
           </Button>
         </div>
       </Card>

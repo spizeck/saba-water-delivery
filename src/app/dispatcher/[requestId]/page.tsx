@@ -32,7 +32,7 @@ const STATUS_LABELS: Record<WaterRequestStatus, string> = {
   preferred_driver_hold: "Preferred driver hold",
   available: "Available",
   claimed: "Claimed",
-  delivered: "Delivered",
+  delivered: "Delivered — awaiting customer confirmation",
   confirmed: "Confirmed",
   disputed: "DISPUTED",
   cancelled: "Cancelled",
@@ -141,9 +141,9 @@ export default async function RequestDetailPage({ params }: PageProps) {
   const showFrequentWarning = frequentRequestCount >= 3;
 
   const customer = data.customer
-    ? { displayName: data.customer.displayName, phone: data.customer.phone ?? null }
+    ? { displayName: data.customer.displayName, phone: data.customer.phone ?? null, email: data.customer.email ?? null }
     : legacyCustomerProfile
-      ? { displayName: legacyCustomerProfile.displayName, phone: legacyCustomerProfile.phone }
+      ? { displayName: legacyCustomerProfile.displayName, phone: legacyCustomerProfile.phone, email: legacyCustomerProfile.email }
       : null;
 
   // Resolve driver names (keyed by uid, since assignedDriverId/
@@ -415,6 +415,10 @@ export default async function RequestDetailPage({ params }: PageProps) {
             currentLoads={(data.loads as RequestedLoads) ?? 1}
             currentVillage={(data.village as string) ?? ""}
             currentDeliveryDirections={(data.deliveryDirections as string) ?? ""}
+            currentCustomerName={customer?.displayName ?? ""}
+            currentCustomerPhone={customer?.phone ?? ""}
+            currentCustomerEmail={customer?.email ?? ""}
+            registeredCustomer={isRegisteredCustomer}
             hasCollections={Array.isArray(data.loadCollections) && data.loadCollections.length > 0}
           />
 

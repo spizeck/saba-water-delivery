@@ -340,6 +340,9 @@ export async function registerPersonAction(
   // Parse roles from form
   const rolesRaw = formData.getAll("roles").map((v) => String(v));
   const roles: UserRole[] = rolesRaw.filter(isUserRole) as UserRole[];
+  if (roles.some((role) => role !== "resident" && role !== "driver")) {
+    return { status: "error", message: "Only resident and driver roles can be assigned during registration." };
+  }
 
   if (!displayName) return { status: "error", message: "Full name is required." };
   if (!phone) return { status: "error", message: "Phone number is required." };

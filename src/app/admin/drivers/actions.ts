@@ -41,8 +41,10 @@ export async function createDriverAction(
   try {
     await createDriver({ displayName, phone: phone || null, actorId: session.uid });
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === "DISPLAY_NAME_REQUIRED") {
-      return { status: "error", message: "Name is required." };
+    if (err instanceof Error) {
+      if (err.message === "DISPLAY_NAME_REQUIRED") return { status: "error", message: "Name is required." };
+      if (err.message === "DRIVER_NAME_EXISTS") return { status: "error", message: "A driver with this name already exists." };
+      if (err.message === "DRIVER_PHONE_EXISTS") return { status: "error", message: "A driver with this phone number already exists." };
     }
     throw err;
   }
@@ -69,6 +71,8 @@ export async function updateDriverAction(
     if (err instanceof Error) {
       if (err.message === "DRIVER_NOT_FOUND") return { status: "error", message: "Driver not found." };
       if (err.message === "DISPLAY_NAME_REQUIRED") return { status: "error", message: "Name is required." };
+      if (err.message === "DRIVER_NAME_EXISTS") return { status: "error", message: "A driver with this name already exists." };
+      if (err.message === "DRIVER_PHONE_EXISTS") return { status: "error", message: "A driver with this phone number already exists." };
     }
     throw err;
   }

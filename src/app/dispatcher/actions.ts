@@ -38,6 +38,7 @@ import {
   recordWaterCollection,
   resolveDisputeCompleted,
   resolveDisputeReopened,
+  returnAssignedRequestToQueue,
 } from "@/lib/domain/waterRequests";
 import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm";
 import { sendContinuityReportEmail } from "@/lib/email/continuityReportEmail";
@@ -162,6 +163,12 @@ export async function editRequest(
   const loadsRaw = formData.get("loads");
   const villageRaw = formData.get("village");
   const directionsRaw = formData.get("deliveryDirections");
+  const customerDisplayName = String(formData.get("customerDisplayName") ?? "").trim();
+  const customerPhone = String(formData.get("customerPhone") ?? "").trim();
+  const customerEmail = String(formData.get("customerEmail") ?? "").trim();
+  if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+    return { status: "error", message: "Please enter a valid customer email address." };
+  }
 
   const loads = loadsRaw != null ? parseRequestedLoads(loadsRaw) : null;
   const village = villageRaw != null ? String(villageRaw).trim() || null : null;
@@ -174,6 +181,10 @@ export async function editRequest(
       loads,
       village,
       deliveryDirections,
+      customerDisplayName,
+      customerPhone,
+      customerEmail,
+      updateCustomerProfile: formData.get("updateCustomerProfile") === "true",
     });
   } catch (err: unknown) {
     if (err instanceof Error) {
@@ -188,6 +199,14 @@ export async function editRequest(
           return { status: "error", message: "Please select a valid village from the list." };
         case "DIRECTIONS_REQUIRED":
           return { status: "error", message: "Delivery directions are required." };
+        case "CUSTOMER_NAME_REQUIRED":
+          return { status: "error", message: "Customer name is required." };
+        case "CUSTOMER_PHONE_REQUIRED":
+          return { status: "error", message: "Customer phone is required." };
+        case "INVALID_CUSTOMER_EMAIL":
+          return { status: "error", message: "Please enter a valid customer email address." };
+        case "CUSTOMER_PROFILE_NOT_FOUND":
+          return { status: "error", message: "The registered customer profile could not be found." };
         case "QUANTITY_LOCKED_BY_COLLECTION":
           return { status: "error", message: "Quantity cannot be changed because water collection has already been recorded for this request." };
         case "NO_CHANGES":
@@ -334,6 +353,38 @@ export async function reassignRequest(
 
   revalidatePath("/dispatcher");
   return { status: "success", message: "Request reassigned." };
+}
+
+export async function returnRequestToQueue(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (!reason) return { status: "error", message: "A reason is required." };
+
+  try {
+    await returnAssignedRequestToQueue({ requestId, actorId: session.uid, reason });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_ASSIGNED":
+          return { status: "error", message: "Only an assigned request can be returned to the queue." };
+        case "REQUEST_HAS_COLLECTIONS":
+          return { status: "error", message: "This request cannot be returned because water collection has already been recorded." };
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  revalidatePath(`/dispatcher/${requestId}`);
+  revalidatePath("/dispatcher/batches");
+  return { status: "success", message: "Request returned to the normal dispatch queue." };
 }
 
 // ---------------------------------------------------------------------------

@@ -20,6 +20,7 @@ import {
   markDeliveredByStaff,
   reassignRequest,
   resolveDisputeAsCompleted,
+  returnRequestToQueue,
   resolveDisputeAsReopened,
   type RequestActionState,
 } from "../actions";
@@ -37,6 +38,10 @@ interface Props {
   currentLoads: RequestedLoads;
   currentVillage: string;
   currentDeliveryDirections: string;
+  currentCustomerName: string;
+  currentCustomerPhone: string;
+  currentCustomerEmail: string;
+  registeredCustomer: boolean;
   /** Whether collection records exist (locks quantity editing). */
   hasCollections: boolean;
 }
@@ -50,6 +55,10 @@ export function RequestActions({
   currentLoads,
   currentVillage,
   currentDeliveryDirections,
+  currentCustomerName,
+  currentCustomerPhone,
+  currentCustomerEmail,
+  registeredCustomer,
   hasCollections,
 }: Props) {
   const [activePanel, setActivePanel] = useState<string | null>(null);
@@ -58,6 +67,7 @@ export function RequestActions({
   const isAssignable = status === "available" || status === "preferred_driver_hold";
   const isClaimed = status === "claimed";
   const isEditable = ["requested", "preferred_driver_hold", "available"].includes(status);
+  const isCancellable = ["requested", "preferred_driver_hold", "available", "claimed"].includes(status);
   const isUnresolved = !["confirmed", "cancelled"].includes(status);
 
   return (
@@ -125,6 +135,16 @@ export function RequestActions({
             Mark Delivered
           </Button>
         )}
+        {isClaimed && !hasCollections && (
+          <Button
+            size="md"
+            variant="outline"
+            onClick={() => setActivePanel(activePanel === "returnToQueue" ? null : "returnToQueue")}
+            className="text-sm !h-9 !px-3"
+          >
+            Return to queue
+          </Button>
+        )}
         {canConfirmUnregisteredDelivery && (
           <Button
             size="md"
@@ -135,7 +155,7 @@ export function RequestActions({
             Confirm delivery (unregistered)
           </Button>
         )}
-        {isUnresolved && (
+        {isCancellable && (
           <Button
             size="md"
             variant="outline"
@@ -168,12 +188,24 @@ export function RequestActions({
         )}
       </div>
 
+      {status === "delivered" && (
+        <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+          {canConfirmUnregisteredDelivery
+            ? "The driver or staff has recorded delivery. Call the customer to verify receipt, then use Confirm delivery (unregistered) to close the request."
+            : "The driver or staff has recorded delivery. The registered customer must confirm or dispute receipt in the resident portal; otherwise it will auto-confirm after the confirmation window."}
+        </div>
+      )}
+
       {activePanel === "edit" && (
         <EditRequestPanel
           requestId={requestId}
           currentLoads={currentLoads}
           currentVillage={currentVillage}
           currentDeliveryDirections={currentDeliveryDirections}
+          currentCustomerName={currentCustomerName}
+          currentCustomerPhone={currentCustomerPhone}
+          currentCustomerEmail={currentCustomerEmail}
+          registeredCustomer={registeredCustomer}
           hasCollections={hasCollections}
           onDone={() => setActivePanel(null)}
         />
@@ -200,6 +232,9 @@ export function RequestActions({
       {activePanel === "reassign" && (
         <ReassignPanel requestId={requestId} drivers={eligibleDrivers} onDone={() => setActivePanel(null)} />
       )}
+      {activePanel === "returnToQueue" && (
+        <ReturnToQueuePanel requestId={requestId} onDone={() => setActivePanel(null)} />
+      )}
       {activePanel === "markDelivered" && (
         <MarkDeliveredPanel requestId={requestId} onDone={() => setActivePanel(null)} />
       )}
@@ -222,6 +257,10 @@ function EditRequestPanel({
   currentLoads,
   currentVillage,
   currentDeliveryDirections,
+  currentCustomerName,
+  currentCustomerPhone,
+  currentCustomerEmail,
+  registeredCustomer,
   hasCollections,
   onDone,
 }: {
@@ -229,6 +268,10 @@ function EditRequestPanel({
   currentLoads: RequestedLoads;
   currentVillage: string;
   currentDeliveryDirections: string;
+  currentCustomerName: string;
+  currentCustomerPhone: string;
+  currentCustomerEmail: string;
+  registeredCustomer: boolean;
   hasCollections: boolean;
   onDone: () => void;
 }) {
@@ -238,7 +281,26 @@ function EditRequestPanel({
   return (
     <form action={formAction} className="mt-3 flex flex-col gap-3 rounded-lg border border-slate-200 p-3">
       <input type="hidden" name="requestId" value={requestId} />
-      <p className="text-sm font-medium text-slate-700">Edit request</p>
+      <p className="text-sm font-medium text-slate-700">Edit request and customer information</p>
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">Customer name</span>
+        <input name="customerDisplayName" required defaultValue={currentCustomerName} className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none" />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">Customer phone</span>
+        <input name="customerPhone" required defaultValue={currentCustomerPhone} className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none" />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">Customer email</span>
+        <input name="customerEmail" type="email" defaultValue={currentCustomerEmail} className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none" />
+      </label>
+      {registeredCustomer && (
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input type="checkbox" name="updateCustomerProfile" value="true" className="mt-1" />
+          Also update the registered customer’s saved profile. This does not change their sign-in email.
+        </label>
+      )}
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium text-slate-700">
@@ -413,6 +475,27 @@ function ReassignPanel({ requestId, drivers, onDone }: { requestId: string; driv
         <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">
           Cancel
         </Button>
+      </div>
+    </form>
+  );
+}
+
+function ReturnToQueuePanel({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const [state, formAction, pending] = useActionState(returnRequestToQueue, initialState);
+  if (state.status === "success") return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <input type="hidden" name="requestId" value={requestId} />
+      <p className="text-sm font-medium text-amber-900">Return this request to the normal queue</p>
+      <p className="text-xs text-amber-800">This clears the driver assignment and any delivery-run membership without changing the original request date or priority.</p>
+      <input name="reason" required placeholder="Reason for returning to queue (required)" className="h-9 rounded-lg border border-slate-300 px-3 text-sm focus:border-blue-600 focus:outline-none" />
+      {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+          {pending ? "Returning…" : "Return to queue"}
+        </Button>
+        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-sm !h-9 !px-3">Cancel</Button>
       </div>
     </form>
   );

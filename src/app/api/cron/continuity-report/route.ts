@@ -26,11 +26,13 @@ import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
  */
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) {
+    console.error("[continuity-report] CRON_SECRET is not configured");
+    return NextResponse.json({ ok: false, error: "Service unavailable" }, { status: 503 });
+  }
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   try {

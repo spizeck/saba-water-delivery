@@ -391,6 +391,7 @@ export type WaterRequestEventType =
   | "request_cancelled"
   | "dispatcher_assigned"
   | "dispatcher_reassigned"
+  | "request_returned_to_queue"
   | "request_priority_changed"
   | "preferred_driver_bypassed_for_priority"
   | "preferred_driver_hold_released_for_priority"

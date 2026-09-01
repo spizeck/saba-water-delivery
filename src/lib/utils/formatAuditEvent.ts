@@ -90,6 +90,7 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
   request_cancelled: "Request cancelled",
   dispatcher_assigned: "Dispatcher assigned",
   dispatcher_reassigned: "Dispatcher reassigned",
+  request_returned_to_queue: "Returned to dispatch queue",
   request_priority_changed: "Priority changed",
   preferred_driver_bypassed_for_priority: "Preferred driver bypassed (priority)",
   preferred_driver_hold_released_for_priority: "Preferred driver hold released (priority)",
@@ -336,6 +337,14 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
     return join(parts);
   },
 
+  request_returned_to_queue: (m, o) => {
+    const parts: (string | null)[] = [];
+    const previousDriver = resolveName(m.previousDriverId, o);
+    if (previousDriver) parts.push(`Previous driver: ${previousDriver}`);
+    if (m.reason) parts.push(`Reason: ${m.reason}`);
+    return join(parts);
+  },
+
   request_priority_changed: (m) => {
     const parts: (string | null)[] = [];
     if (m.previousPriority) parts.push(`From: ${formatPriority(m.previousPriority)}`);
@@ -416,6 +425,9 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
       deliveryDirections: "Directions",
       loads: "Loads",
       gallons: "Gallons",
+      customerDisplayName: "Customer name",
+      customerPhone: "Customer phone",
+      customerEmail: "Customer email",
     };
     for (const [key, label] of Object.entries(fieldLabels)) {
       const prevKey = `previous${key.charAt(0).toUpperCase()}${key.slice(1)}`;
@@ -428,6 +440,14 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
         } else if (next != null) {
           parts.push(`${label}: ${next}`);
         }
+      }
+    }
+    if (parts.length === 0) {
+      for (const [field, rawChange] of Object.entries(m)) {
+        const change = rawChange as { from?: unknown; to?: unknown };
+        if (!change || typeof change !== "object" || (!("from" in change) && !("to" in change))) continue;
+        const label = fieldLabels[field] ?? humanizeKey(field);
+        parts.push(`${label}: ${humanizeValue(change.from ?? "—")} → ${humanizeValue(change.to ?? "—")}`);
       }
     }
     // Also handle the generic "changes" pattern if present

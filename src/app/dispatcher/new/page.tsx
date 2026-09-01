@@ -14,8 +14,13 @@ export const metadata: Metadata = {
   title: "Create Water Request — Dispatcher",
 };
 
-export default async function CreateWaterRequestPage() {
+export default async function CreateWaterRequestPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ fresh?: string }>;
+}) {
   const { profile } = await requireRole(["dispatcher", "admin"]);
+  const { fresh } = await searchParams;
 
   const [residents, eligibleDrivers, activeCustomerIds] = await Promise.all([
     getResidentDirectory(),
@@ -43,6 +48,7 @@ export default async function CreateWaterRequestPage() {
           </div>
 
           <CreateRequestForm
+            key={fresh ?? "initial"}
             residents={residents}
             eligibleDrivers={eligibleDrivers}
             residentsWithActiveRequest={Array.from(activeCustomerIds)}
