@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { type DocumentData, FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -36,8 +38,14 @@ import {
  */
 
 const REGISTRY_COLLECTION = "driverRegistry";
+const UNIQUE_KEYS_COLLECTION = "driverRegistryUniqueKeys";
 const USERS_COLLECTION = "users";
 const REQUESTS_COLLECTION = "waterRequests";
+
+function driverUniqueKey(type: "name" | "phone", value: string) {
+  const digest = createHash("sha256").update(value).digest("hex");
+  return `${type}_${digest}`;
+}
 
 function toDriverRegistryEntry(id: string, data: DocumentData): DriverRegistryEntry {
   return {
@@ -173,31 +181,45 @@ export async function createDriver(input: CreateDriverInput): Promise<DriverRegi
 
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc();
+  const nameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
+  const phoneKeyRef = normalizedPhone
+    ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
+    : null;
   const now = FieldValue.serverTimestamp();
 
-  await ref.set({
-    displayName: displayName.trim(),
-    phone: phone?.trim() || null,
-    linkedUserId: null,
-    eligibilityStatus: "ineligible",
-    availabilityStatus: "offline",
-    ineligibilityReason: "Pending government approval",
-    restrictedAt: null,
-    restrictedBy: null,
-    cooldownUntil: null,
-    activeRequestId: null,
-    createdAt: now,
-    createdBy: actorId,
-    updatedAt: now,
-    updatedBy: actorId,
-  });
+  await db.runTransaction(async (txn) => {
+    const [nameKey, phoneKey] = await Promise.all([
+      txn.get(nameKeyRef),
+      phoneKeyRef ? txn.get(phoneKeyRef) : Promise.resolve(null),
+    ]);
+    if (nameKey.exists) throw new Error("DRIVER_NAME_EXISTS");
+    if (phoneKey?.exists) throw new Error("DRIVER_PHONE_EXISTS");
 
-  await ref.collection("events").add({
-    type: "driver_registry_created",
-    actorId,
-    actorRole: "admin",
-    createdAt: now,
-    metadata: { displayName: displayName.trim() },
+    txn.create(nameKeyRef, { driverId: ref.id, type: "name", createdAt: now });
+    if (phoneKeyRef) txn.create(phoneKeyRef, { driverId: ref.id, type: "phone", createdAt: now });
+    txn.create(ref, {
+      displayName: displayName.trim(),
+      phone: phone?.trim() || null,
+      linkedUserId: null,
+      eligibilityStatus: "ineligible",
+      availabilityStatus: "offline",
+      ineligibilityReason: "Pending government approval",
+      restrictedAt: null,
+      restrictedBy: null,
+      cooldownUntil: null,
+      activeRequestId: null,
+      createdAt: now,
+      createdBy: actorId,
+      updatedAt: now,
+      updatedBy: actorId,
+    });
+    txn.create(ref.collection("events").doc(), {
+      type: "driver_registry_created",
+      actorId,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: { displayName: displayName.trim() },
+    });
   });
 
   const created = await ref.get();
@@ -227,27 +249,55 @@ export async function updateDriver(input: UpdateDriverInput): Promise<DriverRegi
 
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
-  const doc = await ref.get();
-  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
-  const previous = toDriverRegistryEntry(driverId, doc.data()!);
-
+  const newNameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
+  const newPhoneKeyRef = normalizedPhone
+    ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
+    : null;
   const now = FieldValue.serverTimestamp();
-  await ref.update({
-    displayName: displayName.trim(),
-    phone: phone?.trim() || null,
-    updatedAt: now,
-    updatedBy: actorId,
-  });
 
-  await ref.collection("events").add({
-    type: "driver_registry_updated",
-    actorId,
-    actorRole: "admin",
-    createdAt: now,
-    metadata: {
-      previous: { displayName: previous.displayName, phone: previous.phone },
-      updated: { displayName: displayName.trim(), phone: phone?.trim() || null },
-    },
+  await db.runTransaction(async (txn) => {
+    const doc = await txn.get(ref);
+    if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
+    const previous = toDriverRegistryEntry(driverId, doc.data()!);
+    const previousName = previous.displayName.trim().toLocaleLowerCase();
+    const previousPhone = previous.phone?.replace(/\D/g, "") || null;
+    const oldNameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", previousName));
+    const oldPhoneKeyRef = previousPhone
+      ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", previousPhone))
+      : null;
+    const [newNameKey, newPhoneKey, oldNameKey, oldPhoneKey] = await Promise.all([
+      txn.get(newNameKeyRef),
+      newPhoneKeyRef ? txn.get(newPhoneKeyRef) : Promise.resolve(null),
+      txn.get(oldNameKeyRef),
+      oldPhoneKeyRef ? txn.get(oldPhoneKeyRef) : Promise.resolve(null),
+    ]);
+    if (newNameKey.exists && newNameKey.data()?.driverId !== driverId) throw new Error("DRIVER_NAME_EXISTS");
+    if (newPhoneKey?.exists && newPhoneKey.data()?.driverId !== driverId) throw new Error("DRIVER_PHONE_EXISTS");
+
+    txn.set(newNameKeyRef, { driverId, type: "name", updatedAt: now });
+    if (newPhoneKeyRef) txn.set(newPhoneKeyRef, { driverId, type: "phone", updatedAt: now });
+    if (oldNameKeyRef.path !== newNameKeyRef.path && oldNameKey.exists && oldNameKey.data()?.driverId === driverId) {
+      txn.delete(oldNameKeyRef);
+    }
+    if (oldPhoneKeyRef && oldPhoneKeyRef.path !== newPhoneKeyRef?.path && oldPhoneKey?.exists && oldPhoneKey.data()?.driverId === driverId) {
+      txn.delete(oldPhoneKeyRef);
+    }
+    txn.update(ref, {
+      displayName: displayName.trim(),
+      phone: phone?.trim() || null,
+      updatedAt: now,
+      updatedBy: actorId,
+    });
+    txn.create(ref.collection("events").doc(), {
+      type: "driver_registry_updated",
+      actorId,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: {
+        previous: { displayName: previous.displayName, phone: previous.phone },
+        updated: { displayName: displayName.trim(), phone: phone?.trim() || null },
+      },
+    });
   });
 
   const updated = await ref.get();

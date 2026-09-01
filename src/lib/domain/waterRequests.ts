@@ -1061,6 +1061,10 @@ export async function editWaterRequest(
   input: EditWaterRequestInput,
 ): Promise<WaterRequest> {
   const { requestId, actorId } = input;
+  const submittedEmail = input.customerEmail?.trim();
+  if (submittedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submittedEmail)) {
+    throw new Error("INVALID_CUSTOMER_EMAIL");
+  }
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
   const now = FieldValue.serverTimestamp();
@@ -1111,36 +1115,53 @@ export async function editWaterRequest(
 
     const existingCustomer = (data.customer ?? {}) as Record<string, unknown>;
     const profileData = userSnap?.data() ?? {};
+    const snapshotValue = (key: "displayName" | "phone" | "email") =>
+      Object.prototype.hasOwnProperty.call(existingCustomer, key)
+        ? existingCustomer[key]
+        : profileData[key] ?? null;
     const nextCustomer = {
-      displayName: input.customerDisplayName?.trim() || String(existingCustomer.displayName ?? profileData.displayName ?? ""),
-      phone: input.customerPhone?.trim() || String(existingCustomer.phone ?? profileData.phone ?? ""),
+      displayName: input.customerDisplayName?.trim() || String(snapshotValue("displayName") ?? ""),
+      phone: input.customerPhone?.trim() || String(snapshotValue("phone") ?? ""),
       email: input.customerEmail === undefined
-        ? (existingCustomer.email ?? profileData.email ?? null)
+        ? snapshotValue("email")
         : input.customerEmail?.trim() || null,
       isRegistered: Boolean(customerId),
     };
     if (!nextCustomer.displayName) throw new Error("CUSTOMER_NAME_REQUIRED");
     if (!nextCustomer.phone) throw new Error("CUSTOMER_PHONE_REQUIRED");
 
+    const requestContactChanges: Record<string, { from: unknown; to: unknown }> = {};
     for (const [key, value] of Object.entries({
       customerDisplayName: nextCustomer.displayName,
       customerPhone: nextCustomer.phone,
       customerEmail: nextCustomer.email,
     })) {
       const sourceKey = key.replace("customer", "");
-      const currentKey = sourceKey.charAt(0).toLowerCase() + sourceKey.slice(1);
-      const current = existingCustomer[currentKey] ?? profileData[currentKey] ?? null;
-      if (value !== current) changes[key] = { from: current, to: value };
+      const currentKey = (sourceKey.charAt(0).toLowerCase() + sourceKey.slice(1)) as "displayName" | "phone" | "email";
+      const current = snapshotValue(currentKey);
+      if (value !== current) requestContactChanges[key] = { from: current, to: value };
     }
-    if (Object.keys(changes).some((key) => key.startsWith("customer"))) {
-      updates.customer = nextCustomer;
-      if (userRef) {
+    Object.assign(changes, requestContactChanges);
+    if (Object.keys(requestContactChanges).length > 0) updates.customer = nextCustomer;
+
+    if (userRef) {
+      const profileChanges: Record<string, { from: unknown; to: unknown }> = {};
+      for (const [key, value] of Object.entries({
+        savedProfileDisplayName: nextCustomer.displayName,
+        savedProfilePhone: nextCustomer.phone,
+        savedProfileEmail: nextCustomer.email,
+      })) {
+        const profileKey = key.replace("savedProfile", "");
+        const currentKey = profileKey.charAt(0).toLowerCase() + profileKey.slice(1);
+        const current = profileData[currentKey] ?? null;
+        if (value !== current) profileChanges[key] = { from: current, to: value };
+      }
+      if (Object.keys(profileChanges).length > 0) {
+        Object.assign(changes, profileChanges);
         txn.update(userRef, {
           displayName: nextCustomer.displayName,
           phone: nextCustomer.phone,
           email: nextCustomer.email,
-          village: input.village?.trim() || profileData.village || data.village,
-          deliveryDirections: input.deliveryDirections?.trim() || profileData.deliveryDirections || data.deliveryDirections,
           updatedAt: now,
           updatedBy: actorId,
         });

@@ -166,6 +166,9 @@ export async function editRequest(
   const customerDisplayName = String(formData.get("customerDisplayName") ?? "").trim();
   const customerPhone = String(formData.get("customerPhone") ?? "").trim();
   const customerEmail = String(formData.get("customerEmail") ?? "").trim();
+  if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+    return { status: "error", message: "Please enter a valid customer email address." };
+  }
 
   const loads = loadsRaw != null ? parseRequestedLoads(loadsRaw) : null;
   const village = villageRaw != null ? String(villageRaw).trim() || null : null;
@@ -200,6 +203,8 @@ export async function editRequest(
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
           return { status: "error", message: "Customer phone is required." };
+        case "INVALID_CUSTOMER_EMAIL":
+          return { status: "error", message: "Please enter a valid customer email address." };
         case "CUSTOMER_PROFILE_NOT_FOUND":
           return { status: "error", message: "The registered customer profile could not be found." };
         case "QUANTITY_LOCKED_BY_COLLECTION":
