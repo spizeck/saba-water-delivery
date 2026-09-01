@@ -7,6 +7,7 @@ import { acceptDriverOffer, declineDriverOffer } from "@/lib/domain/dispatch";
 import { reconcileActiveRequestByUserId, setAvailabilityByLinkedUser } from "@/lib/domain/driverRegistry";
 import { markWaterDelivered, recordWaterCollection } from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
+import { getDeclineResultMessage } from "@/lib/utils/declineResult";
 import { formatSabaTime } from "@/lib/utils/datetime";
 
 // ---------------------------------------------------------------------------
@@ -39,11 +40,20 @@ export async function toggleAvailability(
       switch (err.message) {
         case "DRIVER_INELIGIBLE":
           return { status: "error", message: "You are not currently eligible to go online." };
-        case "DRIVER_IN_COOLDOWN":
+        case "DRIVER_IN_COOLDOWN": {
+          const e = err as Error & { cooldownUntil?: string; isDailyLimit?: boolean };
+          if (e.isDailyLimit) {
+            return {
+              status: "error",
+              message: "You have reached today’s decline limit and are offline for the rest of the day. You can receive offers again tomorrow.",
+            };
+          }
+          const until = e.cooldownUntil ? formatSabaTime(e.cooldownUntil) : "later";
           return {
             status: "error",
-            message: "You are in a decline cooldown. Try again once it expires.",
+            message: `You have reached the decline limit. You are offline until ${until}.`,
           };
+        }
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver profile not found. Contact the water office." };
         default:
@@ -136,14 +146,11 @@ export async function declineOffer(
   try {
     const result = await declineDriverOffer({ offerId, driverId: session.uid });
     revalidatePath("/driver");
-    if (result.enteredCooldown && result.cooldownUntil) {
-      const until = formatSabaTime(result.cooldownUntil);
-      return {
-        status: "success",
-        message: `You've reached today's decline limit. New offers paused until ${until}.`,
-      };
-    }
-    return { status: "success", message: "Offer declined." };
+    const message = getDeclineResultMessage({
+      state: result.availabilityStatus,
+      cooldownUntil: result.cooldownUntil ? new Date(result.cooldownUntil) : null,
+    });
+    return { status: "success", message };
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
@@ -151,6 +158,8 @@ export async function declineOffer(
           return { status: "error", message: "This offer is no longer valid. Refresh for a new offer." };
         case "OFFER_ALREADY_RESOLVED":
           return { status: "error", message: "This offer was already responded to." };
+        case "DRIVER_NOT_LINKED_FOR_COOLDOWN":
+          return { status: "error", message: "Unable to apply the decline cooldown. Contact the water office." };
         default:
           throw err;
       }

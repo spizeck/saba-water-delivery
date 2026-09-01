@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
 import type { DriverRegistryEntry } from "@/lib/domain/types";
+import { formatSabaTime, startOfSabaDay } from "@/lib/utils/datetime";
 
 interface Props {
   drivers: DriverRegistryEntry[];
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function DriverRegistryList({ drivers, title, showStatus }: Props) {
+  const now = new Date();
+  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
   return (
     <Card>
       <h2 className="text-lg font-bold text-slate-900">
@@ -49,6 +52,13 @@ export function DriverRegistryList({ drivers, title, showStatus }: Props) {
                       >
                         {driver.availabilityStatus === "online" ? "Online" : "Offline"}
                       </span>
+                      {driver.cooldownUntil && new Date(driver.cooldownUntil).getTime() > now.getTime() && (
+                        <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                          {new Date(driver.cooldownUntil).getTime() >= endOfToday.getTime()
+                            ? "Daily limit reached"
+                            : `Cooldown until ${formatSabaTime(driver.cooldownUntil)}`}
+                        </span>
+                      )}
                     </>
                   )}
                   {driver.linkedUserId ? (

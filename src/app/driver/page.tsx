@@ -14,7 +14,7 @@ import { getFillStations } from "@/lib/domain/fillStations";
 import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
-import { formatSabaTime } from "@/lib/utils/datetime";
+import { formatSabaDate, formatSabaTime, startOfSabaDay } from "@/lib/utils/datetime";
 
 import { AvailabilityToggle } from "./AvailabilityToggle";
 import { ClaimedDeliveries } from "./ClaimedDeliveries";
@@ -88,6 +88,8 @@ export default async function DriverPortalPage() {
   const cooldownUntil = driverEntry.cooldownUntil
     ? new Date(driverEntry.cooldownUntil)
     : null;
+  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  const isDailyCooldown = cooldownUntil !== null && cooldownUntil.getTime() >= endOfToday.getTime();
   const canReceiveOffers = isOnline && isEligible && !inCooldown;
 
   // Fetch the driver's active deliveries first; if they already have one,
@@ -137,8 +139,9 @@ export default async function DriverPortalPage() {
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">Driver</h1>
                 <p className="mt-1 text-sm text-slate-600">
-                  {!isEligible && "Your delivery access is pending approval."}
-                  {isEligible && inCooldown && "Delivery offers are temporarily paused."}
+                  {!isEligible && "Your delivery access is restricted."}
+                  {isEligible && inCooldown && isDailyCooldown && "You are offline for the rest of today."}
+                  {isEligible && inCooldown && !isDailyCooldown && cooldownUntil && `You are offline until ${formatSabaTime(cooldownUntil)}.`}
                   {isEligible && !inCooldown && isOnline && "You are online and receiving offers."}
                   {isEligible && !inCooldown && !isOnline && "You are offline."}
                 </p>
@@ -157,7 +160,7 @@ export default async function DriverPortalPage() {
               )}
               {isEligible && inCooldown && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">
-                  Paused
+                  {isDailyCooldown ? "Daily limit reached" : "Offline until " + (cooldownUntil ? formatSabaTime(cooldownUntil) : "later")}
                 </span>
               )}
               {!isEligible && (
@@ -167,8 +170,8 @@ export default async function DriverPortalPage() {
               )}
             </div>
 
-            {/* Toggle (only show if eligible) */}
-            {isEligible && (
+            {/* Toggle (only show if eligible and not in an enforced cooldown) */}
+            {isEligible && !inCooldown && (
               <div className="mt-4">
                 <AvailabilityToggle currentStatus={isOnline ? "online" : "offline"} />
               </div>
@@ -188,11 +191,12 @@ export default async function DriverPortalPage() {
             {isEligible && inCooldown && cooldownUntil && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <p className="text-sm font-medium text-amber-800">
-                  Delivery offers paused
+                  {isDailyCooldown ? "Daily decline limit reached" : "Decline cooldown"}
                 </p>
                 <p className="mt-1 text-sm text-amber-800">
-                  You reached today&apos;s decline limit. You can receive new
-                  offers again at {formatSabaTime(cooldownUntil)}.
+                  {isDailyCooldown
+                    ? `You have reached today’s decline limit and are offline for the rest of the day. You can receive offers again on ${formatSabaDate(cooldownUntil)}.`
+                    : `You have reached the decline limit. You are offline until ${formatSabaTime(cooldownUntil)}.`}
                 </p>
               </div>
             )}
