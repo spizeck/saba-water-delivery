@@ -23,7 +23,7 @@ import {
 import { reconcileActiveRequestByUserId } from "./driverRegistry";
 import {
   claimWaterRequest,
-  expirePreferredDriverHold,
+  expirePreferredDriverHolds,
   getClaimedRequestsForDriver,
   getWaterRequestById,
   toWaterRequest,
@@ -121,15 +121,7 @@ export async function getNextOfferForDriver(driverId: string): Promise<NextOffer
   // passed their window, regardless of which driver triggered this read.
   // This keeps the general queue populated without a separate scheduled
   // job (mirrors the previous browsable-queue behavior).
-  const expiredHoldsSnapshot = await db
-    .collection(REQUESTS_COLLECTION)
-    .where("status", "==", "preferred_driver_hold")
-    .where("preferredDriverExpiresAt", "<=", now)
-    .limit(10)
-    .get();
-  for (const doc of expiredHoldsSnapshot.docs) {
-    await expirePreferredDriverHold({ requestId: doc.id });
-  }
+  await expirePreferredDriverHolds(now);
 
   // Priority 1: preferred-driver hold addressed to this driver. Ordered
   // by dispatch priority first, then oldest request first, in case more
