@@ -51,8 +51,9 @@ After you decline:
   - **"You have reached the decline limit. You are offline until 3:42 PM."**
     (the time uses the configured cooldown length and Saba local time).
   - **"You have reached today's decline limit and are offline for the rest of
-    the day. You can receive offers again tomorrow."** (when the cooldown
-    would run past the end of today).
+    the day. You can receive offers again on the Saba-local date shown."**
+    (when the cooldown would run past the end of today; the exact date comes
+    from the configured cooldown hours).
 
 While a cooldown is active, your dashboard shows **"Offline until ..."** or
 **"Offline for the rest of today"** and the online/offline switch is hidden.

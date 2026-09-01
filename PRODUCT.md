@@ -676,8 +676,9 @@ The app now distinguishes three decline outcomes:
 - **Temporary cooldown**: "You have reached the decline limit. You are offline
   until 3:42 PM." (uses the actual configured cooldown hours and Saba-local time).
 - **Daily limit reached**: "You have reached today's decline limit and are offline
-  for the rest of the day. You can receive offers again tomorrow." (when the
-  computed cooldown would extend past the end of the current Saba day).
+  for the rest of the day. You can receive offers again on the Saba-local date
+  shown." (when the computed cooldown would extend past the end of the current
+  Saba day; the exact date and time come from the configured cooldown hours).
 
 The driver portal reflects the enforced state clearly ("Offline until ...",
 "Offline for the rest of today", or "Daily limit reached"), and the online
