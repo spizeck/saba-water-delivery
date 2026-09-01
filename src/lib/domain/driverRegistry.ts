@@ -9,10 +9,12 @@ import { toUserRoles } from "@/lib/auth/roles";
 
 import type {
   DriverAvailabilityStatus,
+  DriverEligibilityStatus,
   DriverEvent,
   DriverRegistryEntry,
   FillStationId,
   MeterAssignment,
+  WaterRequestStatus,
 } from "./types";
 import {
   checkActiveRequestValidity,
