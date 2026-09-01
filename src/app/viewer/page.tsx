@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
@@ -9,6 +8,7 @@ import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getAllRequests } from "@/lib/domain/waterRequests";
+import { toViewerDriverRow, toViewerRequestRow } from "@/lib/domain/viewerProjection";
 import { formatSabaDate } from "@/lib/utils/datetime";
 
 export const metadata: Metadata = {
@@ -60,24 +60,8 @@ export default async function ViewerPortalPage() {
   // above and PRODUCT.md "Privacy"). The dispatch priority LEVEL itself
   // is operational oversight information, not sensitive, so it is
   // included.
-  const requestRows = openRequests.map((r) => ({
-    id: r.id,
-    status: r.status,
-    dispatchPriority: r.dispatchPriority,
-    loads: r.loads,
-    village: r.village,
-    source: r.source,
-    requestedAt: r.requestedAt,
-    hasAssignedDriver: Boolean(r.assignedDriverId),
-  }));
-
-  const driverRows = allDrivers.map((d) => ({
-    id: d.id,
-    displayName: d.displayName,
-    eligibilityStatus: d.eligibilityStatus,
-    availabilityStatus: d.availabilityStatus,
-    accountLinked: Boolean(d.linkedUserId),
-  }));
+  const requestRows = openRequests.map(toViewerRequestRow);
+  const driverRows = allDrivers.map(toViewerDriverRow);
 
   return (
     <>
@@ -97,12 +81,6 @@ export default async function ViewerPortalPage() {
               <h1 className="text-xl font-bold text-slate-900">
                 Open Requests ({requestRows.length})
               </h1>
-              <Link
-                href="/statistics"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                View Statistics
-              </Link>
             </div>
 
             {requestRows.length === 0 ? (

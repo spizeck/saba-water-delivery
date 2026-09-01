@@ -1,19 +1,15 @@
 rules_version = '2';
 
-// Firestore Security Rules.
+// Production Firestore Security Rules.
 //
-// This is a foundation, not a complete rule set. It establishes the
-// deny-by-default posture and role model described in TECHNICAL.md so
-// that collections are not accidentally left open while the schema is
-// built out. Rules should be revisited and tightened per-collection as
-// each workflow (requests, claiming, driver management, etc.) is
-// implemented — see TECHNICAL.md "Firestore Security".
+// Direct client access is limited to the minimum data required by each
+// authenticated role. Operational mutations and sanitized oversight views
+// run through server-authorized domain code using the Firebase Admin SDK.
+// Unknown collections and all unlisted operations are denied by default.
 //
 // The user model supports multiple roles per user via a `roles` array.
-//
-// Do not assume these rules alone are sufficient; queries and rules must
-// be designed together (Security Rules cannot filter an overly broad
-// query, only reject it).
+// Queries must match these document-level constraints because Firestore
+// rules reject, rather than filter, an overly broad query.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
@@ -32,70 +28,46 @@ service cloud.firestore {
       return hasRole('dispatcher') || hasRole('admin');
     }
 
-    // `viewer` is a read-only oversight role — never combined with
-    // isStaff(), which implies operational/mutation capability. Viewer
-    // must NOT gain access to the admin user directory or driver
-    // registry contact details (see TECHNICAL.md "Viewer Role").
-    function isViewer() {
-      return hasRole('viewer');
-    }
-
-    // Users can read/update their own profile. Role changes must go
-    // through trusted server-side (Admin SDK) code, not direct writes.
-    //
-    // In practice the app provisions and updates user documents through
-    // the Admin SDK (see src/lib/domain/users.ts), which bypasses these
-    // rules entirely. These rules exist as defense in depth in case a
-    // client ever writes to Firestore directly: a new user can create
-    // only their own document and only with roles: ["resident"], and no
-    // client write can ever modify the roles field on an existing doc.
+    // Users may read their own profile; staff may read the directory for
+    // operational support. Profile creation, role changes, confirmation
+    // timestamps, account state, and auditing remain server-only. A direct
+    // owner update can affect only the four resident-editable profile fields.
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isStaff());
-      allow create: if isSignedIn()
-        && request.auth.uid == userId
-        && request.resource.data.roles is list
-        && request.resource.data.roles.size() == 1
-        && request.resource.data.roles[0] == 'resident';
+      allow create: if false;
       allow update: if isSignedIn()
         && request.auth.uid == userId
-        && request.resource.data.roles == resource.data.roles;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'phone',
+          'village',
+          'deliveryDirections'
+        ]);
       allow delete: if false;
 
-      // Property photo metadata. The owning resident may manage their
-      // own photos. Staff may read for operational support. Driver read
-      // access requires a verified delivery relationship — until that
-      // check is implemented, driver reads are denied here and photo
-      // access should be mediated through server-side signed URLs.
+      // Photo functionality is not active. Metadata remains locked down in
+      // step with the deny-all Storage rules until an end-to-end access model
+      // and retention policy are implemented.
       match /propertyPhotos/{photoId} {
-        allow read: if isSignedIn()
-          && (request.auth.uid == userId || isStaff());
-        allow create, update: if isSignedIn()
-          && request.auth.uid == userId;
-        allow delete: if isSignedIn()
-          && request.auth.uid == userId;
+        allow read, write: if false;
       }
     }
 
-    // Government-managed Driver Registry. All writes (create, edit,
-    // link/unlink account, restrict/restore, meter assignments) go
-    // through trusted server-side domain logic
-    // (src/lib/domain/driverRegistry.ts) — never a direct client write,
-    // and never self-service by a normal user. Staff and viewers may
-    // read for operational oversight; viewers get the same document as
-    // staff here since a driver's registry entry does not contain
-    // resident PII (only the driver's own name/phone, which staff can
-    // already see operationally).
+    // Government-managed Driver Registry. Staff may read operational
+    // records directly; all writes remain server-only. Viewer oversight is
+    // projected by trusted server code so raw phone, linked account IDs,
+    // meters, and registry audit records are not directly accessible.
     match /driverRegistry/{driverId} {
-      allow read: if isStaff() || isViewer();
+      allow read: if isStaff();
       allow write: if false;
 
       match /events/{eventId} {
-        allow read: if isStaff() || isViewer();
+        allow read: if isStaff();
         allow write: if false;
       }
 
       match /meters/{stationId} {
-        allow read: if isStaff() || isViewer();
+        allow read: if isStaff();
         allow write: if false;
       }
     }
@@ -120,52 +92,38 @@ service cloud.firestore {
     // — an unrelated resident cannot read another customer's unregistered
     // request through this rule. Staff access is unaffected either way.
     match /waterRequests/{requestId} {
-      // Viewer gets the same read access as staff for oversight (see
-      // PRODUCT.md "Viewer Role") — request documents contain the
-      // requesting customer's own contact info, which is a normal part
-      // of an operational request record, not a separate admin
-      // directory. The Viewer UI itself chooses to display only a
-      // reduced projection (see src/app/viewer/page.tsx); this rule is
-      // defense-in-depth for the underlying document, matching how
-      // staff access already works.
+      // Residents may read their own request and an assigned driver may read
+      // the request needed to deliver it. Staff retain operational access.
+      // Viewer oversight uses a sanitized server-side projection and therefore
+      // does not require direct access to raw customer/request documents.
       allow read: if isSignedIn()
         && (resource.data.customerId == request.auth.uid
           || resource.data.assignedDriverId == request.auth.uid
-          || isStaff()
-          || isViewer());
+          || isStaff());
       allow write: if false;
 
+      // Raw audit events include staff corrections, assignment history,
+      // operational reasons, and internal identifiers. Only operational staff
+      // may read them directly; resident/driver history must be projected by
+      // trusted server code if introduced in their portals.
       match /events/{eventId} {
-        allow read: if isSignedIn()
-          && (get(/databases/$(database)/documents/waterRequests/$(requestId)).data.customerId == request.auth.uid
-            || get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid
-            || isStaff()
-            || isViewer());
+        allow read: if isStaff();
         allow write: if false;
       }
 
-      // Request photo metadata (proof of delivery, issue documentation).
-      // The assigned driver, the customer, and staff may read. Only the
-      // assigned driver may create. Updates and deletes are denied until
-      // a retention policy is defined.
+      // Request-photo functionality is not active and Storage is deny-all.
+      // Keep metadata inaccessible until binary access, retention, and role
+      // checks are implemented together.
       match /photos/{photoId} {
-        allow read: if isSignedIn()
-          && (get(/databases/$(database)/documents/waterRequests/$(requestId)).data.customerId == request.auth.uid
-            || get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid
-            || isStaff());
-        allow create: if isSignedIn()
-          && get(/databases/$(database)/documents/waterRequests/$(requestId)).data.assignedDriverId == request.auth.uid;
-        allow update, delete: if false;
+        allow read, write: if false;
       }
     }
 
-    // Driver dispatch offers (one-request-at-a-time offer workflow). All
-    // creation and response recording happens through server-side domain
-    // logic (see src/lib/domain/dispatch.ts, driverOffers.ts). A driver may
-    // read their own offer history; staff may read for operational support.
+    // Driver dispatch offers are selected and responded to through trusted
+    // server code. Drivers do not need direct access to raw offer history;
+    // staff retain read access for operational support.
     match /driverOffers/{offerId} {
-      allow read: if isSignedIn()
-        && (resource.data.driverId == request.auth.uid || isStaff());
+      allow read: if isStaff();
       allow write: if false;
     }
 
@@ -182,20 +140,15 @@ service cloud.firestore {
       }
     }
 
-    // Batch Dispatch (dispatcher-controlled multi-load assignment — see
-    // TECHNICAL.md "Batch Dispatch"). All creation and membership
-    // changes happen through server-side domain logic
-    // (src/lib/domain/dispatchBatches.ts) using the Admin SDK, which
-    // bypasses these rules. Staff and viewers may read for operational
-    // oversight, same posture as driverRegistry; a batch document
-    // contains no resident PII beyond what staff already see on the
-    // underlying waterRequests documents.
+    // Delivery runs are managed through server-side domain logic. Staff may
+    // read raw run state; viewer summaries are produced server-side without
+    // exposing run membership or internal audit details.
     match /dispatchBatches/{batchId} {
-      allow read: if isStaff() || isViewer();
+      allow read: if isStaff();
       allow write: if false;
 
       match /events/{eventId} {
-        allow read: if isStaff() || isViewer();
+        allow read: if isStaff();
         allow write: if false;
       }
     }
