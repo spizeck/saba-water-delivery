@@ -42,6 +42,23 @@ pause length are set by government administrators). This does not
 affect your eligibility to deliver — it only pauses new offers
 temporarily.
 
+After you decline:
+
+- If you are still under the limit, you will see
+  **"Load declined. Another offer will appear when available."**
+- If you reach the configured decline limit, the app will tell you exactly
+  what is happening:
+  - **"You have reached the decline limit. You are offline until 3:42 PM."**
+    (the time uses the configured cooldown length and Saba local time).
+  - **"You have reached today's decline limit and are offline for the rest of
+    the day. You can receive offers again tomorrow."** (when the cooldown
+    would run past the end of today).
+
+While a cooldown is active, your dashboard shows **"Offline until ..."** or
+**"Offline for the rest of today"** and the online/offline switch is hidden.
+If you try to go online while the cooldown is still active, the app will
+prevent it and tell you exactly when you can receive offers again.
+
 ## Recording Water Collection
 
 Before you mark a delivery as delivered, you must record water collection for each physical load:
