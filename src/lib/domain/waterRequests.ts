@@ -16,6 +16,10 @@ import { getFillStations } from "./fillStations";
 import { assertQuantityEditable } from "./loadCollection";
 import { isDriverImmediatelyAvailable, getMeterAssignments } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
+import {
+  decidePreferredDriverHold,
+  isPreferredDriverHoldExpired,
+} from "./preferredDriverPolicy";
 import type {
   DispatchBatchStatus,
   DispatchPriority,
@@ -534,8 +538,6 @@ export async function createWaterRequest(
     };
   }
 
-  const hasPreferredDriver = Boolean(preferredDriverId);
-
   // A preferred driver is a resident PREFERENCE, never a guaranteed
   // assignment (see PRODUCT.md "Preferred Driver"). For a Normal request
   // the preference always gets an exclusive hold window, even if the
@@ -544,21 +546,20 @@ export async function createWaterRequest(
   // unlinked/cooldown preferred driver must not delay dispatch at all —
   // see PRODUCT.md "Preferred Driver Offline Edge Case" — so the hold is
   // skipped entirely and the request goes straight to the general queue.
+  const hasPreferredDriver = Boolean(preferredDriverId);
   const preferredDriverImmediatelyAvailable = hasPreferredDriver
     ? await isDriverImmediatelyAvailable(preferredDriverId!)
     : false;
-  const skipHoldForPriority =
-    hasPreferredDriver && dispatchPriority !== "normal" && !preferredDriverImmediatelyAvailable;
-  const willHold = hasPreferredDriver && !skipHoldForPriority;
+  const holdDecision = decidePreferredDriverHold({
+    preferredDriverId,
+    dispatchPriority,
+    preferredDriverImmediatelyAvailable,
+    now: new Date(),
+    windowHours: appConfig.preferredDriverWindowHours,
+  });
+  const { willHold, expiresAt: preferredDriverExpiresAt, status: initialStatus } = holdDecision;
 
   const now = FieldValue.serverTimestamp();
-
-  // Compute the preferred-driver expiration time if applicable.
-  const preferredDriverExpiresAt = willHold
-    ? new Date(Date.now() + appConfig.preferredDriverWindowHours * 60 * 60 * 1000)
-    : null;
-
-  const initialStatus: WaterRequestStatus = willHold ? "preferred_driver_hold" : "available";
 
   const requestRef = db.collection(REQUESTS_COLLECTION).doc();
 
@@ -848,6 +849,7 @@ export async function claimWaterRequest(
 
 export interface ExpirePreferredDriverHoldInput {
   requestId: string;
+  now?: Date;
 }
 
 /**
@@ -860,7 +862,7 @@ export interface ExpirePreferredDriverHoldInput {
 export async function expirePreferredDriverHold(
   input: ExpirePreferredDriverHoldInput,
 ): Promise<WaterRequest> {
-  const { requestId } = input;
+  const { requestId, now: currentTime = new Date() } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
   const now = FieldValue.serverTimestamp();
@@ -874,6 +876,10 @@ export async function expirePreferredDriverHold(
     const data = snap.data()!;
     // Only expire if still in hold status (another reader may have already expired it).
     if (data.status !== "preferred_driver_hold") return;
+    const expiresAt = data.preferredDriverExpiresAt?.toDate?.();
+    // Re-check inside the transaction so a concurrent edit that extends or
+    // replaces the hold cannot be released by an older query snapshot.
+    if (!isPreferredDriverHoldExpired(expiresAt, currentTime)) return;
 
     txn.update(requestRef, {
       status: "available",
@@ -896,6 +902,26 @@ export async function expirePreferredDriverHold(
 
   const updated = await requestRef.get();
   return toWaterRequest(requestId, updated.data()!);
+}
+
+/**
+ * Releases every hold whose configured 24-hour window has elapsed.
+ * This is intentionally called from both driver-offer selection and the
+ * dispatcher operational read so stored status cannot remain visibly stale
+ * just because no driver requested another offer after the expiry instant.
+ */
+export async function expirePreferredDriverHolds(now = new Date()): Promise<number> {
+  const db = getAdminDb();
+  const expired = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("status", "==", "preferred_driver_hold")
+    .where("preferredDriverExpiresAt", "<=", now)
+    .get();
+
+  await Promise.all(
+    expired.docs.map((doc) => expirePreferredDriverHold({ requestId: doc.id, now })),
+  );
+  return expired.size;
 }
 
 // ---------------------------------------------------------------------------
@@ -1749,6 +1775,7 @@ export async function checkDeliveryConfirmationTimeout(
  */
 export async function getAllRequests(): Promise<WaterRequest[]> {
   const db = getAdminDb();
+  await expirePreferredDriverHolds();
   const snapshot = await db
     .collection(REQUESTS_COLLECTION)
     .orderBy("requestedAt", "desc")
