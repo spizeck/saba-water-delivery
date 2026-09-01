@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
@@ -82,12 +81,6 @@ export default async function ViewerPortalPage() {
               <h1 className="text-xl font-bold text-slate-900">
                 Open Requests ({requestRows.length})
               </h1>
-              <Link
-                href="/statistics"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                View Statistics
-              </Link>
             </div>
 
             {requestRows.length === 0 ? (

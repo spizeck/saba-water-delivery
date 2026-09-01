@@ -26,7 +26,7 @@ A manipulated registration action could previously submit privileged roles not d
 
 The viewer UI displayed a reduced request projection, but Firestore rules allowed a viewer credential to retrieve complete `waterRequests` documents and events.
 
-**Fixed:** viewers have no direct Firestore access to requests, request events, driver registry records, registry events/meters, offers, or delivery-run records. The viewer page authenticates the viewer on the server, reads with Firebase Admin, and renders only status, priority, quantity, village, source, request date, and assignment presence. It does not send customer name, phone, email, directions, vulnerability details, driver contact details, linked account IDs, or raw events to the viewer UI.
+**Fixed:** viewers have no direct Firestore access to requests, request events, driver registry records, registry events/meters, offers, or delivery-run records. The viewer page authenticates the viewer on the server, reads with Firebase Admin, and renders only status, priority, quantity, village, source, request date, and assignment presence. It does not send customer name, phone, email, directions, vulnerability details, driver contact details, linked account IDs, or raw events to the viewer UI. Detailed `/statistics` access is limited to dispatcher/admin because its client payload includes per-driver identifiers and operational metrics; the viewer portal no longer links to it.
 
 ### Medium — owner profile updates were future-schema permissive
 
