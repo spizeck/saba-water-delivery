@@ -28,6 +28,24 @@ Documentation:
   operational-ownership language throughout the guides. No application
   behavior changed.
 
+Decline limit and cooldown UX:
+- Declining a load now clearly explains the resulting state: a driver still
+  eligible sees "Load declined. Another offer will appear when available.";
+  a driver who has reached the decline limit sees whether they are offline
+  until a specific time or for the rest of the day, using the configured
+  cooldown hours and Saba-local time.
+- Driver portal now shows "Offline until 3:42 PM" or "Offline for the rest
+  of today" while a decline cooldown is active, and hides the manual online
+  toggle during the enforced pause.
+- The manual online toggle now blocks drivers in a decline cooldown and
+  explains exactly when they can receive offers again.
+- Dispatcher and admin driver lists now show "Cooldown until ..." or
+  "Daily limit reached" status tags, so staff can see why a driver is not
+  being offered new work.
+- If a driver's registry record cannot be found while applying a cooldown,
+  the decline is rejected with a staff-facing message rather than leaving
+  the driver eligible and the cooldown unrecorded.
+
 Smoke-test fixes:
 - Facebook Login is now shown as **Coming Soon** (disabled, greyed out)
   on the login page while Meta business verification is pending. The

@@ -170,6 +170,11 @@ Reaching the cooldown never changes a driver's government eligibility
 and never affects a delivery they have already claimed — it only
 pauses new offers until the cooldown ends.
 
+The admin and dispatcher driver lists display each cooldown clearly as
+**"Cooldown until ..."** (if it ends later today) or **"Daily limit reached"**
+(if it runs past the end of the day), alongside the usual online/offline
+and eligible/ineligible tags.
+
 **Operational consequences of changing these:** lowering the maximum
 declines or lengthening the cooldown will pause drivers from new work
 more readily, which can slow down delivery of low-priority requests if

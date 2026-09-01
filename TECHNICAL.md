@@ -626,13 +626,33 @@ cherry-picking (see PRODUCT.md "Dispatch Offers").
 
 ## Decline limit and cooldown
 
-After recording a decline, `declineDriverOffer()` checks the driver's
-decline count for the current local day
-(`countDeclinesToday()`) against the admin-configurable
-`config/dispatchSettings.maxDeclinesPerDay` (default 3). If the driver has
-reached the limit, `startDriverCooldown()` sets
-`driverRegistry/{driverId}.cooldownUntil` to `now + declineCooldownHours` (default 1
-hour) and records a `driver_cooldown_started` driver event.
+The decline path uses a single Firestore transaction in `declineDriverOffer()`:
+it records the offer as `"declined"`, expires any duplicate pending offers
+for the same request, releases an active preferred-driver hold if
+applicable, counts the driver's declines for the current local day, and,
+if the configured `config/dispatchSettings.maxDeclinesPerDay` (default 3) is
+reached, updates `driverRegistry/{driverId}.cooldownUntil` to
+`now + declineCooldownHours` (default 1 hour) and records a
+`driver_cooldown_started` driver event.
+
+`declineDriverOffer()` returns a `DeclineDriverOfferResult`:
+
+```text
+{
+  declined: true,
+  availabilityStatus: "available" | "cooldown" | "daily_limit",
+  cooldownUntil: string | null,
+  declineCount: number,
+  maxDeclinesPerDay: number
+}
+```
+
+`availabilityStatus` is classified by comparing the computed `cooldownUntil`
+to the end of the current Saba-local day: if it extends past the end of the
+day, it is `"daily_limit"`; otherwise it is `"cooldown"`. This lets the UI
+show the correct message without hard-coding "1 hour" or "tomorrow".
+`countDeclinesToday()` exists in `driverOffers.ts` for read-only queries, but
+the authoritative counting is performed inside the decline transaction.
 
 `cooldownUntil` is intentionally separate from `eligibilityStatus`
 (government authorization) and `availabilityStatus` (the driver's own
@@ -641,10 +661,13 @@ online/offline preference) — see PRODUCT.md "Driver Availability" and
 
 - The driver receives no new offers (`getNextOfferForDriver()` prerequisite,
   enforced by the caller in `src/app/driver/page.tsx`).
-- `setDriverAvailability()` rejects a transition to `"online"` with
-  `DRIVER_IN_COOLDOWN` — a driver cannot bypass the cooldown by toggling
-  offline and back online, because enforcement compares `cooldownUntil`
-  against server time, not client state.
+- `setAvailabilityByLinkedUser()` rejects a transition to `"online"` with
+  `DRIVER_IN_COOLDOWN` and includes the `cooldownUntil` ISO timestamp and a
+  boolean `isDailyLimit` flag. The action maps this to a driver-facing
+  explanation that includes the exact time or the "rest of today" reason.
+  A driver cannot bypass the cooldown by toggling offline and back online,
+  because enforcement compares `cooldownUntil` against server time, not client
+  state.
 - Existing claimed deliveries and `markWaterDelivered()` remain fully
   available.
 
