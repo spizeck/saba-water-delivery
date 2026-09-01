@@ -4,123 +4,171 @@ Review date: 1 September 2026
 
 ## Executive summary
 
-The application has a sound baseline: authenticated sessions are verified on the server, operational writes use server-authorized Firebase Admin code, Firestore direct writes are denied, and Firebase Storage is currently fully locked down. This review found two high-severity configuration/authorization defects and one medium-severity audit-integrity defect. All three were fixed in source.
+The application uses server-verified Firebase sessions, server-authorized domain operations, deny-by-default Firestore rules, and deny-all Firebase Storage rules. The production-hardening pass removed direct viewer access to raw customer/request data, restricted owner profile updates to an explicit field allowlist, and limited raw request audit visibility to operational staff. The viewer portal continues to work through a trusted Server Component that produces a sanitized projection before rendering.
 
-This review covers repository configuration and application code. It does not prove which optional Vercel or Firebase console controls are enabled in the live project.
+This report verifies repository configuration and emulator-tested rules. The Firebase and Vercel consoles must still be checked to confirm that deployed settings match the repository.
 
 ## Findings and fixes
 
 ### High — scheduled report endpoint failed open when its secret was absent
 
-The continuity-report cron route accepted public requests when `CRON_SECRET` was not configured. This could trigger report generation and email delivery without authorization.
+The continuity-report cron route previously accepted public requests when `CRON_SECRET` was not configured.
 
-**Fixed:** the route now fails closed with HTTP 503 when the secret is missing and returns HTTP 401 for an incorrect bearer token.
+**Fixed:** the route fails closed with HTTP 503 when configuration is missing and returns HTTP 401 for an incorrect bearer token.
 
 ### High — crafted staff registration could assign privileged roles
 
-The registration form displayed only resident and driver choices, but the server accepted any recognized role submitted in a manipulated request. A dispatcher could therefore create a Firestore-only person record carrying an admin, dispatcher, or viewer role. The record still lacked Firebase credentials, but retaining privileged roles was unsafe and could become exploitable through a future account-claim flow.
+A manipulated registration action could previously submit privileged roles not displayed by the form.
 
-**Fixed:** both the server action and domain function now reject every registration role except resident and driver.
+**Fixed:** action and domain layers permit only resident and driver roles during staff registration.
+
+### Medium — viewer could directly retrieve raw customer PII
+
+The viewer UI displayed a reduced request projection, but Firestore rules allowed a viewer credential to retrieve complete `waterRequests` documents and events.
+
+**Fixed:** viewers have no direct Firestore access to requests, request events, driver registry records, registry events/meters, offers, or delivery-run records. The viewer page authenticates the viewer on the server, reads with Firebase Admin, and renders only status, priority, quantity, village, source, request date, and assignment presence. It does not send customer name, phone, email, directions, vulnerability details, driver contact details, linked account IDs, or raw events to the viewer UI.
+
+### Medium — owner profile updates were future-schema permissive
+
+The previous user update rule protected `roles` but implicitly allowed owners to alter any other current or future field.
+
+**Fixed:** direct owner updates can affect only `displayName`, `phone`, `village`, and `deliveryDirections`. Account status, roles, email, timestamps, confirmation state, registration metadata, and unknown future fields remain server-only. Direct user-document creation is denied because account provisioning already uses trusted server code.
+
+### Medium — raw request audits exposed unnecessary internal details
+
+Residents and assigned drivers could directly retrieve complete request audit documents, including staff corrections, before/after values, assignment history, reasons, and internal identifiers.
+
+**Fixed:** only dispatcher/admin roles may directly read raw request events. Existing resident and driver workflows do not use these documents. Future customer-facing history must use a purpose-built server projection.
+
+### Medium — inactive photo metadata rules were broader than Storage
+
+Firestore photo metadata allowed reads/writes while Firebase Storage denied all binary access and no photo workflow exists.
+
+**Fixed:** property-photo and request-photo metadata are now deny-all until binary access, ownership/assignment checks, and retention are implemented as one reviewed feature.
 
 ### Medium — staff collection reconciliation could name a different driver
 
-Staff collection recording accepted an arbitrary driver ID instead of requiring the request's assigned driver. This could create incorrect meter and driver attribution in the audit trail.
-
-**Fixed:** staff and driver collection recording now both require the recorded driver to match `assignedDriverId`.
+**Fixed:** collection recording requires the recorded driver to match the request's assigned driver for every acting role.
 
 ### Medium — missing baseline browser security headers
 
-The repository did not configure response security headers.
+**Fixed:** application responses include HSTS, MIME-sniffing protection, clickjacking protection, strict-origin referrer policy, and a restrictive Permissions Policy. A CSP remains future work pending Firebase Authentication and Next.js compatibility testing.
 
-**Fixed:** all application routes now receive HSTS, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a strict-origin referrer policy, and a restrictive Permissions Policy. A Content Security Policy was not added without a deployment-specific compatibility test for Firebase Authentication and Next.js runtime scripts.
+### Moderate dependency advisory
 
-### Moderate dependency advisory — not automatically changed
+`npm audit --omit=dev` reports transitive `uuid` findings through Firebase Admin's Google Cloud dependencies. No forced downgrade or `npm audit fix --force` was applied. Upgrade Firebase Admin separately after runtime and application compatibility verification.
 
-`npm audit --omit=dev` reports eight moderate findings originating from the Firebase Admin dependency tree (`uuid` through Google Cloud packages). The suggested forced remediation would downgrade `firebase-admin` to an old breaking version and was not applied. Monitor Firebase Admin releases and update when its dependency tree contains the upstream fix.
+## Firestore permissions matrix
 
-## Vercel security status
+| Collection | Direct reads | Direct creates/updates/deletes | Application access path |
+|---|---|---|---|
+| `users` | Owner; dispatcher/admin | Owner update only for four allowlisted profile fields; create/delete denied | Server provisioning, profile confirmation, registration, role management |
+| `users/*/roleEvents` | Denied by catch-all | Denied | Admin SDK |
+| `users/*/propertyPhotos` | Denied | Denied | Not implemented |
+| `driverRegistry` | Dispatcher/admin | Denied | Admin SDK for mutations; viewer receives server projection |
+| `driverRegistry/*/events` | Dispatcher/admin | Denied | Admin SDK |
+| `driverRegistry/*/meters` | Dispatcher/admin | Denied | Admin SDK |
+| `driverRegistryUniqueKeys` | Denied | Denied | Admin SDK transaction only |
+| `fillStations` | Any authenticated user | Denied | Reference data; mutations server-only |
+| `waterRequests` | Owning resident; assigned driver; dispatcher/admin | Denied | All lifecycle changes use Admin SDK/domain rules |
+| `waterRequests/*/events` | Dispatcher/admin | Denied | Admin SDK; no raw resident/driver/viewer access |
+| `waterRequests/*/photos` | Denied | Denied | Not implemented |
+| `driverOffers` | Dispatcher/admin | Denied | Driver offer UI/actions use trusted server code |
+| `config` and events | Dispatcher/admin | Denied | Admin SDK mutations |
+| `dispatchBatches` and events | Dispatcher/admin | Denied | Admin SDK; viewer access is projected server-side |
+| `whatsappSessions` | Denied | Denied | Webhook/Admin SDK only |
+| `whatsappProcessedMessages` | Denied | Denied | Webhook/Admin SDK only |
+| `accountMergeEvents` | Denied | Denied | Admin SDK only |
+| Unknown collections | Denied | Denied | None |
 
-### Confirmed from repository configuration
+Document IDs do not grant access. Rules evaluate authenticated ownership, current assignment, or staff role. Queries must include constraints compatible with the document rules; broad resident/driver request queries are rejected rather than filtered.
 
-- The project is configured for Vercel Cron at `/api/cron/continuity-report`.
-- That route requires a matching `CRON_SECRET` bearer token and now fails closed if configuration is missing.
-- Server-only secrets use non-`NEXT_PUBLIC_` environment variable names.
-- `.env.local`, `.vercel`, PEM files, build output, and debug logs are ignored by Git.
-- Browser source maps are not explicitly enabled; Next.js therefore retains its default production behavior.
-- Application response security headers are configured in `next.config.ts`.
-- Staff report/PDF endpoints require server-verified dispatcher or admin roles.
+## Audit integrity
 
-### Platform protections Vercel normally provides automatically
+Audit records are preserved unchanged. Audit creation and every operational mutation remain server-only. Staff retain raw operational audit visibility. Residents, drivers, and viewers cannot directly retrieve internal event documents. No historical documents were migrated or deleted.
 
-These are platform capabilities, not project-dashboard settings proven by this repository:
+## Storage verification
 
-- HTTPS/TLS termination for Vercel deployments and managed domains.
-- Network-level DDoS mitigation on the Vercel platform.
-- Isolation and routing for serverless/edge execution.
+No source code imports `firebase/storage` or calls Storage APIs. Current functionality does not depend on Firebase Storage. `storage.rules` continues to deny every read and write for property photos, request photos, and unknown paths. Firestore photo metadata now follows the same deny-all posture.
 
-The live domain, certificate status, and account/plan-specific protection levels must still be confirmed in Vercel.
+## Authentication and server authorization
 
-### Cannot be verified from this repository — check Vercel Dashboard
+- Firebase ID tokens are verified before an HTTP-only session cookie is issued.
+- Session cookies are re-verified with revocation checking and roles are re-read from Firestore.
+- Firebase Admin initialization is marked server-only.
+- Resident actions bind identity to the session and validate ownership.
+- Driver actions bind identity to the session and validate assignment/registry linkage.
+- Dispatcher actions require dispatcher or admin on the server.
+- Role and registry administration requires admin.
+- Direct Firestore writes cannot bypass domain state transitions.
 
-- Whether production and preview deployments use Deployment Protection, password protection, or Vercel Authentication.
-- Whether the Vercel Firewall/WAF is enabled and which custom rules exist.
-- Whether Bot Management or bot challenge rules are enabled.
-- Whether application-level rate-limit rules are enabled for login, webhooks, reports, or other endpoints.
-- Whether IP allowlists, geolocation restrictions, managed rulesets, or attack challenge modes are enabled.
-- Whether environment variables are correctly scoped to Production/Preview/Development and marked sensitive.
-- Whether audit logs, team SSO, MFA enforcement, least-privilege project roles, and protected production branches are configured.
-- Whether custom domains redirect HTTP to HTTPS and have healthy certificates.
-- Whether function logs or monitoring contain sensitive request data.
+## App Check assessment
 
-## Firebase permissions review
+### Browser-accessed Firebase resources
 
-### Firestore
+The browser directly uses Firebase Authentication. The repository contains no direct browser Firestore or Storage access. Operational data is read and mutated by Server Components, route handlers, or server actions through Firebase Admin.
 
-- Rules use a deny-by-default final match.
-- Direct writes to water requests, request events, driver registry, driver offers, delivery runs, config, WhatsApp state, and account-merge audits are denied. Mutations go through trusted server code.
-- A resident can directly read only their own `users/{uid}` profile and requests whose `customerId` equals their authenticated UID.
-- An assigned driver can read only requests whose `assignedDriverId` equals their authenticated UID and offers addressed to them.
-- Dispatchers/admins have operational read access; admin-only role management is separately enforced by server actions.
-- Guessing a request, event, photo, user, driver, or offer document ID does not bypass the rules because access is checked against authentication, ownership/assignment, or role.
-- Client profile updates cannot change the `roles` field. New direct client-created profiles are limited to one `resident` role.
-- Audit/event writes are denied to clients, preserving server-authorized audit integrity.
-- Viewer access includes full underlying request documents. The viewer UI shows a reduced projection, but Firestore rules permit the viewer role to read request PII. Confirm with the Public Entity that this is intentional.
+### What App Check could protect
 
-### Storage and photos
+If direct browser Firestore or Storage access is introduced later, App Check can help reject traffic that does not originate from an attested application instance. It can also add abuse resistance around supported Firebase client services.
 
-- Firebase Storage currently denies all reads and writes, including property and request photo paths.
-- Firestore photo metadata has owner/staff/assigned-driver rules, but the actual binary files remain inaccessible until a deliberately designed photo workflow is implemented.
-- No permanent public photo-download URLs should be introduced. Use access-controlled reads or short-lived signed URLs when photos are enabled.
+### What App Check would not protect
 
-### Authentication and Admin SDK
+- It does not replace Firebase Authentication or Firestore/Storage Security Rules.
+- It does not authorize roles, ownership, or request state transitions.
+- Firebase Admin calls bypass App Check and must remain protected by server sessions and authorization.
+- It does not protect arbitrary Next.js server actions, Vercel routes, cron endpoints, or the WhatsApp webhook.
+- It does not stop an authorized user from abusing permissions they legitimately hold.
 
-- Firebase ID tokens are verified server-side before creating an HTTP-only session cookie.
-- Session cookies are re-verified with revocation checking; roles are re-read from Firestore.
-- New authenticated profiles default to resident and cannot self-assign staff roles.
-- Firebase Admin initialization is marked `server-only`, and service-account credentials are read only from server environment variables.
-- The session cookie is Secure in production, HTTP-only, SameSite=Lax, and scoped to `/`.
-- The non-HTTP-only portal cookie is only a navigation preference and is checked against server-side roles before use.
+### Recommendation
 
-### Server actions and API routes
+App Check is **future hardening, not a launch blocker** for the current architecture because operational Firestore and Storage access is server-only. Before enabling enforcement, test Firebase Authentication compatibility, preview deployments, local development/debug tokens, automated tests, and incident recovery. Reassess before adding any direct browser Firestore or Storage feature.
 
-- Dispatcher operations require dispatcher/admin on the server.
-- Driver operations bind the acting driver ID to the authenticated session and validate assignment in domain code.
-- Resident confirmation/dispute actions validate request ownership in domain code.
-- Admin role and registry management requires admin on the server.
-- WhatsApp webhook endpoints are public by design and use Meta signature/token verification.
-- Manual continuity and delivery-run PDF routes require dispatcher/admin authorization.
+## Automated security-rule verification
 
-## Remaining recommendations
+Firebase Emulator tests cover allowed and forbidden behavior for:
 
-1. Verify Vercel Firewall/WAF, rate limiting, bot protection, Deployment Protection, MFA/SSO, and production environment scoping in the dashboard.
-2. Confirm deployed Firestore and Storage rules match the checked-in files using Firebase Console or deployment tooling.
-3. Confirm authorized Firebase Authentication domains and enabled sign-in providers; remove unused providers.
-4. Review whether viewer-role access to complete request documents is acceptable or should be replaced by a server-produced reduced dataset.
-5. Add deployment-tested Content Security Policy headers after validating Firebase Authentication and all Next.js scripts.
-6. Consider Origin validation and rate limiting on the session-creation endpoint.
-7. Monitor the Firebase Admin transitive dependency advisory rather than applying the unsafe forced downgrade.
-8. Enable alerts/log review for repeated authentication failures, webhook signature failures, cron authorization failures, and unusual report generation.
+- Signed-out access
+- Resident own/other profile reads
+- Resident profile allowlist and forbidden privileged/unknown fields
+- Own, other, and broad request queries
+- Direct request mutations
+- Driver assigned/unrelated requests
+- Driver access to users, raw events, photos, registry, and offers
+- Viewer raw PII/internal-data denial and mutation denial
+- Dispatcher/admin operational reads and direct mutation denial
+- Driver registry events/meters
+- Config and config events
+- Delivery runs and events
+- WhatsApp and idempotency data
+- Account merge events
+- Driver uniqueness keys
+- Photo metadata
+- Fill-station reference reads
+- Unknown collection catch-all denial
+
+## Firebase Console handover checklist
+
+Manually verify:
+
+1. Deployed Firestore rules exactly match `firestore.rules` in this release.
+2. Deployed Storage rules exactly match the deny-all `storage.rules` file.
+3. Authorized Firebase Authentication domains contain only required production/preview domains.
+4. Enabled authentication providers match current product requirements.
+5. Unused providers are disabled.
+6. Service-account IAM permissions follow least privilege.
+7. Obsolete service-account keys are revoked and active keys have owners/rotation dates.
+8. Privileged human accounts use MFA; enforce organization policy where available.
+9. Firestore backup/export schedules are enabled and restoration is tested.
+10. Data retention requirements cover requests, audit events, WhatsApp scratch data, and logs.
+11. Google Cloud/Firebase administrative and data-access audit logging is enabled and reviewed.
+12. App Check remains unenforced unless the compatibility plan above is completed.
+13. Alerting covers authentication abuse, denied traffic spikes, webhook failures, and unusual server/API activity.
+
+## Vercel items requiring dashboard verification
+
+The repository cannot verify Firewall/WAF rules, bot protection, rate limiting, Deployment Protection, environment-variable scopes, team MFA/SSO, project role assignments, audit logs, domain certificate health, or branch protections. Vercel normally supplies TLS termination and platform-level DDoS mitigation, but live project and plan settings must be confirmed in the dashboard.
 
 ## Data and secrets statement
 
-No production data was deleted or rewritten during this review. No credentials, tokens, private keys, or environment variable values are included in this report.
+No production data was modified or deleted during this review. No credentials, tokens, private keys, or sensitive environment values are included in this report.

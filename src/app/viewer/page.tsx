@@ -9,6 +9,7 @@ import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getAllRequests } from "@/lib/domain/waterRequests";
+import { toViewerDriverRow, toViewerRequestRow } from "@/lib/domain/viewerProjection";
 import { formatSabaDate } from "@/lib/utils/datetime";
 
 export const metadata: Metadata = {
@@ -60,24 +61,8 @@ export default async function ViewerPortalPage() {
   // above and PRODUCT.md "Privacy"). The dispatch priority LEVEL itself
   // is operational oversight information, not sensitive, so it is
   // included.
-  const requestRows = openRequests.map((r) => ({
-    id: r.id,
-    status: r.status,
-    dispatchPriority: r.dispatchPriority,
-    loads: r.loads,
-    village: r.village,
-    source: r.source,
-    requestedAt: r.requestedAt,
-    hasAssignedDriver: Boolean(r.assignedDriverId),
-  }));
-
-  const driverRows = allDrivers.map((d) => ({
-    id: d.id,
-    displayName: d.displayName,
-    eligibilityStatus: d.eligibilityStatus,
-    availabilityStatus: d.availabilityStatus,
-    accountLinked: Boolean(d.linkedUserId),
-  }));
+  const requestRows = openRequests.map(toViewerRequestRow);
+  const driverRows = allDrivers.map(toViewerDriverRow);
 
   return (
     <>

@@ -6,6 +6,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    exclude: ["**/node_modules/**", "**/.next/**"],
+    exclude: ["**/node_modules/**", "**/.next/**", "firestore.rules.test.ts"],
   },
 });
