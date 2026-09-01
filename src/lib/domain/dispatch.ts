@@ -375,28 +375,30 @@ export async function declineDriverOffer(
     // 3. Start cooldown if threshold reached.
     const declineCount = declinesBeforeThis + 1;
     if (willEnterCooldown) {
+      if (!registryRef) {
+        throw new Error("DRIVER_NOT_LINKED_FOR_COOLDOWN");
+      }
+
       const cooldownUntil = new Date(now.getTime() + declineCooldownHours * 60 * 60 * 1000);
 
-      if (registryRef) {
-        txn.update(registryRef, {
-          cooldownUntil,
-          updatedAt: nowField,
-          updatedBy: driverId,
-        });
+      txn.update(registryRef, {
+        cooldownUntil,
+        updatedAt: nowField,
+        updatedBy: driverId,
+      });
 
-        const cooldownEventRef = registryRef.collection("events").doc();
-        txn.set(cooldownEventRef, {
-          type: "driver_cooldown_started",
-          actorId: driverId,
-          actorRole: "driver",
-          createdAt: nowField,
-          metadata: {
-            declineCount,
-            maxDeclinesPerDay,
-            cooldownUntil: cooldownUntil.toISOString(),
-          },
-        });
-      }
+      const cooldownEventRef = registryRef.collection("events").doc();
+      txn.set(cooldownEventRef, {
+        type: "driver_cooldown_started",
+        actorId: driverId,
+        actorRole: "driver",
+        createdAt: nowField,
+        metadata: {
+          declineCount,
+          maxDeclinesPerDay,
+          cooldownUntil: cooldownUntil.toISOString(),
+        },
+      });
 
       const availabilityStatus = cooldownUntil.getTime() >= endOfToday.getTime() ? "daily_limit" : "cooldown";
 

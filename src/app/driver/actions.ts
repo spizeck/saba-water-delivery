@@ -158,6 +158,8 @@ export async function declineOffer(
           return { status: "error", message: "This offer is no longer valid. Refresh for a new offer." };
         case "OFFER_ALREADY_RESOLVED":
           return { status: "error", message: "This offer was already responded to." };
+        case "DRIVER_NOT_LINKED_FOR_COOLDOWN":
+          return { status: "error", message: "Unable to apply the decline cooldown. Contact the water office." };
         default:
           throw err;
       }
