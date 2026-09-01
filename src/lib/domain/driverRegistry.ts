@@ -20,6 +20,7 @@ import {
   checkActiveRequestValidity,
   type StaleReason,
 } from "./activeRequestValidation";
+import { startOfSabaDay } from "@/lib/utils/datetime";
 
 /**
  * Government-managed Driver Registry (see PRODUCT.md / TECHNICAL.md
@@ -904,8 +905,16 @@ export async function setAvailabilityByLinkedUser(
     throw new Error("DRIVER_INELIGIBLE");
   }
   if (availabilityStatus === "online" && entry.cooldownUntil) {
-    if (new Date(entry.cooldownUntil) > new Date()) {
-      throw new Error("DRIVER_IN_COOLDOWN");
+    const cooldownUntil = new Date(entry.cooldownUntil);
+    if (cooldownUntil > new Date()) {
+      const endOfToday = startOfSabaDay(new Date(Date.now() + 24 * 60 * 60 * 1000));
+      const err = new Error("DRIVER_IN_COOLDOWN") as Error & {
+        cooldownUntil: string;
+        isDailyLimit: boolean;
+      };
+      err.cooldownUntil = entry.cooldownUntil;
+      err.isDailyLimit = cooldownUntil.getTime() >= endOfToday.getTime();
+      throw err;
     }
   }
 

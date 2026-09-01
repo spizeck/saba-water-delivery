@@ -10,7 +10,7 @@ import {
   getPendingOfferForDriver,
   recordOfferResponse,
 } from "./driverOffers";
-import { sabaCalendarDateKey } from "@/lib/utils/datetime";
+import { sabaCalendarDateKey, startOfSabaDay } from "@/lib/utils/datetime";
 import { appConfig } from "./config";
 import type { DriverOffer, WaterRequest } from "./types";
 import {
@@ -235,8 +235,11 @@ export interface DeclineDriverOfferInput {
 }
 
 export interface DeclineDriverOfferResult {
-  enteredCooldown: boolean;
+  declined: true;
+  availabilityStatus: "available" | "cooldown" | "daily_limit";
   cooldownUntil: string | null;
+  declineCount: number;
+  maxDeclinesPerDay: number;
 }
 
 /**
@@ -258,17 +261,9 @@ export async function declineDriverOffer(
   const db = getAdminDb();
   const offerRef = db.collection("driverOffers").doc(offerId);
 
-  /**
-   * Single Firestore transaction for the entire decline consequence:
-   *   - record offer as declined
-   *   - release a preferred-driver hold if applicable
-   *   - count today's declines (including this one)
-   *   - start a cooldown on the driver registry if threshold reached
-   *   - write all relevant audit events
-   *
-   * This guarantees the driver cannot receive further offers while a
-   * cooldown is due, and the request remains correctly dispatchable.
-   */
+  const now = new Date();
+  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+
   const result = await db.runTransaction<DeclineDriverOfferResult>(async (txn) => {
     // ---- All reads first ----
     const offerSnap = await txn.get(offerRef);
@@ -306,7 +301,7 @@ export async function declineDriverOffer(
         : appConfig.defaultDeclineCooldownHours;
 
     // Count declines already recorded today (this offer is not yet declined).
-    const lookback = new Date(Date.now() - 26 * 60 * 60 * 1000);
+    const lookback = new Date(now.getTime() - 26 * 60 * 60 * 1000);
     const declinesSnap = await txn.get(
       db
         .collection("driverOffers")
@@ -314,7 +309,7 @@ export async function declineDriverOffer(
         .where("response", "==", "declined")
         .where("respondedAt", ">=", lookback),
     );
-    const todayKey = sabaCalendarDateKey(new Date());
+    const todayKey = sabaCalendarDateKey(now);
     const declinesBeforeThis = declinesSnap.docs.filter((doc) => {
       const respondedAt = doc.data().respondedAt?.toDate?.();
       return respondedAt instanceof Date && sabaCalendarDateKey(respondedAt) === todayKey;
@@ -337,19 +332,19 @@ export async function declineDriverOffer(
     }
 
     // ---- All writes after reads ----
-    const now = FieldValue.serverTimestamp();
+    const nowField = FieldValue.serverTimestamp();
 
     // 1. Record the offer as declined; expire duplicate pending offers of
     // the same request so only one decline is counted.
     txn.update(offerRef, {
       response: "declined",
-      respondedAt: now,
+      respondedAt: nowField,
     });
     for (const doc of duplicatePendingSnap.docs) {
       if (doc.id === offerId) continue;
       txn.update(doc.ref, {
         response: "expired",
-        respondedAt: now,
+        respondedAt: nowField,
       });
     }
 
@@ -358,8 +353,8 @@ export async function declineDriverOffer(
       const requestData = requestSnap.data()!;
       if (requestData.status === "preferred_driver_hold" && requestData.preferredDriverId === driverId) {
         const requestUpdate: Record<string, unknown> = {
-          availableAt: now,
-          updatedAt: now,
+          availableAt: nowField,
+          updatedAt: nowField,
         };
         // Preserve status if it is already being updated to available. Use a
         // single update for both status and timestamps to keep writes minimal.
@@ -371,48 +366,56 @@ export async function declineDriverOffer(
           type: "preferred_driver_declined",
           actorId: driverId,
           actorRole: "driver",
-          createdAt: now,
+          createdAt: nowField,
           metadata: { preferredDriverId: driverId },
         });
       }
     }
 
     // 3. Start cooldown if threshold reached.
+    const declineCount = declinesBeforeThis + 1;
     if (willEnterCooldown) {
-      if (!registryRef) {
-        // Cannot set a cooldown without a linked registry record. This should
-        // not happen for a driver receiving offers, so treat it as a data
-        // integrity error and abort the entire transaction.
-        throw new Error("DRIVER_NOT_LINKED_FOR_COOLDOWN");
+      const cooldownUntil = new Date(now.getTime() + declineCooldownHours * 60 * 60 * 1000);
+
+      if (registryRef) {
+        txn.update(registryRef, {
+          cooldownUntil,
+          updatedAt: nowField,
+          updatedBy: driverId,
+        });
+
+        const cooldownEventRef = registryRef.collection("events").doc();
+        txn.set(cooldownEventRef, {
+          type: "driver_cooldown_started",
+          actorId: driverId,
+          actorRole: "driver",
+          createdAt: nowField,
+          metadata: {
+            declineCount,
+            maxDeclinesPerDay,
+            cooldownUntil: cooldownUntil.toISOString(),
+          },
+        });
       }
 
-      const cooldownUntil = new Date(Date.now() + declineCooldownHours * 60 * 60 * 1000);
-      txn.update(registryRef, {
-        cooldownUntil,
-        updatedAt: now,
-        updatedBy: driverId,
-      });
-
-      const cooldownEventRef = registryRef.collection("events").doc();
-      txn.set(cooldownEventRef, {
-        type: "driver_cooldown_started",
-        actorId: driverId,
-        actorRole: "driver",
-        createdAt: now,
-        metadata: {
-          declineCount: declinesBeforeThis + 1,
-          maxDeclinesPerDay,
-          cooldownUntil: cooldownUntil.toISOString(),
-        },
-      });
+      const availabilityStatus = cooldownUntil.getTime() >= endOfToday.getTime() ? "daily_limit" : "cooldown";
 
       return {
-        enteredCooldown: true,
+        declined: true,
+        availabilityStatus,
         cooldownUntil: cooldownUntil.toISOString(),
+        declineCount,
+        maxDeclinesPerDay,
       };
     }
 
-    return { enteredCooldown: false, cooldownUntil: null };
+    return {
+      declined: true,
+      availabilityStatus: "available",
+      cooldownUntil: null,
+      declineCount,
+      maxDeclinesPerDay,
+    };
   });
 
   return result;

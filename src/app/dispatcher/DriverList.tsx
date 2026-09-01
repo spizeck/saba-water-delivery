@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { DriverRegistryEntry } from "@/lib/domain/types";
+import { formatSabaTime, startOfSabaDay } from "@/lib/utils/datetime";
 
 import {
   restrictDriver,
@@ -81,6 +82,11 @@ function DriverRow({
   const isEligible = driver.eligibilityStatus === "eligible";
   const isOnline = driver.availabilityStatus === "online";
   const hasWork = workload && workload.openRequests > 0;
+  const now = new Date();
+  const cooldownUntil = driver.cooldownUntil ? new Date(driver.cooldownUntil) : null;
+  const inCooldown = cooldownUntil !== null && cooldownUntil.getTime() > now.getTime();
+  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  const dailyCooldown = inCooldown && cooldownUntil.getTime() >= endOfToday.getTime();
 
   return (
     <div className="rounded-lg border border-slate-200 p-3">
@@ -100,6 +106,14 @@ function DriverRow({
             <span className={isOnline ? "text-green-700" : "text-slate-500"}>
               {isOnline ? "Online" : "Offline"}
             </span>
+            {inCooldown && dailyCooldown && (
+              <span className="text-amber-700 font-medium">Daily limit reached</span>
+            )}
+            {inCooldown && !dailyCooldown && (
+              <span className="text-amber-700 font-medium">
+                Cooldown until {formatSabaTime(cooldownUntil)}
+              </span>
+            )}
             {!driver.linkedUserId && (
               <span className="text-slate-400">No account linked</span>
             )}
