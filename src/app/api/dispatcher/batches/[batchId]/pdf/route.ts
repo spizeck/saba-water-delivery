@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/auth/session";
 import { getDispatchBatch, recordBatchGenerated } from "@/lib/domain/dispatchBatches";
 import { buildDispatchBatchPdfData } from "@/lib/domain/dispatchBatchPdfData";
-import { getActiveDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { getRequestsForDispatchBatch } from "@/lib/domain/waterRequests";
 import { dispatchBatchPdfFilename, renderDispatchBatchPdf } from "@/lib/reports/dispatchBatchPdf";
 
@@ -33,7 +33,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
   const [requests, allDrivers] = await Promise.all([
     getRequestsForDispatchBatch(batchId),
-    getActiveDriverRegistryEntries(),
+    getAllDriverRegistryEntries(),
   ]);
 
   const driverNamesByUserId = new Map<string, string>();

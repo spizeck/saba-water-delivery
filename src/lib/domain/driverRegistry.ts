@@ -612,6 +612,17 @@ export async function archiveDriver(input: ArchiveDriverInput): Promise<DriverRe
     if (current.archivedAt) throw new Error("DRIVER_ALREADY_ARCHIVED");
     if (current.activeRequestId) throw new Error("DRIVER_HAS_ACTIVE_REQUEST");
 
+    const currentLinkedUserId = (current.linkedUserId ?? null) as string | null;
+    if (currentLinkedUserId) {
+      const activeDeliveries = await txn.get(
+        db
+          .collection(REQUESTS_COLLECTION)
+          .where("assignedDriverId", "==", currentLinkedUserId)
+          .where("status", "==", "claimed"),
+      );
+      if (activeDeliveries.size > 0) throw new Error("DRIVER_HAS_ACTIVE_DELIVERIES");
+    }
+
     const previousEligibility = (current.eligibilityStatus ?? "ineligible") as DriverEligibilityStatus;
     const previousReason = (current.ineligibilityReason ?? null) as string | null;
 
@@ -828,39 +839,49 @@ export interface DeleteDriverInput {
 }
 
 export async function deleteDriver(input: DeleteDriverInput): Promise<void> {
-  const { driverId, deletedBy, confirmation } = input;
+  const { driverId, confirmation } = input;
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
+  const confirmedName = confirmation.trim().toLowerCase();
 
-  const eligibility = await getDeleteDriverEligibility(driverId);
-  if (!eligibility.canDelete) throw new Error("DRIVER_NOT_ELIGIBLE_FOR_DELETION");
+  await db.runTransaction(async (txn) => {
+    const driverSnap = await txn.get(ref);
+    if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
 
-  const doc = await ref.get();
-  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
-  const data = doc.data()!;
-  const displayName = (data.displayName ?? "").trim();
+    const data = driverSnap.data()!;
+    const displayName = (data.displayName ?? "").trim();
+    if (confirmedName !== displayName.toLowerCase()) {
+      throw new Error("CONFIRMATION_NAME_MISMATCH");
+    }
 
-  if (confirmation.trim().toLowerCase() !== displayName.toLowerCase()) {
-    throw new Error("CONFIRMATION_NAME_MISMATCH");
-  }
+    if (data.linkedUserId) {
+      throw new Error("DRIVER_NOT_ELIGIBLE_FOR_DELETION");
+    }
+    if (data.activeRequestId) {
+      throw new Error("DRIVER_NOT_ELIGIBLE_FOR_DELETION");
+    }
 
-  const normalizedName = displayName.toLowerCase();
-  const normalizedPhone = (data.phone?.replace(/\D/g, "") || null) as string | null;
-  const nameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
-  const phoneKeyRef = normalizedPhone
-    ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
-    : null;
+    // Re-validate all deletable references inside the transaction to prevent
+    // concurrent operational or audit writes from creating dangling references.
+    const [meters, events] = await Promise.all([
+      txn.get(ref.collection("meters")),
+      txn.get(ref.collection("events")),
+    ]);
+    if (meters.size > 0 || events.size > 0) {
+      throw new Error("DRIVER_NOT_ELIGIBLE_FOR_DELETION");
+    }
 
-  const [meters, events] = await Promise.all([ref.collection("meters").get(), ref.collection("events").get()]);
+    const normalizedName = displayName.toLowerCase();
+    const normalizedPhone = (data.phone?.replace(/\D/g, "") || null) as string | null;
+    const nameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
+    const phoneKeyRef = normalizedPhone
+      ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
+      : null;
 
-  const batch = db.batch();
-  batch.delete(ref);
-  batch.delete(nameKeyRef);
-  if (phoneKeyRef) batch.delete(phoneKeyRef);
-  meters.docs.forEach((m) => batch.delete(m.ref));
-  events.docs.forEach((e) => batch.delete(e.ref));
-
-  await batch.commit();
+    txn.delete(ref);
+    txn.delete(nameKeyRef);
+    if (phoneKeyRef) txn.delete(phoneKeyRef);
+  });
 }
 
 // ---------------------------------------------------------------------------
