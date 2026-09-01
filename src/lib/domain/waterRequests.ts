@@ -3,6 +3,7 @@ import "server-only";
 import { type DocumentData, FieldValue, Timestamp } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
+import { processInBatches } from "@/lib/utils/processInBatches";
 
 import { appConfig } from "./config";
 import { BATCH_ELIGIBLE_STATUSES, computeDispatchBatchStatus } from "./dispatchBatchSelection";
@@ -52,6 +53,7 @@ export type { WaterSituationInput } from "./waterSituation";
 
 const REQUESTS_COLLECTION = "waterRequests";
 const BATCHES_COLLECTION = "dispatchBatches";
+const PREFERRED_DRIVER_EXPIRY_CONCURRENCY = 25;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -861,7 +863,7 @@ export interface ExpirePreferredDriverHoldInput {
  */
 export async function expirePreferredDriverHold(
   input: ExpirePreferredDriverHoldInput,
-): Promise<WaterRequest> {
+): Promise<WaterRequest | null> {
   const { requestId, now: currentTime = new Date() } = input;
   const db = getAdminDb();
   const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
@@ -870,7 +872,9 @@ export async function expirePreferredDriverHold(
   await db.runTransaction(async (txn) => {
     const snap = await txn.get(requestRef);
     if (!snap.exists) {
-      throw new Error("REQUEST_NOT_FOUND");
+      // A request can be deleted after the expiry sweep discovers it.
+      // Expiration maintenance treats that race as already resolved.
+      return;
     }
 
     const data = snap.data()!;
@@ -901,6 +905,7 @@ export async function expirePreferredDriverHold(
   });
 
   const updated = await requestRef.get();
+  if (!updated.exists) return null;
   return toWaterRequest(requestId, updated.data()!);
 }
 
@@ -918,8 +923,12 @@ export async function expirePreferredDriverHolds(now = new Date()): Promise<numb
     .where("preferredDriverExpiresAt", "<=", now)
     .get();
 
-  await Promise.all(
-    expired.docs.map((doc) => expirePreferredDriverHold({ requestId: doc.id, now })),
+  await processInBatches(
+    expired.docs,
+    PREFERRED_DRIVER_EXPIRY_CONCURRENCY,
+    async (doc) => {
+      await expirePreferredDriverHold({ requestId: doc.id, now });
+    },
   );
   return expired.size;
 }
@@ -2607,3 +2616,4 @@ export async function recordWaterCollection(
 
 // Re-export pure load-collection helpers for server consumers.
 export { areAllLoadsCollected, assertQuantityEditable, getMissingLoadNumbers } from "./loadCollection";
+
