@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isIOSSafari, isStandaloneDisplay } from "../platform";
+import { isIOSSafari, isStandaloneDisplay, toInstallPrompt } from "../platform";
 
 describe("platform detection", () => {
   beforeEach(() => {
@@ -41,5 +41,22 @@ describe("platform detection", () => {
     vi.stubGlobal("document", { ontouchend: true } as unknown as Document);
     vi.stubGlobal("window", { matchMedia: vi.fn() } as unknown as Window);
     expect(isIOSSafari()).toBe(true);
+  });
+
+  it("invokes the native install prompt with the original event receiver", async () => {
+    const event = new Event("beforeinstallprompt") as Event & {
+      prompt: () => Promise<void>;
+      userChoice: Promise<{ outcome: "accepted"; platform: string }>;
+    };
+    event.prompt = vi.fn(function (this: Event) {
+      expect(this).toBe(event);
+      return Promise.resolve();
+    });
+    event.userChoice = Promise.resolve({ outcome: "accepted", platform: "web" });
+
+    const installPrompt = toInstallPrompt(event);
+    expect(installPrompt).not.toBeNull();
+    await installPrompt?.prompt();
+    expect(event.prompt).toHaveBeenCalledOnce();
   });
 });

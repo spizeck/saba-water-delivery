@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { PwaPortal } from "@/lib/pwa/constants";
 import {
   isIOSSafari,
-  isInstallPromptSupported,
   isStandaloneDisplay,
   toInstallPrompt,
   type InstallPrompt,
@@ -28,32 +27,13 @@ export interface UsePwaInstallResult {
 
 let capturedInstallPrompt: Event | null = null;
 
-function getInitialState(): PwaInstallState {
-  if (typeof window === "undefined") return { kind: "loading" };
-
-  if (isStandaloneDisplay()) return { kind: "standalone" };
-
-  if (isIOSSafari()) return { kind: "ios" };
-
-  if (!isInstallPromptSupported()) return { kind: "unsupported" };
-
-  if (capturedInstallPrompt) {
-    const prompt = toInstallPrompt(capturedInstallPrompt);
-    if (prompt) return { kind: "prompt", prompt };
-  }
-
-  return { kind: "loading" };
-}
-
 /**
  * Detects whether the PWA is already installed, running on iOS Safari, or
- * eligible for a Chromium install prompt. The initial state is computed once
- * during component mount; any subsequent updates are driven by browser events
- * or a timeout, so state transitions happen inside event callbacks rather than
- * synchronously within the effect body.
+ * eligible for a Chromium install prompt. Server rendering and client hydration
+ * both start in the loading state; browser-only detection runs after hydration.
  */
 export function usePwaInstall(_portal: PwaPortal): UsePwaInstallResult {
-  const [state, setState] = useState<PwaInstallState>(getInitialState);
+  const [state, setState] = useState<PwaInstallState>({ kind: "loading" });
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -61,6 +41,7 @@ export function usePwaInstall(_portal: PwaPortal): UsePwaInstallResult {
       return;
     }
 
+    let active = true;
     const timer =
       state.kind === "loading"
         ? window.setTimeout(() => setState({ kind: "unsupported" }), 3000)
@@ -86,7 +67,26 @@ export function usePwaInstall(_portal: PwaPortal): UsePwaInstallResult {
     window.addEventListener("beforeinstallprompt", handler);
     window.addEventListener("appinstalled", installedHandler);
 
+    if (state.kind === "loading") {
+      queueMicrotask(() => {
+        if (!active) return;
+        if (isStandaloneDisplay()) {
+          setState({ kind: "standalone" });
+          return;
+        }
+        if (isIOSSafari()) {
+          setState({ kind: "ios" });
+          return;
+        }
+        if (capturedInstallPrompt) {
+          const prompt = toInstallPrompt(capturedInstallPrompt);
+          if (prompt) setState({ kind: "prompt", prompt });
+        }
+      });
+    }
+
     return () => {
+      active = false;
       if (timer !== null) window.clearTimeout(timer);
       window.removeEventListener("beforeinstallprompt", handler);
       window.removeEventListener("appinstalled", installedHandler);
