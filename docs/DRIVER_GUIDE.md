@@ -47,7 +47,10 @@ picking only the easiest or closest jobs.
 
 Each offer shows the customer's name, village, quantity (for example,
 "2 loads (2,000 gallons)"), how long the request has been waiting,
-and the delivery directions.
+and the delivery directions. If the request includes **Notes / Comments**, they
+appear as supplementary information below the directions. Review them for
+request-specific access or timing details, but continue to rely on the
+structured location, quantity, priority, and collection requirements.
 
 ## Accept or Decline
 
@@ -106,7 +109,10 @@ received the water before you can be offered your next delivery.
 
 You may only hold one active delivery at a time. If you already have a
 delivery in progress, you will not be offered another one until you
-mark the current one delivered.
+mark the current one delivered. Marking it delivered also asks an eligible
+registered resident by email to review receipt. That email is separate from
+your completion action: a send failure does not keep the delivery assigned to
+you or delay your next offer.
 
 If the system shows you have an active delivery but you do not
 recognize it (for example, from old testing data), simply load the

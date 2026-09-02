@@ -44,9 +44,13 @@ function formatAge(ageMinutes: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+function compactNotes(notes: string): string {
+  return notes.length > 240 ? `${notes.slice(0, 237)}...` : notes;
+}
+
 function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
   // Account for extra lines with 2-load requests (collection areas)
-  const extraHeight = row.loads === 2 ? 40 : 20;
+  const extraHeight = (row.loads === 2 ? 40 : 20) + (row.requestNotes ? 36 : 0);
   if (doc.y > doc.page.height - doc.page.margins.bottom - 130 - extraHeight) {
     doc.addPage();
   }
@@ -75,6 +79,7 @@ function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
         .join("   |   "),
     );
   doc.text(`Directions: ${row.deliveryDirections}`);
+  if (row.requestNotes) doc.text(`Request notes: ${compactNotes(row.requestNotes)}`);
   doc.text(
     [
       `Requested: ${formatSabaDateTime(row.requestedAt)}`,

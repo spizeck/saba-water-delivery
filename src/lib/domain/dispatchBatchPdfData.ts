@@ -23,6 +23,7 @@ export interface DispatchBatchPdfRow {
   phone: string | null;
   village: string;
   deliveryDirections: string;
+  requestNotes: string | null;
   loads: RequestedLoads;
   gallons: number;
   priority: DispatchPriority;
@@ -77,6 +78,7 @@ export function buildDispatchBatchPdfData(
       phone: r.customer?.phone ?? null,
       village: r.village,
       deliveryDirections: r.deliveryDirections,
+      requestNotes: r.requestNotes,
       loads: r.loads,
       gallons: r.gallons,
       priority: r.dispatchPriority,

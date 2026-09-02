@@ -213,6 +213,13 @@ describe("formatRequestEventDetails", () => {
       expect(result).toContain("Loads: 1 → 2");
     });
 
+    it("shows a request notes change", () => {
+      const result = formatRequestEventDetails("request_edited", {
+        requestNotes: { from: null, to: "Call before arrival." },
+      });
+      expect(result).toBe("Notes / Comments: — → Call before arrival.");
+    });
+
     it("shows stored from/to customer corrections", () => {
       const result = formatRequestEventDetails("request_edited", {
         customerDisplayName: { from: "Info", to: "Jane Resident" },
@@ -313,7 +320,7 @@ describe("EVENT_LABELS completeness", () => {
       "marked_delivered_by_dispatcher_batch", "marked_delivered_by_dispatcher",
       "dispatch_order_overridden", "water_collected",
       "water_collected_by_staff", "customer_history_linked",
-      "request_edited",
+      "delivery_confirmation_email", "request_edited",
     ];
     for (const type of knownTypes) {
       expect(REQUEST_EVENT_LABELS[type]).toBeDefined();

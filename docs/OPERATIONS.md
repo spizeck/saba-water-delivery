@@ -29,11 +29,17 @@ In plain terms, a request moves through the system like this:
 3. **Available** — the request is open to the next eligible online
    driver.
 4. **Claimed** — a driver has accepted the delivery.
-5. **Delivered** — the driver has delivered the water.
+5. **Delivered** — the driver or staff records delivery. A registered resident
+   with an email receives a Review Delivery message; email failure does not
+   change the recorded delivery.
 6. **Confirmed / Disputed** — the resident confirms they received the
    water, reports a problem, or, if they never respond, the system
    automatically marks the delivery confirmed after 24 hours so a
    request never sits open indefinitely.
+
+Optional Notes / Comments belong only to the individual request. Staff and
+drivers should use them as supplementary operational context; they never
+replace the structured location, directions, quantity, or priority fields.
 
 Urgent and critical requests move ahead of normal requests in the
 queue, but a request never loses its place due to a decline, an

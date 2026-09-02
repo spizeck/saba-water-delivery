@@ -143,6 +143,7 @@ export async function requestWater(
       loads,
       village: profile.village,
       deliveryDirections: profile.deliveryDirections,
+      requestNotes: String(formData.get("requestNotes") ?? ""),
       preferredDriverId: hasPreferred ? preferredDriverId : null,
       waterSituation,
       attestationAccepted,
@@ -160,6 +161,9 @@ export async function requestWater(
           status: "error",
           message: "You already have an active water request.",
         };
+      }
+      if (err.message === "REQUEST_NOTES_TOO_LONG") {
+        return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
       }
       if (err.message === "ATTESTATION_REQUIRED") {
         return {

@@ -163,6 +163,7 @@ export async function editRequest(
   const loadsRaw = formData.get("loads");
   const villageRaw = formData.get("village");
   const directionsRaw = formData.get("deliveryDirections");
+  const requestNotesRaw = formData.get("requestNotes");
   const customerDisplayName = String(formData.get("customerDisplayName") ?? "").trim();
   const customerPhone = String(formData.get("customerPhone") ?? "").trim();
   const customerEmail = String(formData.get("customerEmail") ?? "").trim();
@@ -181,6 +182,7 @@ export async function editRequest(
       loads,
       village,
       deliveryDirections,
+      requestNotes: requestNotesRaw === null ? undefined : String(requestNotesRaw),
       customerDisplayName,
       customerPhone,
       customerEmail,
@@ -199,6 +201,8 @@ export async function editRequest(
           return { status: "error", message: "Please select a valid village from the list." };
         case "DIRECTIONS_REQUIRED":
           return { status: "error", message: "Delivery directions are required." };
+        case "REQUEST_NOTES_TOO_LONG":
+          return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
         case "CUSTOMER_NAME_REQUIRED":
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
@@ -422,6 +426,7 @@ export async function createManualRequest(
   const loads = parseRequestedLoads(formData.get("loads"));
   const village = String(formData.get("village") ?? "").trim();
   const deliveryDirections = String(formData.get("deliveryDirections") ?? "").trim();
+  const requestNotes = String(formData.get("requestNotes") ?? "");
   const preferredDriverIdRaw = String(formData.get("preferredDriverId") ?? "").trim();
   const preferredDriverId =
     preferredDriverIdRaw && preferredDriverIdRaw !== "none" ? preferredDriverIdRaw : null;
@@ -456,6 +461,7 @@ export async function createManualRequest(
         loads,
         village,
         deliveryDirections,
+        requestNotes,
         preferredDriverId,
         source: "dispatcher",
         createdBy: session.uid,
@@ -478,6 +484,9 @@ export async function createManualRequest(
               ? `This resident already has an active request (status: ${existing.status}). Resolve it before creating a new one.`
               : "This resident already has an active request.",
           };
+        }
+        if (err.message === "REQUEST_NOTES_TOO_LONG") {
+          return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
         }
         if (err.message === "ATTESTATION_REQUIRED") {
           return {
@@ -532,6 +541,7 @@ export async function createManualRequest(
       loads,
       village,
       deliveryDirections,
+      requestNotes,
       preferredDriverId,
       source: "dispatcher",
       createdBy: session.uid,
@@ -557,6 +567,8 @@ export async function createManualRequest(
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
           return { status: "error", message: "Phone number is required." };
+        case "REQUEST_NOTES_TOO_LONG":
+          return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
         case "ATTESTATION_REQUIRED":
           return {
             status: "error",

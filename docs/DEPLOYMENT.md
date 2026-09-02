@@ -51,6 +51,7 @@ Settings → Environment Variables) for production.
 | `RESEND_API_KEY` | Sends the continuity-report email | **Yes** | Resend dashboard → API Keys | Vercel + `.env.local` (if testing email locally) |
 | `CONTINUITY_REPORT_EMAIL_FROM` | Sender address for the continuity report | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
 | `CONTINUITY_REPORT_EMAIL_TO` | Recipient list for the continuity report (comma-separated) | No | Government distribution list or shared operational inbox | Vercel + `.env.local` |
+| `DELIVERY_CONFIRMATION_EMAIL_FROM` | Optional sender for resident delivery-review messages; falls back to `CONTINUITY_REPORT_EMAIL_FROM` | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
 | `WHATSAPP_ACCESS_TOKEN` | Authorizes outbound Meta Graph API calls | **Yes** | Meta App Dashboard → WhatsApp → API Setup (or a System User token) | Vercel + `.env.local` |
 | `WHATSAPP_PHONE_NUMBER_ID` | Identifies which Cloud API number sends/receives messages | No | Meta App Dashboard → WhatsApp → API Setup | Vercel + `.env.local` |
 | `WHATSAPP_APP_SECRET` | Verifies inbound webhook signatures | **Yes** | Meta App Dashboard → App Settings → Basic | Vercel + `.env.local` |

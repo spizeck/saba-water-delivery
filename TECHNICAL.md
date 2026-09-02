@@ -1413,6 +1413,48 @@ otherwise ended up with duplicate application accounts.
 
 ---
 
+# Request Notes and Delivery Confirmation Email
+
+`waterRequests/{requestId}.requestNotes` is nullable request-level text,
+normalized by `normalizeRequestNotes()` and limited to 1,000 characters in the
+server domain layer. Creation from resident, dispatcher-registered, and
+dispatcher-unregistered workflows all passes through `createWaterRequest()`.
+Dispatcher edits pass through `editWaterRequest()` and are captured in the
+existing `request_edited` metadata. The field is not copied to `users/{uid}`.
+
+Notes flow through typed `WaterRequest` projections to the resident detail,
+driver offer/assignment, dispatcher detail, continuity report, and delivery-run
+PDF. PDF renderers truncate the displayed note to 240 characters so free text
+cannot consume the run sheet.
+
+Both `markWaterDelivered()` and `markWaterDeliveredByStaff()` call the shared
+`notifyDeliveryConfirmation()` only after the delivery transaction commits.
+The notifier creates the deterministic
+`deliveryConfirmationEmailClaims/{requestId}` document; Firestore create
+semantics permit only one sender to claim a request. Resend also receives
+`delivery-confirmation-{requestId}` as its idempotency key. The claim and an
+append-only request event record `pending`, `sent`, `failed`, or `skipped`, the
+recipient, provider ID, and a non-secret error.
+
+Only a request with `customerId` linked to a claimed profile and a current
+profile email is eligible. Unregistered and staff-created unclaimed records are
+recorded as skipped because they have no authenticated resident confirmation
+path. Sending occurs after the request is already delivered and all failures are
+contained, so notification cannot roll back delivery or retain a driver lock.
+
+The CTA uses `/resident/review/{requestId}`. That server route preserves an
+existing session and otherwise redirects through
+`/login?portal=resident&returnTo=...`. `safeResidentReturnTo()` allows only the
+local resident portal or a validated `/resident/review/{requestId}` path and no
+extra parameters. After Firebase establishes the normal session, the login form
+returns to that exact review route; authorization is unchanged.
+
+Configuration reuses `RESEND_API_KEY` and defaults the sender to
+`CONTINUITY_REPORT_EMAIL_FROM`; `DELIVERY_CONFIRMATION_EMAIL_FROM` optionally
+overrides it. `NEXT_PUBLIC_APP_URL` supplies the CTA origin.
+
+---
+
 # Delivery Confirmation Timeout
 
 See PRODUCT.md "Delivery Confirmation" for the product rules. This

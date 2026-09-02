@@ -664,6 +664,7 @@ The driver sees:
 - Quantity (e.g., "1 load (1,000 gallons)" or "2 loads (2,000 gallons)")
 - Request age
 - Delivery directions
+- Request Notes / Comments when provided
 
 The driver may:
 
@@ -889,6 +890,25 @@ track fill-station and meter usage.
 
 ---
 
+# Request Notes / Comments
+
+Each water request may include optional `requestNotes` for additional
+request-specific information or questions that do not fit structured fields.
+Notes are trimmed, limited to 1,000 characters, and stored only on the request;
+they never update the resident's saved profile. They do not replace village,
+delivery directions, quantity, priority, vulnerable circumstances, or a
+critical explanation.
+
+Residents and dispatchers see Notes / Comments during request review.
+Dispatchers can edit them through the existing Edit Request workflow, with the
+change included in the `request_edited` audit metadata. Notes appear
+subordinately in resident/request detail and driver offer/assigned-delivery
+views. Because they may contain access or timing information needed to complete
+a delivery, compact notes also appear in the continuity report and delivery-run
+sheet; print output truncates notes beyond 240 characters to preserve layout.
+
+---
+
 # Delivery Confirmation
 
 After delivering water, the driver marks the request as delivered. At
@@ -899,7 +919,19 @@ Request at a Time)" above. **Customer confirmation never affects driver
 availability.**
 
 The customer then has a configurable window — **24 hours** by default
-— to confirm receipt or report a problem.
+— to confirm receipt or report a problem. Residents should not be expected to
+repeatedly return to the portal merely to discover that a delivery is awaiting
+confirmation. When a registered resident with a claimed account and email has a
+request marked delivered, the system sends a **Please confirm your water
+delivery** email with a **Review Delivery** link. The authenticated link returns
+the resident directly to the active confirmation controls after login when
+necessary.
+
+The notification is also sent when authorized staff record delivery on a
+driver's behalf. A deterministic audit record and Resend idempotency key prevent
+the same delivery transition from generating duplicate messages. Notification
+failure is recorded but never reverses delivery, retains the driver's active
+assignment, or changes the confirmation deadline.
 
 Customer options:
 
@@ -935,7 +967,9 @@ of an unregistered customer, or an automatic timeout.
 ## Unregistered customers
 
 An unregistered customer has no authenticated resident portal to confirm
-or dispute through. Their delivery is never automatically marked
+or dispute through. An email address on an unregistered request is contact
+information, not proof of an authenticated account, so the system does not send
+that person an authenticated confirmation link. Their delivery is never automatically marked
 confirmed merely because they lack an account. Instead, once the driver
 marks it delivered, authorized dispatcher/admin staff may operationally
 confirm the delivery on the customer's behalf. This is recorded with a

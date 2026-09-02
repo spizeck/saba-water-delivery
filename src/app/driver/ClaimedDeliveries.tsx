@@ -125,6 +125,12 @@ function DeliveryCard({
           <dt className="font-medium text-slate-500">Directions:</dt>
           <dd className="text-slate-900">{request.deliveryDirections}</dd>
         </div>
+        {request.requestNotes && (
+          <div className="flex gap-2">
+            <dt className="font-medium text-slate-500">Notes:</dt>
+            <dd className="whitespace-pre-wrap text-slate-900">{request.requestNotes}</dd>
+          </div>
+        )}
         <div className="flex gap-2">
           <dt className="font-medium text-slate-500">Requested:</dt>
           <dd className="text-slate-900">{formatDate(request.requestedAt)}</dd>

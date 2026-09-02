@@ -3,6 +3,7 @@ import "server-only";
 import { type DocumentData, FieldValue, Timestamp } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
+import { notifyDeliveryConfirmation } from "@/lib/email/deliveryConfirmationNotification";
 import { processInBatches } from "@/lib/utils/processInBatches";
 
 import { appConfig } from "./config";
@@ -17,6 +18,7 @@ import { getFillStations } from "./fillStations";
 import { assertQuantityEditable } from "./loadCollection";
 import { isDriverImmediatelyAvailable, getMeterAssignments } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
+import { normalizeRequestNotes } from "./requestNotes";
 import {
   decidePreferredDriverHold,
   isPreferredDriverHoldExpired,
@@ -134,6 +136,8 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
       : gallonsForLoads(isValidRequestedLoads(data.loads) ? data.loads : 1),
     village: data.village,
     deliveryDirections: data.deliveryDirections,
+    requestNotes:
+      typeof data.requestNotes === "string" ? data.requestNotes.trim() || null : null,
     preferredDriverId: data.preferredDriverId ?? null,
     preferredDriverExpiresAt:
       data.preferredDriverExpiresAt?.toDate?.().toISOString() ?? null,
@@ -418,6 +422,7 @@ export interface CreateWaterRequestInput {
   loads: RequestedLoads;
   village: string;
   deliveryDirections: string;
+  requestNotes?: string | null;
   preferredDriverId?: string | null;
   /** Defaults to "resident" — the resident portal never needs to pass this. */
   source?: WaterRequestSource;
@@ -481,6 +486,7 @@ export async function createWaterRequest(
     loads,
     village,
     deliveryDirections,
+    requestNotes: requestNotesInput,
     preferredDriverId,
     source = "resident",
     createdBy = null,
@@ -494,6 +500,7 @@ export async function createWaterRequest(
     throw new Error("INVALID_LOADS");
   }
   const gallons = gallonsForLoads(loads);
+  const requestNotes = normalizeRequestNotes(requestNotesInput);
 
   if (!customerId && !customerInput?.displayName?.trim()) {
     throw new Error("CUSTOMER_NAME_REQUIRED");
@@ -615,6 +622,7 @@ export async function createWaterRequest(
       gallons,
       village,
       deliveryDirections,
+      requestNotes,
       preferredDriverId: preferredDriverId ?? null,
       preferredDriverExpiresAt: preferredDriverExpiresAt,
       assignedDriverId: null,
@@ -1073,6 +1081,8 @@ export interface EditWaterRequestInput {
   village?: string | null;
   /** New delivery directions. Null means "do not change". */
   deliveryDirections?: string | null;
+  /** New request notes. Undefined means "do not change"; null clears them. */
+  requestNotes?: string | null;
   customerDisplayName?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
@@ -1146,6 +1156,15 @@ export async function editWaterRequest(
       if (!trimmed) throw new Error("DIRECTIONS_REQUIRED");
       changes.deliveryDirections = { from: data.deliveryDirections, to: trimmed };
       updates.deliveryDirections = trimmed;
+    }
+
+    if (input.requestNotes !== undefined) {
+      const requestNotes = normalizeRequestNotes(input.requestNotes);
+      const currentNotes = (data.requestNotes as string | null | undefined) ?? null;
+      if (requestNotes !== currentNotes) {
+        changes.requestNotes = { from: currentNotes, to: requestNotes };
+        updates.requestNotes = requestNotes;
+      }
     }
 
     const existingCustomer = (data.customer ?? {}) as Record<string, unknown>;
@@ -1323,7 +1342,9 @@ export async function markWaterDelivered(
   });
 
   const updated = await requestRef.get();
-  return toWaterRequest(requestId, updated.data()!);
+  const request = toWaterRequest(requestId, updated.data()!);
+  await notifyDeliveryConfirmation(request);
+  return request;
 }
 
 // ---------------------------------------------------------------------------
@@ -1425,7 +1446,9 @@ export async function markWaterDeliveredByStaff(
   });
 
   const updated = await requestRef.get();
-  return toWaterRequest(requestId, updated.data()!);
+  const request = toWaterRequest(requestId, updated.data()!);
+  await notifyDeliveryConfirmation(request);
+  return request;
 }
 
 /**
