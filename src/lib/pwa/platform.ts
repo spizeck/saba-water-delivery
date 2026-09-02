@@ -52,7 +52,10 @@ export function toInstallPrompt(event: Event): InstallPrompt | null {
   }
 
   return {
-    prompt: () => show(),
+    // `show` is a native WebIDL operation that brand-checks its `this`, so it
+    // must be invoked with the original event as the receiver. Calling it
+    // detached (e.g. `show()`) throws "TypeError: Illegal invocation".
+    prompt: () => show.call(event),
     userChoice,
   };
 }
