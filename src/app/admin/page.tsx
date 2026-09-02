@@ -62,6 +62,12 @@ export default async function AdminPortalPage() {
                 >
                   Merge Accounts
                 </Link>
+                <Link
+                  href="/admin/qr-codes"
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  PWA QR Codes
+                </Link>
               </div>
             </div>
           </Card>
