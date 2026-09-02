@@ -4,6 +4,31 @@ This guide is for government administrators using the Admin portal
 (`/admin`). No coding knowledge is required. For technical detail
 behind any of this, see [`TECHNICAL.md`](../TECHNICAL.md).
 
+## Pilot URL and install QR codes
+
+The application is live as a pilot at
+`https://saba-water-delivery.vercel.app`. This address remains in use until the
+permanent government DNS name is configured.
+
+Open **Admin → PWA QR Codes** (`/admin/qr-codes`) to view and print two labeled
+codes:
+
+- **Driver App** opens `/driver/install` and installs an app that launches at
+  `/driver`.
+- **Resident App** opens `/resident/install` and installs an app that launches
+  at `/resident`.
+
+Before printing a large quantity, scan both codes with a phone and confirm they
+show the live pilot hostname, not a Vercel preview deployment. When the
+permanent DNS name is available, update `NEXT_PUBLIC_APP_URL`, redeploy, and
+reprint the codes; QR codes printed with the old hostname will continue to use
+the old address.
+
+Android/Chromium users receive an **Install App** button when their browser
+supports it. iPhone and iPad users must open the page in Safari and choose
+**Share → Add to Home Screen → Add**. Installing does not register a new account
+or bypass login, role, or Driver Registry requirements.
+
 ## Users
 
 `/admin` lists all user accounts with search/filter by name, email, or

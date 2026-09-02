@@ -40,6 +40,35 @@ The government water system, not an individual driver, owns the request.
 
 ---
 
+# Pilot and Installable Web App
+
+Saba Water Delivery is live as a production pilot at
+`https://saba-water-delivery.vercel.app`. The Vercel address remains the
+canonical public URL until the Public Entity Saba configures a permanent DNS
+name.
+
+The resident and driver experiences are provided by one installable Progressive
+Web App (PWA), not separate native iOS or Android applications:
+
+- Driver onboarding: `/driver/install`; installed launch destination: `/driver`.
+- Resident onboarding: `/resident/install`; installed launch destination:
+  `/resident`.
+- Android and Chromium browsers offer the standard browser installation prompt
+  when available.
+- iPhone and iPad users install from Safari with **Share → Add to Home Screen →
+  Add**. Other iOS browsers direct users to Safari for this standard flow.
+- An installed launch uses standalone display mode and preserves the existing
+  Firebase account/session behavior. Installation never creates another user
+  account and does not change role authorization.
+- Administrators can display and print permanent driver and resident install QR
+  codes from `/admin/qr-codes`.
+
+The PWA is intentionally not an offline transaction system. It clearly reports
+network loss and provides a static offline fallback, while authenticated portal
+pages, Firestore data, API responses, and writes remain network-driven.
+
+---
+
 # User Roles
 
 A single user may hold **multiple roles simultaneously**. For example, a user

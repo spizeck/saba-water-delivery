@@ -7,6 +7,12 @@ requests a standard 1,000-gallon load, an eligible driver claims and
 delivers it, and government staff retain full operational visibility
 over the process.
 
+The application is live as a pilot at
+[`https://saba-water-delivery.vercel.app`](https://saba-water-delivery.vercel.app).
+Residents and drivers can install the same Progressive Web App from
+`/resident/install` or `/driver/install`; a permanent government domain will
+replace the Vercel hostname after DNS is configured.
+
 ## Project Provenance and Handover
 
 Saba Water Delivery was developed on a volunteer basis for the Public

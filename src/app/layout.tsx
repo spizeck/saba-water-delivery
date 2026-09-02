@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 
 import { AuthProvider } from "@/lib/auth/AuthProvider";
+import { OfflineBanner } from "@/components/pwa/OfflineBanner";
+import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
 
 import "./globals.css";
 
@@ -60,7 +62,7 @@ export const metadata: Metadata = {
       },
     ],
   },
-  manifest: "/manifest.json?v=2",
+  manifest: "/manifest.json?v=3",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -76,14 +78,18 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#ffffff",
+  themeColor: "#0ea5e9",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} h-full`}>
       <body className="flex min-h-full flex-col bg-slate-50 font-sans text-slate-900 antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <OfflineBanner />
+          {children}
+        </AuthProvider>
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );
