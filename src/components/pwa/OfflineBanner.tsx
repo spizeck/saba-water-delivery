@@ -2,16 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-function getInitialOfflineState(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return !navigator.onLine;
-}
-
 export function OfflineBanner() {
-  const [isOffline, setIsOffline] = useState(getInitialOfflineState);
+  const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
     if (typeof navigator === "undefined") return;
+
+    queueMicrotask(() => setIsOffline(!navigator.onLine));
 
     const onOffline = () => setIsOffline(true);
     const onOnline = () => setIsOffline(false);

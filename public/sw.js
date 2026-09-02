@@ -33,7 +33,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys.map((key) => {
-            if (key !== STATIC_CACHE) {
+            if (key !== STATIC_CACHE && key.startsWith("saba-water-")) {
               return caches.delete(key);
             }
             return undefined;

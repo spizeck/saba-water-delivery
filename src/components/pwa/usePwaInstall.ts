@@ -57,27 +57,29 @@ export function usePwaInstall(_portal: PwaPortal): UsePwaInstallResult {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || state.kind === "standalone" || state.kind === "ios") {
+      return;
+    }
 
-    // Already resolved by initial state.
-    if (state.kind !== "loading") return;
-
-    const timer = window.setTimeout(() => {
-      setState({ kind: "unsupported" });
-    }, 3000);
+    const timer =
+      state.kind === "loading"
+        ? window.setTimeout(() => setState({ kind: "unsupported" }), 3000)
+        : null;
 
     const handler = (event: Event) => {
       event.preventDefault();
-      window.clearTimeout(timer);
+      if (timer !== null) window.clearTimeout(timer);
       const prompt = toInstallPrompt(event);
       if (prompt) {
         capturedInstallPrompt = event;
+        setDismissed(false);
         setState({ kind: "prompt", prompt });
       }
     };
 
     const installedHandler = () => {
-      window.clearTimeout(timer);
+      if (timer !== null) window.clearTimeout(timer);
+      capturedInstallPrompt = null;
       setState({ kind: "standalone" });
     };
 
@@ -85,7 +87,7 @@ export function usePwaInstall(_portal: PwaPortal): UsePwaInstallResult {
     window.addEventListener("appinstalled", installedHandler);
 
     return () => {
-      window.clearTimeout(timer);
+      if (timer !== null) window.clearTimeout(timer);
       window.removeEventListener("beforeinstallprompt", handler);
       window.removeEventListener("appinstalled", installedHandler);
     };
@@ -96,11 +98,15 @@ export function usePwaInstall(_portal: PwaPortal): UsePwaInstallResult {
     try {
       await state.prompt.prompt();
       const choice = await state.prompt.userChoice;
+      capturedInstallPrompt = null;
+      setState({ kind: "unsupported" });
       if (choice.outcome === "dismissed") {
         setDismissed(true);
       }
     } catch {
+      capturedInstallPrompt = null;
       setDismissed(true);
+      setState({ kind: "unsupported" });
     }
   }, [state]);
 
