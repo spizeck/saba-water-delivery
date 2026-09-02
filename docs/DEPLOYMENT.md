@@ -80,6 +80,14 @@ needs a not-yet-built index will fail until the build completes.
 
 ## Vercel
 
+The live production pilot uses
+`https://saba-water-delivery.vercel.app`. Set `NEXT_PUBLIC_APP_URL` to that
+exact origin in the Vercel production environment. The PWA install QR codes are
+generated from this value, so do not use a branch-specific preview deployment
+URL. When the permanent DNS name is configured, update the variable, redeploy,
+verify `/driver/install` and `/resident/install`, and reprint the admin QR
+codes.
+
 Deploying is a normal Vercel Git-integrated deployment — pushing to the
 production branch triggers a build (`npm run build`, which uses
 webpack; see [`TECHNICAL.md`](../TECHNICAL.md) for why Turbopack is not

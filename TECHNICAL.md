@@ -22,6 +22,41 @@ Firestore is the application's source of truth.
 
 Future integrations, including WhatsApp, must operate against the same domain logic and Firestore data.
 
+## Progressive Web App and pilot deployment
+
+The production pilot is deployed at
+`https://saba-water-delivery.vercel.app`. `NEXT_PUBLIC_APP_URL` must use this
+origin during the pilot and must be updated, followed by a production redeploy,
+when the permanent DNS name becomes available.
+
+The repository implements one PWA with portal-specific installation entry
+points and manifests:
+
+- `/driver/install` links `/driver-manifest.json`, whose `start_url` is
+  `/driver` and whose scope is `/driver`.
+- `/resident/install` links `/resident-manifest.json`, whose `start_url` is
+  `/resident` and whose scope is `/resident`.
+- The root `/manifest.json` covers the broader application. All manifests use
+  standalone display, the existing water-drop branding, 192px and 512px icons,
+  and maskable icon variants.
+- `beforeinstallprompt` is used only where Chromium exposes it. iOS installation
+  remains the Safari Share → Add to Home Screen flow. Standalone mode is
+  detected through the display-mode media query and the iOS
+  `navigator.standalone` property.
+
+`public/sw.js` uses a deliberately narrow cache strategy. It precaches only the
+static offline fallback, runtime-caches same-origin static assets, and handles
+page navigation network-first. It does not cache authenticated HTML, Firebase
+or Firestore data, API/auth responses, Server Action results, or writes. This
+prevents operational data from being replayed to another account on a shared
+device. Offline writes are not supported; the global connectivity banner and
+`public/offline.html` tell the user to reconnect.
+
+Firebase Authentication persistence and the HTTP-only server session cookie are
+unchanged. Installing the PWA creates no account. Deep links, login/logout, and
+multi-role switching continue through the same portal authorization boundaries
+used in the browser.
+
 ---
 
 # Authentication

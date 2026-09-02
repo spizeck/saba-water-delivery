@@ -38,9 +38,10 @@ export default async function QrCodesPage() {
 
             <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 print:hidden">
               <p>
-                Make sure <code className="font-mono">NEXT_PUBLIC_APP_URL</code> is set to the
-                public production origin before printing. If it is not set, the fallback URL{" "}
-                <code className="font-mono">{getPwaInstallUrl("driver")}</code> may not be reachable.
+                These codes currently use the live pilot origin configured by{" "}
+                <code className="font-mono">NEXT_PUBLIC_APP_URL</code>. Update that setting and
+                redeploy when the permanent DNS name is available. Current driver URL:{" "}
+                <code className="font-mono">{getPwaInstallUrl("driver")}</code>.
               </p>
             </div>
 

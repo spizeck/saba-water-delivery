@@ -7,6 +7,26 @@ A simple guide for water delivery drivers using the Driver portal.
 Sign in at `/login` with your account. If your account is linked to a
 Driver Registry entry, you will see the driver portal.
 
+## Adding the Driver App to your phone
+
+The application is live as a pilot at
+`https://saba-water-delivery.vercel.app`. Scan the official **Driver App** QR
+code or open `/driver/install` on that site.
+
+- On Android/Chrome, tap **Install Driver** when the button appears and approve
+  the browser prompt.
+- On iPhone or iPad, open the page in Safari, tap **Share**, choose **Add to Home
+  Screen**, and tap **Add**. If you opened the code in another iOS browser, open
+  it in Safari first.
+- If the app is already running from your home screen, it opens the Driver
+  portal instead of repeatedly showing installation instructions.
+
+The home-screen app uses your existing account. Installing it does not create a
+second account. Login, logout, and switching to another authorized role work the
+same as in the normal browser. The app needs a connection for current offers,
+delivery information, and updates; if cellular service drops, wait for the
+offline notice to clear before continuing.
+
 ## Going online
 
 Use the online/offline switch to let the system know you are ready to

@@ -21,6 +21,30 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+No production-facing changes are currently pending.
+
+## 2026-09-02 — Pilot launch
+
+Pilot availability and installable app:
+- Saba Water Delivery is live as a production pilot at
+  `https://saba-water-delivery.vercel.app` while a permanent government DNS
+  name is arranged.
+- Drivers and residents can install one Progressive Web App from dedicated
+  `/driver/install` and `/resident/install` onboarding pages. Installed apps
+  launch directly into the matching portal in standalone mode.
+- Android and Chromium browsers show an Install App button when supported.
+  iPhone and iPad users receive Safari instructions for Share → Add to Home
+  Screen → Add; non-Safari iOS users are directed to Safari.
+- Administrators can view and print deterministic, clearly labeled driver and
+  resident QR codes from `/admin/qr-codes`. During the pilot, the codes point
+  to the live `.vercel.app` production URL rather than preview deployments.
+- The existing water-drop branding is used for standard and maskable home-screen
+  icons. Installation preserves existing accounts, sessions, authorization,
+  logout, deep links, and multi-role switching.
+- A connectivity banner and offline fallback replace blank network-error pages.
+  Operational pages, authenticated responses, Firestore/API data, and writes
+  remain network-driven and are not stored for offline use.
+
 Documentation:
 - Reviewed project documentation to clarify volunteer development for the
   Public Entity Saba, government supervision and approval, intended

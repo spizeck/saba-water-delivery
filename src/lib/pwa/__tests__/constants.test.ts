@@ -9,11 +9,9 @@ describe("PWA constants", () => {
     vi.unstubAllEnvs();
   });
 
-  it("falls back to a placeholder origin when NEXT_PUBLIC_APP_URL is missing", () => {
+  it("falls back to the live pilot origin when NEXT_PUBLIC_APP_URL is missing", () => {
     vi.stubEnv("NEXT_PUBLIC_APP_URL", "");
-    const origin = getAppOrigin();
-    expect(origin).toMatch(/^https:\/\//);
-    expect(origin).toContain("sabawaterdelivery");
+    expect(getAppOrigin()).toBe("https://saba-water-delivery.vercel.app");
     vi.unstubAllEnvs();
   });
 
