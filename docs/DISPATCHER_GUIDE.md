@@ -19,6 +19,26 @@ new/open requests, preferred-driver holds, claimed requests, aging
 requests, deliveries awaiting resident confirmation, disputes, and any
 drivers currently marked ineligible.
 
+### Driver status and workload
+
+The driver list shows each driver's current operational state so you can
+see who is available and who is working at a glance:
+
+- **Offline** — the driver is not currently available to receive offers.
+- **Online · Available** — the driver is online and has no active physical work.
+- **Online · Delivering** — the driver has a single, individually claimed delivery.
+  Click **View Request** to open the request detail page.
+- **Online · Delivery Run** — the driver has an active Delivery Run. The remaining
+  deliveries and loads are shown (e.g. "3 deliveries remaining · 6 loads remaining").
+  Click **View Delivery Run** to open the run detail page.
+
+A request only counts as active physical work while it is `claimed`.
+Delivered requests awaiting resident confirmation, confirmed deliveries,
+disputes, and cancelled requests do **not** make a driver appear busy,
+so a driver who has physically completed a delivery is immediately shown
+as available for the next assignment. Stale `activeRequestId` references
+are ignored and reconciled automatically.
+
 ## Creating a manual request
 
 Use **Create Request** for a requestor who calls or visits the office.
