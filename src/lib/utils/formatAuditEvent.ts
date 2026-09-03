@@ -113,6 +113,8 @@ export const DRIVER_EVENT_LABELS: Record<string, string> = {
   driver_cooldown_started: "Decline cooldown started",
   driver_registry_created: "Added to registry",
   driver_registry_updated: "Details updated",
+  driver_archived: "Driver archived",
+  driver_restored_from_archive: "Driver restored from archive",
   driver_account_linked: "Account linked",
   driver_account_unlinked: "Account unlinked",
   meter_assignment_added: "Meter assignment added",

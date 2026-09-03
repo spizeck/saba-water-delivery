@@ -726,9 +726,38 @@ export interface DeleteDriverEligibility {
 
 const ACTIVE_REQUEST_STATUSES: WaterRequestStatus[] = ["claimed", "preferred_driver_hold"];
 
-async function getReferenceCounts(linkedUserId: string | null) {
+/**
+ * Resolve the Firebase UID to check for operational references.
+ *
+ * If the driver is currently linked, we use `linkedUserId` directly. If the
+ * driver has been unlinked, we search the registry event history for the
+ * most recent `driver_account_unlinked` event whose metadata recorded the
+ * previously linked UID. This ensures the eligibility summary accurately
+ * reflects historical references even after unlinking.
+ */
+async function resolveOperationalUid(
+  driverId: string,
+  linkedUserId: string | null,
+): Promise<string | null> {
+  if (linkedUserId) return linkedUserId;
   const db = getAdminDb();
-  if (!linkedUserId) {
+  const eventsSnap = await db
+    .collection(REGISTRY_COLLECTION)
+    .doc(driverId)
+    .collection("events")
+    .where("type", "==", "driver_account_unlinked")
+    .orderBy("createdAt", "desc")
+    .limit(1)
+    .get();
+  if (eventsSnap.empty) return null;
+  const uid = eventsSnap.docs[0].data().metadata?.userId;
+  return typeof uid === "string" ? uid : null;
+}
+
+async function getReferenceCounts(driverId: string, linkedUserId: string | null) {
+  const operationalUid = await resolveOperationalUid(driverId, linkedUserId);
+  const db = getAdminDb();
+  if (!operationalUid) {
     return {
       activeAssignments: 0,
       historicalAssignments: 0,
@@ -742,10 +771,10 @@ async function getReferenceCounts(linkedUserId: string | null) {
   const OFFERS_COLLECTION = "driverOffers";
 
   const [assignmentsSnap, preferredSnap, batchesSnap, offersSnap] = await Promise.all([
-    db.collection(REQUESTS_COLLECTION).where("assignedDriverId", "==", linkedUserId).get(),
-    db.collection(REQUESTS_COLLECTION).where("preferredDriverId", "==", linkedUserId).get(),
-    db.collection(BATCHES_COLLECTION).where("driverId", "==", linkedUserId).get(),
-    db.collection(OFFERS_COLLECTION).where("driverId", "==", linkedUserId).get(),
+    db.collection(REQUESTS_COLLECTION).where("assignedDriverId", "==", operationalUid).get(),
+    db.collection(REQUESTS_COLLECTION).where("preferredDriverId", "==", operationalUid).get(),
+    db.collection(BATCHES_COLLECTION).where("driverId", "==", operationalUid).get(),
+    db.collection(OFFERS_COLLECTION).where("driverId", "==", operationalUid).get(),
   ]);
 
   const activeStatuses = new Set(ACTIVE_REQUEST_STATUSES as string[]);
@@ -772,7 +801,7 @@ export async function getDeleteDriverEligibility(driverId: string): Promise<Dele
   const [metersSnap, eventsSnap, references] = await Promise.all([
     ref.collection("meters").get(),
     ref.collection("events").get(),
-    getReferenceCounts(linkedUserId),
+    getReferenceCounts(driverId, linkedUserId),
   ]);
 
   const activeRequestLock = Boolean(data.activeRequestId);
@@ -1204,105 +1233,11 @@ export async function removeMeterAssignment(input: RemoveMeterAssignmentInput): 
 }
 
 // ---------------------------------------------------------------------------
-// Initial roster seed (development / one-off tooling only)
+// Initial roster seed — REMOVED from production module
 // ---------------------------------------------------------------------------
 //
-// Not exposed in the production admin UI. Use this from a local script or
-// development command to idempotently create the known current roster.
-
-interface SeedDriverSpec {
-  displayName: string;
-  meters: { stationId: FillStationId; meterCode: string; meterNumber: number }[];
-}
-
-const INITIAL_ROSTER: SeedDriverSpec[] = [
-  {
-    displayName: "Government",
-    meters: [
-      { stationId: "bottom", meterCode: "BTM1", meterNumber: 1 },
-      { stationId: "wws", meterCode: "WWS1", meterNumber: 1 },
-      { stationId: "hells-gate", meterCode: "HG1", meterNumber: 1 },
-    ],
-  },
-  {
-    displayName: "Shanon Levenston",
-    meters: [
-      { stationId: "bottom", meterCode: "BTM2", meterNumber: 2 },
-      { stationId: "wws", meterCode: "WWS2", meterNumber: 2 },
-      { stationId: "hells-gate", meterCode: "HG2", meterNumber: 2 },
-    ],
-  },
-  {
-    displayName: "Earl Ballentyne",
-    meters: [
-      { stationId: "bottom", meterCode: "BTM3", meterNumber: 3 },
-      { stationId: "wws", meterCode: "WWS3", meterNumber: 3 },
-      { stationId: "hells-gate", meterCode: "HG3", meterNumber: 3 },
-    ],
-  },
-  {
-    displayName: "Michael Hodge",
-    meters: [
-      { stationId: "bottom", meterCode: "BTM4", meterNumber: 4 },
-      { stationId: "wws", meterCode: "WWS4", meterNumber: 4 },
-      { stationId: "hells-gate", meterCode: "HG4", meterNumber: 4 },
-    ],
-  },
-  {
-    displayName: "Andy Lavia",
-    meters: [
-      { stationId: "bottom", meterCode: "BTM5", meterNumber: 5 },
-      { stationId: "wws", meterCode: "WWS5", meterNumber: 5 },
-      { stationId: "hells-gate", meterCode: "HG5", meterNumber: 5 },
-    ],
-  },
-  {
-    displayName: "Eagen Aquasab",
-    meters: [
-      { stationId: "bottom", meterCode: "BTM6", meterNumber: 6 },
-      { stationId: "wws", meterCode: "WWS6", meterNumber: 6 },
-      { stationId: "hells-gate", meterCode: "HG6", meterNumber: 6 },
-    ],
-  },
-];
-
-export interface SeedInitialRosterResult {
-  created: number;
-  skipped: number;
-}
-
-/**
- * Idempotently creates the known current driver roster (see PRODUCT.md
- * "Current Driver Roster") with their fill-station meter assignments, if
- * a driver with that exact display name does not already exist in the
- * registry. Must be explicitly triggered by an admin — never run
- * automatically on deploy.
- */
-export async function seedInitialRoster(actorId: string): Promise<SeedInitialRosterResult> {
-  const existing = await getAllDriverRegistryEntries();
-  const existingNames = new Set(existing.map((d) => d.displayName.trim().toLowerCase()));
-
-  let created = 0;
-  let skipped = 0;
-
-  for (const spec of INITIAL_ROSTER) {
-    if (existingNames.has(spec.displayName.trim().toLowerCase())) {
-      skipped++;
-      continue;
-    }
-
-    const driver = await createDriver({ displayName: spec.displayName, phone: null, actorId });
-    for (const meter of spec.meters) {
-      await setMeterAssignment({
-        driverId: driver.id,
-        stationId: meter.stationId,
-        meterCode: meter.meterCode,
-        meterNumber: meter.meterNumber,
-        actorId,
-      });
-    }
-    created++;
-  }
-
-  return { created, skipped };
-}
+// The seed helper (`seedInitialRoster`) was used during initial deployment
+// to bootstrap the known driver roster. It has been moved to a standalone
+// script at `scripts/seed-initial-roster.mjs` for local/development use
+// only. It is intentionally NOT importable from the production application.
+// See docs/ADMIN_GUIDE.md for context.

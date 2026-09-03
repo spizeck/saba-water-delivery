@@ -202,7 +202,7 @@ If any reference exists, deletion is blocked and the UI explains which records r
 
 ### Seed tool removal
 
-The "Seed initial roster" production UI has been removed. The underlying `seedInitialRoster` domain helper remains available for development or one-off migration scripts but is no longer invoked from a server action or rendered to admins.
+The "Seed initial roster" production UI (`RegistryTools.tsx`) and its server action (`seedInitialRosterAction`) have been removed. The `seedInitialRoster` domain helper and `INITIAL_ROSTER` data have been moved out of the production module (`driverRegistry.ts`) to a standalone script at `scripts/seed-initial-roster.mjs` for local/development use only. The function is no longer exported from the production application.
 
 ## Data and secrets statement
 

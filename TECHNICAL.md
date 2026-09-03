@@ -187,6 +187,13 @@ Role changes are recorded here for audit. These are admin-only operations.
   // transactions that assign or complete a delivery.
   activeRequestId: string | null
 
+  // Lifecycle: archive state (null when active, populated when archived).
+  archivedAt: Timestamp | null
+  archivedBy: string | null
+  archiveReason: string | null
+  archivedPreviousEligibilityStatus: "eligible" | "ineligible" | null
+  archivedPreviousIneligibilityReason: string | null
+
   createdAt: Timestamp
   createdBy: string
   updatedAt: Timestamp
@@ -210,6 +217,8 @@ Same shape as `waterRequests/{id}/events` (`type`, `actorId`,
 ```text
 driver_registry_created
 driver_registry_updated
+driver_archived
+driver_restored_from_archive
 driver_account_linked
 driver_account_unlinked
 meter_assignment_added
@@ -1760,14 +1769,23 @@ unlinkDriverAccount()
 unlinkDriverAccountByUserId()
 restrictDriver()
 restoreDriver()
+archiveDriver()
+restoreArchivedDriver()
+getDeleteDriverEligibility()
+deleteDriver()
+getActiveDriverRegistryEntries()
+getArchivedDriverRegistryEntries()
 setAvailabilityByLinkedUser()
 startCooldownByLinkedUser()
 getEligibleDriverOptions()
 isDriverImmediatelyAvailable()
 setMeterAssignment()
 removeMeterAssignment()
-seedInitialRoster()
 ```
+
+The initial roster seed helper (`seedInitialRoster`) was removed from the
+production module and moved to `scripts/seed-initial-roster.mjs` for
+local/development use only.
 
 Future WhatsApp actions should call the same domain operations.
 

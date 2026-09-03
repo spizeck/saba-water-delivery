@@ -60,7 +60,9 @@ uid of the linked account, or `null`), `eligibilityStatus`
 (`eligible`/`ineligible`), `availabilityStatus` (`online`/`offline`),
 `cooldownUntil`, `activeRequestId` (the one claimed request this
 driver currently holds, or `null` — see "The `activeRequestId` lock"
-in `TECHNICAL.md`), audit fields.
+in `TECHNICAL.md`), lifecycle fields (`archivedAt`, `archivedBy`,
+`archiveReason`, `archivedPreviousEligibilityStatus`,
+`archivedPreviousIneligibilityReason`), audit fields.
 
 **Reads:** dispatcher, admin, viewer. **Writes:** only through
 `src/lib/domain/driverRegistry.ts` (Admin SDK) — never a direct client
@@ -73,11 +75,20 @@ entry (a government concept) and the Firebase uid used throughout
 separate and why operational code always looks up a registry entry by
 `linkedUserId`, never by the registry document ID.
 
+**Lifecycle:** a driver can be **archived** (admin-only, requires
+reason) which sets them ineligible/offline and removes them from active
+views while preserving all history. Archived drivers can be **restored**
+(admin-only). A driver with no linked account, no request/offer/batch
+references, no meters, and no audit events can be **permanently
+deleted** (admin-only, typed confirmation required). See `PRODUCT.md`
+"Lifecycle" for the full policy. Registry deletion never touches
+Firebase Auth accounts.
+
 ### `driverRegistry/{driverId}/events/{eventId}`
 
 Audit trail: online/offline, access restricted/restored, cooldown
-started, registry created/updated, account linked/unlinked, meter
-assignment changes.
+started, registry created/updated, driver archived, driver restored
+from archive, account linked/unlinked, meter assignment changes.
 
 ### `driverRegistry/{driverId}/meters/{stationId}`
 

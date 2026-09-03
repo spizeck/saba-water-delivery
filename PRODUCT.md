@@ -160,6 +160,51 @@ A driver can receive a new delivery offer only when all of: registry
 entry exists, account is linked, the account has the `driver` role, they
 are eligible, they are online, and they are not in cooldown.
 
+### Lifecycle: archive, restore, and permanent delete
+
+In addition to the normal restriction/restoration flow (temporary
+eligibility changes), the registry supports distinct lifecycle
+operations:
+
+- **Archive** (admin-only) — permanently removes a driver from active
+  operational views, sets them ineligible/offline, preserves all
+  historical records (requests, audit trail, meter history). Requires
+  a written reason. Use for retired, terminated, or duplicate/obsolete
+  records that should no longer participate in dispatch.
+
+- **Restore from archive** (admin-only) — reverses an archive decision.
+  Returns the driver to their pre-archive eligibility status while
+  keeping them offline. The driver reappears in active operational views.
+
+- **Permanent delete** (admin-only, strict) — irreversibly removes the
+  registry document. Only permitted when the record has no linked
+  account, no active request lock, no historical request references, no
+  preferred-driver references, no batch memberships, no offer
+  references, no meter assignments, and no audit events. Intended only
+  for obvious test/unused records. Requires typed name confirmation.
+  Does not touch Firebase Auth accounts.
+
+Archived drivers remain visible in a dedicated "Archived" section on the
+admin registry page and are excluded from all dispatch, offer, and
+eligibility queries.
+
+**Registry deletion and Firebase Auth account deletion are separate
+concepts.** Deleting a registry record does not delete any user account;
+Auth cleanup must be handled separately via Firebase Console.
+
+### Known duplicate records (Earl)
+
+Two similarly-named records exist in production:
+
+- "Earl Ballentyne" (unlinked, 5 events, 3 meters, no request history)
+- "Earl Ballantyne" (linked, 15+ assignments, preferred references, active)
+
+The canonical linked record must not be modified. The unlinked record has
+audit events and meter assignments, so it is not eligible for permanent
+deletion under the current safety policy. It should be reviewed and
+archived by an admin with an appropriate reason. No automated merge or
+cleanup was performed.
+
 ## Fill Stations and Meters
 
 The current fill stations are:

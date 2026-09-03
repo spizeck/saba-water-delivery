@@ -181,6 +181,57 @@ assignment does not alter past records.
 - Government has marked them eligible.
 - They are online.
 - They are not in a decline cooldown.
+- They are **not archived**.
+
+### Archiving a driver
+
+Use **Archive Driver** on a driver's detail page to permanently remove
+them from active operational views. Archiving:
+
+- Requires a written reason (e.g. "Retired", "Duplicate record").
+- Sets the driver ineligible and offline.
+- Preserves the registry record, all audit events, historical request
+  references, and meter assignment history.
+- Cannot be performed while the driver has an active request lock or
+  claimed deliveries — resolve those first.
+
+Archived drivers appear in a separate "Archived Drivers" section on the
+registry page.
+
+### Restoring an archived driver
+
+Use **Restore from Archive** on an archived driver's detail page to
+reverse an archive decision. The driver returns to their pre-archive
+eligibility status but remains offline. They will reappear in active
+operational views once restored.
+
+### Permanently deleting a test/unused record
+
+**Delete Driver Record** is available only when the server-side
+eligibility check confirms the record is completely unreferenced:
+
+- No linked application account.
+- No active request lock.
+- No historical water request assignments or preferred-driver references.
+- No dispatch batch or offer references.
+- No meter assignments.
+- No audit events.
+
+If any of these exist, the delete option is not available and the admin
+is told to archive instead. Permanent deletion requires typing the
+driver's full name as confirmation and is irreversible.
+
+**Important:** deleting a registry record does not delete any Firebase
+Auth user account. Auth account cleanup must be done separately through
+Firebase Console.
+
+### Known duplicate: Earl records
+
+Two similarly-named records exist in production ("Earl Ballentyne" and
+"Earl Ballantyne"). The linked record with operational history must not
+be modified. The unlinked record should be reviewed and archived with an
+appropriate reason. See `PRODUCT.md` "Known duplicate records" for
+details.
 
 ## Dispatch settings
 
