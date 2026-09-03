@@ -33,7 +33,6 @@ export type DriverOperationalState =
 export interface DriverWorkload {
   openRequests: number;
   openLoads: number;
-  requests: DriverRequestSummary[];
   individualRequests: DriverRequestSummary[];
   runs: DriverRunSummary[];
   state: DriverOperationalState;
@@ -56,11 +55,11 @@ function toRequestSummary(
 }
 
 /**
- * Derive an operational workload map for each active driver. Reuses the
- * canonical active-work rule: only requests in `claimed` status are active
- * physical driver work. Delivered, confirmed, disputed, and cancelled
- * requests are ignored so awaiting resident confirmation does not make a
- * driver appear busy.
+ * Derive an operational workload map for each supplied driver registry entry.
+ * Reuses the canonical active-work rule: only requests in `claimed` status
+ * are active physical driver work. Delivered, confirmed, disputed, and
+ * cancelled requests are ignored so awaiting resident confirmation does not
+ * make a driver appear busy.
  *
  * Delivery Run remaining work is derived from the current `dispatchBatchId`
  * membership already loaded in `allRequests`, with no extra Firestore calls.
@@ -140,7 +139,6 @@ export function deriveDriverWorkloads(
     workloads[d.id] = {
       openRequests: requestSummaries.length,
       openLoads: requestSummaries.reduce((sum, r) => sum + r.loads, 0),
-      requests: requestSummaries,
       individualRequests,
       runs,
       state,
