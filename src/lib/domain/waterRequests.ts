@@ -1360,7 +1360,13 @@ export async function markWaterDelivered(
 
   const updated = await requestRef.get();
   const request = toWaterRequest(requestId, updated.data()!);
-  await notifyDeliveryConfirmation(request);
+  // Notification failures must not roll back the committed delivery or
+  // prevent the driver action from returning success.
+  try {
+    await notifyDeliveryConfirmation(request);
+  } catch (notificationError) {
+    console.error("[markWaterDelivered] delivery confirmation notification failed", notificationError);
+  }
   return request;
 }
 
@@ -1464,7 +1470,13 @@ export async function markWaterDeliveredByStaff(
 
   const updated = await requestRef.get();
   const request = toWaterRequest(requestId, updated.data()!);
-  await notifyDeliveryConfirmation(request);
+  // Notification failures must not roll back the committed delivery or
+  // prevent the staff action from returning success.
+  try {
+    await notifyDeliveryConfirmation(request);
+  } catch (notificationError) {
+    console.error("[markWaterDeliveredByStaff] delivery confirmation notification failed", notificationError);
+  }
   return request;
 }
 

@@ -29,10 +29,13 @@ export default async function ResidentDeliveryReviewPage({
   if (!hasRole(session.profile.roles, "resident")) redirect("/access-denied");
 
   let request = await getWaterRequestById(requestId);
-  if (request?.status === "delivered") {
+  const canReview = request?.customerId === session.uid;
+  // Only run the auto-confirm timeout for the resident's own request;
+  // otherwise any resident with a guessed request ID could confirm
+  // another resident's delivered water.
+  if (canReview && request?.status === "delivered") {
     request = await checkDeliveryConfirmationTimeout(requestId);
   }
-  const canReview = request?.customerId === session.uid;
 
   return (
     <>
