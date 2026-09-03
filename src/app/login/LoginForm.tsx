@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { establishSession, type EstablishSessionResult } from "@/lib/auth/client-session";
+import { safeResidentReturnTo } from "@/lib/auth/returnTo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { getFirebaseAuth } from "@/lib/firebase/client";
@@ -26,9 +27,10 @@ type SessionStep =
 
 interface LoginFormProps {
   intendedPortal: string | null;
+  returnTo: string | null;
 }
 
-export function LoginForm({ intendedPortal }: LoginFormProps) {
+export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
   const router = useRouter();
   const { user, loading, isConfigured } = useAuth();
   const [mode, setMode] = useState<Mode>("sign-in");
@@ -77,9 +79,11 @@ export function LoginForm({ intendedPortal }: LoginFormProps) {
   // extra delay is added.
   useEffect(() => {
     if (sessionStep === "ready" && sessionResult) {
-      router.replace(`/${sessionResult.portal}`);
+      const safeReturnTo =
+        sessionResult.portal === "resident" ? safeResidentReturnTo(returnTo) : null;
+      router.replace(safeReturnTo ?? `/${sessionResult.portal}`);
     }
-  }, [sessionStep, sessionResult, router]);
+  }, [sessionStep, sessionResult, router, returnTo]);
 
   if (!isConfigured) {
     return (

@@ -14,6 +14,7 @@ import {
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import { findIdentityMatches, findStrongEmailMatch } from "@/lib/domain/identityMatching";
 import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
+import { REQUEST_NOTES_MAX_LENGTH } from "@/lib/domain/requestNotes";
 import { SABA_VILLAGES, isValidSabaVillage } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
 import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
@@ -56,6 +57,7 @@ export function CreateRequestForm({
   const [loads, setLoads] = useState<RequestedLoads>(1);
   const [village, setVillage] = useState("");
   const [deliveryDirections, setDeliveryDirections] = useState("");
+  const [requestNotes, setRequestNotes] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -665,6 +667,20 @@ export function CreateRequestForm({
         </div>
 
         <label className="mt-6 flex flex-col gap-1 text-sm font-medium text-slate-700">
+          Notes / Comments (optional)
+          <textarea
+            value={requestNotes}
+            onChange={(e) => setRequestNotes(e.target.value)}
+            maxLength={REQUEST_NOTES_MAX_LENGTH}
+            rows={3}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+          />
+          <span className="text-xs font-normal text-slate-500">
+            Add any other information or questions about this water request.
+          </span>
+        </label>
+
+        <label className="mt-6 flex flex-col gap-1 text-sm font-medium text-slate-700">
           Preferred driver
           <select
             value={preferredDriverId}
@@ -750,6 +766,13 @@ export function CreateRequestForm({
           <h3 className="text-sm font-semibold text-slate-900">Water requested</h3>
           <p className="mt-1 text-sm text-slate-900">{formatWaterQuantity(loads)}</p>
         </section>
+
+        {requestNotes.trim() && (
+          <section className="rounded-lg border border-slate-200 p-3">
+            <h3 className="text-sm font-semibold text-slate-900">Notes / Comments</h3>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{requestNotes.trim()}</p>
+          </section>
+        )}
 
         <section className="rounded-lg border border-slate-200 p-3">
           <h3 className="text-sm font-semibold text-slate-900">Preferred driver</h3>
@@ -838,6 +861,7 @@ export function CreateRequestForm({
         <input type="hidden" name="loads" value={loads} />
         <input type="hidden" name="village" value={village} />
         <input type="hidden" name="deliveryDirections" value={deliveryDirections} />
+        <input type="hidden" name="requestNotes" value={requestNotes} />
         <input type="hidden" name="preferredDriverId" value={preferredDriverId} />
         {customerType === "existing" ? (
           <input type="hidden" name="residentUid" value={selectedResident?.uid ?? ""} />

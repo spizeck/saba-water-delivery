@@ -73,6 +73,12 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
           <dd className="text-slate-900">{request.village}</dd>
           <dd className="text-slate-600">{request.deliveryDirections}</dd>
         </div>
+        {request.requestNotes && (
+          <div>
+            <dt className="font-medium text-slate-500">Notes / Comments</dt>
+            <dd className="whitespace-pre-wrap text-slate-900">{request.requestNotes}</dd>
+          </div>
+        )}
         {preferredDriverName && (
           <div>
             <dt className="font-medium text-slate-500">Preferred driver</dt>
@@ -87,7 +93,11 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
         )}
       </dl>
 
-      {showConfirmation && <DeliveryConfirmation request={request} />}
+      {showConfirmation && (
+        <div id="delivery-confirmation">
+          <DeliveryConfirmation request={request} />
+        </div>
+      )}
     </Card>
   );
 }

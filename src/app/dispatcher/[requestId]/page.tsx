@@ -257,6 +257,12 @@ export default async function RequestDetailPage({ params }: PageProps) {
                 <dt className="font-medium text-slate-500">Delivery directions</dt>
                 <dd className="text-slate-900">{data.deliveryDirections}</dd>
               </div>
+              <div className="sm:col-span-2">
+                <dt className="font-medium text-slate-500">Notes / Comments</dt>
+                <dd className="whitespace-pre-wrap text-slate-900">
+                  {data.requestNotes?.trim() || "None"}
+                </dd>
+              </div>
               <div>
                 <dt className="font-medium text-slate-500">Requested</dt>
                 <dd className="text-slate-900">
@@ -415,6 +421,7 @@ export default async function RequestDetailPage({ params }: PageProps) {
             currentLoads={(data.loads as RequestedLoads) ?? 1}
             currentVillage={(data.village as string) ?? ""}
             currentDeliveryDirections={(data.deliveryDirections as string) ?? ""}
+            currentRequestNotes={(data.requestNotes as string) ?? ""}
             currentCustomerName={customer?.displayName ?? ""}
             currentCustomerPhone={customer?.phone ?? ""}
             currentCustomerEmail={customer?.email ?? ""}

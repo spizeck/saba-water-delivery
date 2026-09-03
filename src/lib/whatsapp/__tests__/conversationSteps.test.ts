@@ -40,6 +40,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     gallons: 1000,
     village: "Windwardside",
     deliveryDirections: "Blue gate",
+    requestNotes: null,
     preferredDriverId: null,
     preferredDriverExpiresAt: null,
     assignedDriverId: null,

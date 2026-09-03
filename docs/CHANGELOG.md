@@ -21,7 +21,29 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
-No production-facing changes are currently pending.
+Delivery confirmation email:
+- Registered residents with claimed accounts and email addresses are notified
+  when a driver or authorized staff member records delivery. The government-
+  service email summarizes the request, explains the existing 24-hour response
+  window and automatic confirmation, and links through authenticated login
+  directly to the resident confirmation controls.
+- Deterministic Firestore audit claiming plus a Resend idempotency key prevents
+  duplicate messages for the same delivery transition. Send failures are
+  recorded without reversing delivery, retaining the driver assignment, or
+  changing the confirmation deadline.
+- Unregistered and staff-created unclaimed requestors are not sent authenticated
+  confirmation links merely because contact information contains an email.
+
+Request Notes / Comments:
+- Residents and dispatchers can add optional request-specific Notes / Comments
+  and review them before submission. Notes are trimmed, limited to 1,000
+  characters, stored only on the request, and never replace structured fields
+  or update a resident profile.
+- Notes appear in resident and dispatcher detail, driver offer/assigned-delivery
+  views, and the existing dispatcher Edit Request workflow. Edits are included
+  in the `request_edited` audit metadata.
+- Operational notes are included compactly in continuity and delivery-run PDFs;
+  long print output is truncated to preserve usable layouts.
 
 ## 2026-09-02 — Pilot launch
 

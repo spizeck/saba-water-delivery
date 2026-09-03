@@ -9,6 +9,7 @@ import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 
 import { SABA_VILLAGES } from "@/lib/domain/villages";
 import type { RequestedLoads } from "@/lib/domain/quantity";
+import { REQUEST_NOTES_MAX_LENGTH } from "@/lib/domain/requestNotes";
 
 import {
   assignRequest,
@@ -38,6 +39,7 @@ interface Props {
   currentLoads: RequestedLoads;
   currentVillage: string;
   currentDeliveryDirections: string;
+  currentRequestNotes: string;
   currentCustomerName: string;
   currentCustomerPhone: string;
   currentCustomerEmail: string;
@@ -55,6 +57,7 @@ export function RequestActions({
   currentLoads,
   currentVillage,
   currentDeliveryDirections,
+  currentRequestNotes,
   currentCustomerName,
   currentCustomerPhone,
   currentCustomerEmail,
@@ -202,6 +205,7 @@ export function RequestActions({
           currentLoads={currentLoads}
           currentVillage={currentVillage}
           currentDeliveryDirections={currentDeliveryDirections}
+          currentRequestNotes={currentRequestNotes}
           currentCustomerName={currentCustomerName}
           currentCustomerPhone={currentCustomerPhone}
           currentCustomerEmail={currentCustomerEmail}
@@ -257,6 +261,7 @@ function EditRequestPanel({
   currentLoads,
   currentVillage,
   currentDeliveryDirections,
+  currentRequestNotes,
   currentCustomerName,
   currentCustomerPhone,
   currentCustomerEmail,
@@ -268,6 +273,7 @@ function EditRequestPanel({
   currentLoads: RequestedLoads;
   currentVillage: string;
   currentDeliveryDirections: string;
+  currentRequestNotes: string;
   currentCustomerName: string;
   currentCustomerPhone: string;
   currentCustomerEmail: string;
@@ -339,6 +345,17 @@ function EditRequestPanel({
           name="deliveryDirections"
           defaultValue={currentDeliveryDirections}
           rows={2}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-slate-700">Notes / Comments (optional)</span>
+        <textarea
+          name="requestNotes"
+          defaultValue={currentRequestNotes}
+          maxLength={REQUEST_NOTES_MAX_LENGTH}
+          rows={3}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-600 focus:outline-none"
         />
       </label>

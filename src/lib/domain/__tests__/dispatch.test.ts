@@ -27,6 +27,7 @@ function makeRequest(
     gallons: 1000 as StandardLoadGallons,
     village: "Test Village",
     deliveryDirections: "Test directions",
+    requestNotes: null,
     preferredDriverId: null,
     preferredDriverExpiresAt: null,
     assignedDriverId: null,

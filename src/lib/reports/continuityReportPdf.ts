@@ -37,6 +37,10 @@ function formatAge(ageMinutes: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+function compactNotes(notes: string): string {
+  return notes.length > 240 ? `${notes.slice(0, 237)}...` : notes;
+}
+
 function drawSectionHeading(doc: PDFKit.PDFDocument, text: string) {
   if (doc.y > doc.page.height - doc.page.margins.bottom - 80) {
     doc.addPage();
@@ -72,6 +76,7 @@ function drawUnassignedRow(doc: PDFKit.PDFDocument, row: UnassignedReportRow) {
         .join("   |   "),
     );
   doc.text(`Directions: ${row.deliveryDirections}`);
+  if (row.requestNotes) doc.text(`Notes: ${compactNotes(row.requestNotes)}`);
   doc.text(
     [
       `Requested: ${formatSabaDateTime(row.requestedAt)}`,
@@ -107,6 +112,7 @@ function drawAssignedRow(doc: PDFKit.PDFDocument, row: AssignedReportRow) {
         .join("   |   "),
     );
   doc.text(`Directions: ${row.deliveryDirections}`);
+  if (row.requestNotes) doc.text(`Notes: ${compactNotes(row.requestNotes)}`);
   doc.text(
     [
       `Driver: ${row.assignedDriverName ?? "Unknown driver"}${row.isBatchAssigned ? " (Delivery Run)" : ""}`,

@@ -11,18 +11,18 @@ export const metadata: Metadata = {
 };
 
 interface LoginPageProps {
-  searchParams: Promise<{ portal?: string }>;
+  searchParams: Promise<{ portal?: string; returnTo?: string }>;
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { portal } = await searchParams;
+  const { portal, returnTo } = await searchParams;
 
   return (
     <>
       <SiteHeader />
       <main className="flex flex-1 items-center py-12">
         <Container className="max-w-md">
-          <LoginForm intendedPortal={portal ?? null} />
+          <LoginForm intendedPortal={portal ?? null} returnTo={returnTo ?? null} />
         </Container>
       </main>
       <Footer />

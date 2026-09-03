@@ -245,6 +245,7 @@ export interface WaterRequest {
 
   village: string;
   deliveryDirections: string;
+  requestNotes: string | null;
 
   preferredDriverId: string | null;
   preferredDriverExpiresAt: string | null;
@@ -386,6 +387,7 @@ export type WaterRequestEventType =
   | "delivery_confirmed_by_dispatcher"
   | "customer_disputed"
   | "delivery_auto_confirmed"
+  | "delivery_confirmation_email"
   | "dispute_resolved_completed"
   | "dispute_resolved_reopened"
   | "request_cancelled"

@@ -85,6 +85,7 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
   delivery_confirmed_by_dispatcher: "Delivery confirmed by staff",
   customer_disputed: "Customer disputed",
   delivery_auto_confirmed: "Auto-confirmed (no response within window)",
+  delivery_confirmation_email: "Delivery confirmation email",
   dispute_resolved_completed: "Dispute resolved (completed)",
   dispute_resolved_reopened: "Dispute resolved (reopened)",
   request_cancelled: "Request cancelled",
@@ -299,6 +300,12 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
   customer_confirmed: () => "",
   delivery_confirmed_by_dispatcher: () => "",
   delivery_auto_confirmed: () => "",
+  delivery_confirmation_email: (m) => {
+    if (m.status === "sent") return `Sent to ${m.recipient ?? "resident"}`;
+    if (m.status === "failed") return `Failed: ${m.error ?? "unknown error"}`;
+    if (m.status === "skipped") return `Not sent: ${m.error ?? "no eligible recipient"}`;
+    return "Pending";
+  },
 
   customer_disputed: (m) => {
     if (m.reason) return `Reason: ${m.reason}`;
@@ -423,6 +430,7 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
     const fieldLabels: Record<string, string> = {
       village: "Village",
       deliveryDirections: "Directions",
+      requestNotes: "Notes / Comments",
       loads: "Loads",
       gallons: "Gallons",
       customerDisplayName: "Customer name",

@@ -110,6 +110,9 @@ where it originated. This is the operational core of the system.
   `source === "dispatcher"`.
 - `loads` — `1` or `2`; the number of 1,000-gallon loads requested in a
   single request.
+- `requestNotes` — optional request-specific Notes / Comments, trimmed and
+  limited to 1,000 characters; `null` when absent. It is never copied to the
+  resident profile.
 - `gallons` — derived server-side as `loads * 1000`, so `1000` or
   `2000`. Clients never send an authoritative gallon value.
 - `loadCollections` — `WaterLoadCollection[] | null`. One record per
@@ -198,6 +201,11 @@ or staff confirmation, dispute, cancellation, priority changes, and
 related system events. Every meaningful state transition is recorded
 here with actor, role, and timestamp.
 
+A `delivery_confirmation_email` event records whether the post-delivery
+notification was sent, failed, or skipped. The separate deterministic
+`deliveryConfirmationEmailClaims/{requestId}` document provides the atomic
+local duplicate-send claim.
+
 New event type: `customer_history_linked` — admin-initiated relink of an
 unregistered request to a registered user. Records previous/new
 `customerId`, the preserved customer snapshot, the acting admin, the
@@ -216,6 +224,14 @@ delivery, delivery issue, access issue, other), but no domain logic,
 server action, or UI implements uploading, listing, or viewing them.
 Treat this as reserved schema for a planned feature (see `PRODUCT.md`
 "Proof of Delivery"), not as working functionality.
+
+## `deliveryConfirmationEmailClaims/{requestId}`
+
+**Purpose:** server-only idempotency claim for the one delivery-confirmation
+email associated with a request. The deterministic document ID is the request
+ID. Fields record `status` (`pending`, `sent`, `failed`, or `skipped`), provider
+ID, recipient, non-secret error, and timestamps. Clients have no access; only
+Admin SDK notification code reads or writes this collection.
 
 ## `driverOffers/{offerId}`
 

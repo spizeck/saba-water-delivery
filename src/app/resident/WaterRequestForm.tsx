@@ -12,6 +12,7 @@ import {
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
+import { REQUEST_NOTES_MAX_LENGTH } from "@/lib/domain/requestNotes";
 
 import { requestWater, type RequestWaterFormState } from "./actions";
 
@@ -44,6 +45,7 @@ export function WaterRequestForm({
   const [confirming, setConfirming] = useState(false);
   const [loads, setLoads] = useState<RequestedLoads>(1);
   const [preferredDriverId, setPreferredDriverId] = useState("none");
+  const [requestNotes, setRequestNotes] = useState("");
   const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
   const [attestationChecked, setAttestationChecked] = useState(false);
   const [state, formAction, pending] = useActionState(requestWater, initialState);
@@ -94,6 +96,20 @@ export function WaterRequestForm({
             </label>
           </fieldset>
 
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            Notes / Comments (optional)
+            <textarea
+              value={requestNotes}
+              onChange={(e) => setRequestNotes(e.target.value)}
+              maxLength={REQUEST_NOTES_MAX_LENGTH}
+              rows={3}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+            />
+            <span className="text-xs font-normal text-slate-500">
+              Add any other information or questions about this water request.
+            </span>
+          </label>
+
           {eligibleDrivers.length > 0 && (
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Preferred driver (optional)
@@ -142,6 +158,12 @@ export function WaterRequestForm({
           <dd className="text-slate-900">{village}</dd>
           <dd className="text-slate-600">{deliveryDirections}</dd>
         </div>
+        {requestNotes.trim() && (
+          <div>
+            <dt className="font-medium text-slate-500">Notes / Comments</dt>
+            <dd className="whitespace-pre-wrap text-slate-900">{requestNotes.trim()}</dd>
+          </div>
+        )}
         <div>
           <dt className="font-medium text-slate-500">Preferred driver</dt>
           <dd className="text-slate-900">
@@ -187,6 +209,7 @@ export function WaterRequestForm({
       <form action={formAction} className="mt-4 flex flex-col gap-3">
         <input type="hidden" name="loads" value={loads} />
         <input type="hidden" name="preferredDriverId" value={preferredDriverId} />
+        <input type="hidden" name="requestNotes" value={requestNotes} />
         <WaterSituationHiddenFields value={waterSituation} />
 
         <label className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">

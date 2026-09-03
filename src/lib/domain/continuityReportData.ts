@@ -31,6 +31,7 @@ export interface UnassignedReportRow {
   phone: string | null;
   village: string;
   deliveryDirections: string;
+  requestNotes: string | null;
   /** ISO timestamp. */
   requestedAt: string;
   /** Minutes elapsed between `requestedAt` and report generation time. */
@@ -49,6 +50,7 @@ export interface AssignedReportRow {
   phone: string | null;
   village: string;
   deliveryDirections: string;
+  requestNotes: string | null;
   assignedDriverName: string | null;
   /** ISO timestamp. */
   requestedAt: string;
@@ -120,6 +122,7 @@ export function buildContinuityReportData(
     phone: r.customer?.phone ?? null,
     village: r.village,
     deliveryDirections: r.deliveryDirections,
+    requestNotes: r.requestNotes,
     requestedAt: r.requestedAt,
     ageMinutes: Math.max(
       0,
@@ -142,6 +145,7 @@ export function buildContinuityReportData(
       phone: r.customer?.phone ?? null,
       village: r.village,
       deliveryDirections: r.deliveryDirections,
+      requestNotes: r.requestNotes,
       assignedDriverName: r.assignedDriverId
         ? (driverNamesByUserId.get(r.assignedDriverId) ?? "Unknown driver")
         : null,

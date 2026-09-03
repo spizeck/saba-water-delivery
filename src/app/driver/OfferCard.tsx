@@ -106,6 +106,13 @@ export function OfferCard({ offer, request, customer }: Props) {
         <p className="text-sm text-slate-700">{request.deliveryDirections}</p>
       </div>
 
+      {request.requestNotes && (
+        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-medium text-slate-500">Notes / Comments</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{request.requestNotes}</p>
+        </div>
+      )}
+
       {(acceptState.status === "error" || declineState.status === "error") && (
         <p role="alert" className="mt-3 text-sm font-medium text-red-700">
           {acceptState.message ?? declineState.message}

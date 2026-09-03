@@ -22,6 +22,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     gallons: 1000 as StandardLoadGallons,
     village: "Windwardside",
     deliveryDirections: "Blue gate, second driveway.",
+    requestNotes: null,
     preferredDriverId: null,
     preferredDriverExpiresAt: null,
     assignedDriverId: "driver-1",
@@ -153,6 +154,18 @@ describe("buildDispatchBatchPdfData", () => {
     );
     expect(data.rows[0].preferredDriverName).toBe("Andy Lavia");
     expect(data.rows[0].preferredDriverIsBatchDriver).toBe(false);
+  });
+
+  it("includes operational request notes on the driver run sheet", () => {
+    const data = buildDispatchBatchPdfData(
+      "batch-1",
+      "driver-1",
+      "Driver One",
+      [makeRequest({ requestNotes: "Call before entering the driveway." })],
+      driverNames,
+      generatedAt,
+    );
+    expect(data.rows[0].requestNotes).toBe("Call before entering the driveway.");
   });
 
   it("preserves the requested quantity on each row", () => {

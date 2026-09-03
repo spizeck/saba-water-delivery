@@ -84,8 +84,13 @@ any of these areas.
   2,000 gallons but still counts as one request.
 - Attempt a second request while the first is still active; confirm it
   is blocked.
+- Submit requests with no Notes / Comments and with a valid note; verify the
+  note is trimmed, shown on review/detail, and is not written to the profile.
+- Open a delivery confirmation email, select **Review Delivery**, authenticate
+  if necessary, and verify the relevant confirmation controls open directly.
 - Confirm a delivered request ("Yes, received").
-- Dispute a delivered request ("No, there is a problem").
+- Repeat with another delivered request and dispute it ("No, there is a
+  problem").
 
 ### Login / logout
 
@@ -103,7 +108,10 @@ any of these areas.
   marked delivered.
 - Decline enough offers to trigger the cooldown; confirm new offers
   pause.
-- Mark a delivery complete; confirm the next offer becomes available
+- Confirm request Notes / Comments appear below the structured delivery
+  directions when present and no empty notes section appears when absent.
+- Mark a delivery complete; confirm the resident email is triggered and the
+  next offer becomes available
   immediately, without waiting for resident confirmation.
 - Have a Batch Dispatch batch assigned to this driver; confirm each
   load appears as its own claimed delivery with a "Batch assignment"
@@ -132,9 +140,15 @@ any of these areas.
 - Select a resident with a valid canonical saved area and confirm it
   prefills the request **Delivery location**, which can still be overridden
   for this request without changing the resident's profile.
-- Reach the **Review request** screen, confirm grouped information is
-  clear, check the full-width attestation, and verify **Go Back** preserves
-  all entered values.
+- Reach the **Review request** screen, confirm grouped information including
+  Notes / Comments is clear, check the full-width attestation, and verify **Go
+  Back** preserves all entered values.
+- Edit Notes / Comments before claim and verify request detail, driver view,
+  continuity report, delivery-run sheet, and `request_edited` history reflect
+  the change.
+- Mark a registered request delivered as staff and verify the same confirmation
+  email/deep link used by the driver path. Confirm an unregistered request does
+  not receive an authenticated confirmation link.
 - Trigger and acknowledge a duplicate warning for an unregistered
   customer.
 - Create a manual request for an unregistered requestor with no email;

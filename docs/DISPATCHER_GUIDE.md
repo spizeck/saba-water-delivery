@@ -56,6 +56,11 @@ request form is always optional:
 In both cases the village/directions you enter apply to **this request
 only** and never overwrite a registered resident's saved profile.
 
+**Notes / Comments (optional):** add other request-specific information or
+questions that do not fit the structured fields. The review screen shows the
+note before submission. It is stored only on this request, appears to the
+driver, and does not update the requestor's saved profile.
+
 **Quantity:** for either type of requestor, you must select whether the
 request is for **1 load (1,000 gallons)** or **2 loads (2,000
 gallons)**. A two-load request is still a single request — it gets one
@@ -225,7 +230,14 @@ quantity (2,000 gallons) was delivered. If the driver has app access,
 they mark each request delivered themselves, exactly like any other
 claimed delivery. If the driver cannot use the app, open the run and
 use **Mark Delivered** on that specific request after verifying with the
-driver that it was actually delivered.
+driver that it was actually delivered. Driver- and staff-recorded delivery use
+the same notification workflow: a registered resident with an email receives a
+**Review Delivery** link. Unregistered or unclaimed requestors are not emailed
+an authenticated link; continue the existing staff verification process for
+them.
+
+Use **Edit request** before claim to change Notes / Comments. The change is
+included in the normal request edit audit entry.
 
 ### Reassigning or cancelling a run request
 

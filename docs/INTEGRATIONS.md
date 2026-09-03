@@ -47,19 +47,22 @@ operation does not depend on an individual developer.
 
 ## Resend
 
-- **Purpose:** sending the continuity-report email (nightly and
-  on-demand).
+- **Purpose:** sending the continuity-report email (nightly and on-demand),
+  account setup invitations, and post-delivery confirmation requests for
+  registered residents.
 - **Provider:** Resend.
 - **Authentication mechanism:** `RESEND_API_KEY`, a server-only secret.
-- **Application endpoint:** `src/lib/email/continuityReportEmail.ts`
-  calling Resend's `emails.send()`.
+- **Application endpoint:** modules under `src/lib/email/` call Resend's
+  `emails.send()`.
 - **Required configuration:** `RESEND_API_KEY`,
   `CONTINUITY_REPORT_EMAIL_FROM` (must be on a Resend-verified domain
-  for real government use), `CONTINUITY_REPORT_EMAIL_TO`.
-- **Failure impact:** the report email is not sent; the error is
-  logged and the cron route returns a 502 so failures are visible.
-  Nothing else in the application is affected — manual PDF download
-  continues to work regardless. See
+  for real government use), `CONTINUITY_REPORT_EMAIL_TO`; optional
+  `DELIVERY_CONFIRMATION_EMAIL_FROM` overrides the shared sender.
+- **Failure impact:** continuity-report failures are logged and return 502.
+  Delivery-confirmation failures are recorded on the request audit event after
+  delivery has committed and do not alter delivery status, driver availability,
+  or the 24-hour deadline. Unregistered and unclaimed requestors are not sent
+  authenticated confirmation links. See
   [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "Resend failure."
 
 ## Facebook Login

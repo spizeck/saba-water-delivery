@@ -27,6 +27,7 @@ function makeRequest(
     gallons: 1000 as StandardLoadGallons,
     village: "Windwardside",
     deliveryDirections: "Blue gate, second driveway.",
+    requestNotes: null,
     preferredDriverId: null,
     preferredDriverExpiresAt: null,
     assignedDriverId: null,
@@ -218,6 +219,22 @@ describe("buildContinuityReportData", () => {
     expect(twoLoad?.gallons).toBe(2000);
     expect(oneLoad?.loads).toBe(1);
     expect(oneLoad?.gallons).toBe(1000);
+  });
+
+  it("includes request notes needed for outage operations", () => {
+    const data = buildContinuityReportData(
+      [
+        makeRequest("unassigned-notes", "available", { requestNotes: "Call before arrival." }),
+        makeRequest("assigned-notes", "claimed", {
+          assignedDriverId: "driver-1",
+          requestNotes: "Use the lower gate.",
+        }),
+      ],
+      driverNames,
+      generatedAt,
+    );
+    expect(data.unassigned[0].requestNotes).toBe("Call before arrival.");
+    expect(data.assigned[0].requestNotes).toBe("Use the lower gate.");
   });
 
   it("marks escalated unassigned requests", () => {

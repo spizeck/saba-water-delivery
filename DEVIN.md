@@ -76,6 +76,21 @@ add a dependency that only works under Turbopack, without first
 confirming `npm run build` (the exact command Vercel's deployment runs)
 still succeeds.
 
+## Delivery notification and request notes invariants
+
+- Keep `requestNotes` request-scoped; never copy it into a resident profile.
+  Normalize and enforce the 1,000-character limit in the domain layer, not only
+  in forms.
+- Delivery-confirmation email is a post-commit notification side effect. Never
+  put a Resend call inside a Firestore transaction or let notification failure
+  reverse `delivered`, retain a driver lock, or alter the 24-hour deadline.
+- Preserve the deterministic request-event claim and Resend idempotency key when
+  changing delivery notification code.
+- Never send an authenticated confirmation link to an unregistered or unclaimed
+  requestor merely because a request snapshot contains an email address.
+- Email return URLs must pass through `safeResidentReturnTo()`; do not accept an
+  arbitrary redirect target.
+
 ---
 
 # Authentication
