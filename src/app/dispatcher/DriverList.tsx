@@ -14,30 +14,16 @@ import {
   restoreDriver,
   type DriverActionState,
 } from "./actions";
+import {
+  type DriverOperationalState,
+  type DriverRunSummary,
+  type DriverWorkload,
+} from "./deriveDriverWorkloads";
 
 const initialState: DriverActionState = { status: "idle" };
 
-/** Compact summary of one claimed request, computed server-side. */
-export interface DriverRequestSummary {
-  requestId: string;
-  customerName: string;
-  village: string;
-  loads: number;
-  loadsCollected: number;
-  isBatchAssigned: boolean;
-  isEscalated: boolean;
-}
-
-/** Per-driver workload summary, keyed by registry ID. */
-export interface DriverWorkload {
-  openRequests: number;
-  openLoads: number;
-  requests: DriverRequestSummary[];
-}
-
 interface Props {
   drivers: DriverRegistryEntry[];
-  /** Workload keyed by driver registry ID. */
   workloads: Record<string, DriverWorkload>;
 }
 
@@ -69,6 +55,13 @@ export function DriverList({ drivers, workloads }: Props) {
   );
 }
 
+const STATE_LABEL: Record<DriverOperationalState, string> = {
+  offline: "Offline",
+  available: "Online · Available",
+  individual: "Online · Delivering",
+  delivery_run: "Online · Delivery Run",
+};
+
 function DriverRow({
   driver,
   workload,
@@ -77,39 +70,43 @@ function DriverRow({
   workload: DriverWorkload | null;
 }) {
   const [action, setAction] = useState<"restrict" | "restore" | null>(null);
-  const [expanded, setExpanded] = useState(false);
 
   const isEligible = driver.eligibilityStatus === "eligible";
-  const isOnline = driver.availabilityStatus === "online";
-  const hasWork = workload && workload.openRequests > 0;
   const now = new Date();
   const cooldownUntil = driver.cooldownUntil ? new Date(driver.cooldownUntil) : null;
   const inCooldown = cooldownUntil !== null && cooldownUntil.getTime() > now.getTime();
   const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
   const dailyCooldown = inCooldown && cooldownUntil.getTime() >= endOfToday.getTime();
 
+  const state: DriverOperationalState = workload?.state ?? "offline";
+  const hasWork = workload ? workload.openRequests > 0 : false;
+
   return (
     <div className="rounded-lg border border-slate-200 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={() => hasWork && setExpanded(!expanded)}
-            className={`text-left font-medium text-slate-900 ${hasWork ? "hover:underline cursor-pointer" : ""}`}
-          >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-slate-900">
             {driver.displayName}
-          </button>
-          <div className="mt-0.5 flex flex-wrap gap-2 text-xs">
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+            <span
+              className={`rounded-full px-2 py-0.5 font-medium ${
+                state === "available"
+                  ? "bg-green-50 text-green-800"
+                  : state === "individual" || state === "delivery_run"
+                    ? "bg-indigo-50 text-indigo-800"
+                    : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              {STATE_LABEL[state]}
+            </span>
             <span className={isEligible ? "text-green-700" : "text-red-700 font-medium"}>
               {isEligible ? "Eligible" : "Ineligible"}
             </span>
-            <span className={isOnline ? "text-green-700" : "text-slate-500"}>
-              {isOnline ? "Online" : "Offline"}
-            </span>
-            {inCooldown && dailyCooldown && (
+            {dailyCooldown && (
               <span className="text-amber-700 font-medium">Daily limit reached</span>
             )}
-            {inCooldown && !dailyCooldown && (
+            {!dailyCooldown && inCooldown && (
               <span className="text-amber-700 font-medium">
                 Cooldown until {formatSabaTime(cooldownUntil)}
               </span>
@@ -120,13 +117,20 @@ function DriverRow({
             {driver.ineligibilityReason && (
               <span className="text-red-600">{driver.ineligibilityReason}</span>
             )}
-            {hasWork && (
-              <span className="font-medium text-indigo-700">
-                {workload.openRequests} request{workload.openRequests !== 1 ? "s" : ""} &middot; {workload.openLoads} load{workload.openLoads !== 1 ? "s" : ""}
-              </span>
-            )}
           </div>
+
+          {hasWork && workload && (
+            <div className="mt-2 flex flex-col gap-2">
+              {workload.runs.map((run) => (
+                <ActiveRun key={run.batchId} run={run} />
+              ))}
+              {workload.individualRequests.map((req) => (
+                <ActiveRequest key={req.requestId} request={req} />
+              ))}
+            </div>
+          )}
         </div>
+
         <div className="flex shrink-0 gap-2">
           {isEligible ? (
             <Button
@@ -150,53 +154,52 @@ function DriverRow({
         </div>
       </div>
 
-      {expanded && hasWork && (
-        <div className="mt-3 border-t border-slate-100 pt-2">
-          <div className="flex flex-col gap-2">
-            {workload.requests.map((req) => (
-              <div key={req.requestId} className="flex items-start justify-between gap-2 text-xs">
-                <div className="min-w-0">
-                  <Link
-                    href={`/dispatcher/${req.requestId}`}
-                    className="font-medium text-blue-700 hover:underline"
-                  >
-                    {req.customerName}
-                  </Link>
-                  <span className="ml-1.5 text-slate-500">
-                    {req.village} &middot; {formatWaterQuantity(req.loads as 1 | 2)}
-                  </span>
-                  {req.isBatchAssigned && (
-                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                      delivery run
-                    </span>
-                  )}
-                  {req.isEscalated && (
-                    <span className="ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                      escalated
-                    </span>
-                  )}
-                </div>
-                <span className={`shrink-0 text-[10px] font-medium ${
-                  req.loadsCollected >= req.loads
-                    ? "text-green-700"
-                    : req.loadsCollected > 0
-                      ? "text-amber-700"
-                      : "text-slate-500"
-                }`}>
-                  {req.loadsCollected}/{req.loads} collected
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {action === "restrict" && (
         <RestrictForm driverId={driver.id} onDone={() => setAction(null)} />
       )}
       {action === "restore" && (
         <RestoreForm driverId={driver.id} onDone={() => setAction(null)} />
       )}
+    </div>
+  );
+}
+
+function ActiveRun({ run }: { run: DriverRunSummary }) {
+  return (
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-slate-50 p-2 text-xs">
+      <div>
+        <span className="font-medium text-slate-800">Delivery Run</span>
+        <span className="ml-2 text-slate-600">
+          {run.remainingStops} delivery{run.remainingStops !== 1 ? "ies" : "y"} remaining
+          {" · "}
+          {run.remainingLoads} load{run.remainingLoads !== 1 ? "s" : ""} remaining
+        </span>
+      </div>
+      <Link
+        href={run.link}
+        className="font-medium text-blue-700 hover:underline"
+      >
+        View Delivery Run
+      </Link>
+    </div>
+  );
+}
+
+function ActiveRequest({ request }: { request: { requestId: string; customerName: string; village: string; loads: number } }) {
+  return (
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-slate-50 p-2 text-xs">
+      <div>
+        <span className="font-medium text-slate-800">{request.customerName}</span>
+        <span className="ml-2 text-slate-600">
+          {request.village} · {formatWaterQuantity(request.loads as 1 | 2)}
+        </span>
+      </div>
+      <Link
+        href={`/dispatcher/${request.requestId}`}
+        className="font-medium text-blue-700 hover:underline"
+      >
+        View Request
+      </Link>
     </div>
   );
 }
