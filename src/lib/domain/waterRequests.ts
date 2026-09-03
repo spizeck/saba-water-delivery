@@ -16,6 +16,7 @@ import {
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { getFillStations } from "./fillStations";
 import { assertQuantityEditable } from "./loadCollection";
+import { isPhysicallyActiveDriverWork } from "./activeRequestValidation";
 import { isDriverImmediatelyAvailable, getMeterAssignments } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import { normalizeRequestNotes } from "./requestNotes";
@@ -818,8 +819,24 @@ export async function claimWaterRequest(
         throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
       }
     }
+    // If activeRequestId points to a different request, verify that
+    // request is still physically active AND still owned by this driver
+    // before blocking. A stale lock (delivered/confirmed/disputed/
+    // missing/reassigned) is treated as free — the registry update
+    // below overwrites it with the new requestId.
     if (activeRequestId && activeRequestId !== requestId) {
-      throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+      const lockedReqSnap = await txn.get(
+        db.collection(REQUESTS_COLLECTION).doc(activeRequestId),
+      );
+      if (lockedReqSnap.exists) {
+        const lockedData = lockedReqSnap.data()!;
+        if (
+          isPhysicallyActiveDriverWork(lockedData.status as WaterRequestStatus) &&
+          lockedData.assignedDriverId === driverId
+        ) {
+          throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+        }
+      }
     }
 
     // --- Perform the claim ---
@@ -2230,8 +2247,23 @@ export async function dispatcherAssign(
         throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
       }
     }
+    // If activeRequestId points to a different request, verify that
+    // request is still physically active AND still owned by this driver
+    // before blocking. A stale lock (delivered/confirmed/disputed/
+    // missing/reassigned) is treated as free.
     if (activeRequestId && activeRequestId !== requestId) {
-      throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+      const lockedReqSnap = await txn.get(
+        db.collection(REQUESTS_COLLECTION).doc(activeRequestId),
+      );
+      if (lockedReqSnap.exists) {
+        const lockedData = lockedReqSnap.data()!;
+        if (
+          isPhysicallyActiveDriverWork(lockedData.status as WaterRequestStatus) &&
+          lockedData.assignedDriverId === driverId
+        ) {
+          throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+        }
+      }
     }
 
     txn.update(requestRef, {
@@ -2326,8 +2358,23 @@ export async function dispatcherReassign(
         throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
       }
     }
+    // If activeRequestId points to a different request, verify that
+    // request is still physically active AND still owned by the target
+    // driver before blocking. A stale lock (delivered/confirmed/
+    // disputed/missing/reassigned) is treated as free.
     if (activeRequestId && activeRequestId !== requestId) {
-      throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+      const lockedReqSnap = await txn.get(
+        db.collection(REQUESTS_COLLECTION).doc(activeRequestId),
+      );
+      if (lockedReqSnap.exists) {
+        const lockedData = lockedReqSnap.data()!;
+        if (
+          isPhysicallyActiveDriverWork(lockedData.status as WaterRequestStatus) &&
+          lockedData.assignedDriverId === newDriverId
+        ) {
+          throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
+        }
+      }
     }
 
     // Load the previous driver's registry record so we can clear their

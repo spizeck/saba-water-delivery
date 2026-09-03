@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { sortForBatchSelection } from "@/lib/domain/dispatchBatchSelection";
-import { getActiveDriverRegistryEntries } from "@/lib/domain/driverRegistry";
+import { getActiveDriverRegistryEntries, reconcileActiveRequest } from "@/lib/domain/driverRegistry";
 import { getBatchEligibleRequests } from "@/lib/domain/waterRequests";
 
 import { NewBatchForm } from "./NewBatchForm";
@@ -30,6 +30,20 @@ export default async function NewDeliveryRunPage() {
   // whole point may be preparing a printed run sheet for a driver whose
   // phone/data access is unreliable) — see TECHNICAL.md "Batch
   // Dispatch".
+
+  // Reconcile any stale activeRequestId locks before deriving the
+  // "has active delivery" badge. A delivered/confirmed/missing request
+  // must not make the driver appear busy — see activeRequestValidation.ts.
+  const reconciledIds = new Set<string>();
+  await Promise.all(
+    allDrivers
+      .filter((d) => d.activeRequestId)
+      .map(async (d) => {
+        const result = await reconcileActiveRequest(d.id);
+        if (result.repaired) reconciledIds.add(d.id);
+      }),
+  );
+
   const now = new Date();
   const driverOptions = allDrivers
     .filter((d) => d.eligibilityStatus === "eligible" && d.linkedUserId)
@@ -38,7 +52,7 @@ export default async function NewDeliveryRunPage() {
       displayName: d.displayName,
       availabilityStatus: d.availabilityStatus,
       inCooldown: Boolean(d.cooldownUntil && new Date(d.cooldownUntil) > now),
-      hasActiveDelivery: Boolean(d.activeRequestId),
+      hasActiveDelivery: Boolean(d.activeRequestId && !reconciledIds.has(d.id)),
     }));
 
   const driverNames: Record<string, string> = {};

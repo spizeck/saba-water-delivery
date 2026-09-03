@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
+    "postbuild": "node scripts/verify-pdfkit-trace.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
