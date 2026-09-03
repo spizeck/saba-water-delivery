@@ -1,5 +1,16 @@
 import type { NextConfig } from "next";
 
+// pdfkit v0.20+ ships its Base-14 font metrics as dynamically required
+// `./standard-fonts/*.cjs` modules (plus a shared `chunks` file), while
+// the ICC color profile and legacy AFM files remain under `./data/`.
+// These assets are read at runtime, not statically imported, so Next's
+// output tracing must copy both trees for every server bundle that can
+// reach a PDFKit renderer.
+const PDFKIT_TRACE = [
+  "node_modules/pdfkit/js/data/**/*",
+  "node_modules/pdfkit/js/standard-fonts/**/*",
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -77,22 +88,21 @@ const nextConfig: NextConfig = {
   // so Next's automatic trace of the (now-external) `require("pdfkit")`
   // call still cannot discover them on its own — they must be listed
   // explicitly so Vercel copies them alongside the now-unbundled
-  // pdfkit package. Needed by every route whose server bundle can
-  // reach `renderContinuityReportPdf()`: the two dedicated API routes,
-  // and `/dispatcher` (which imports the "Send Continuity Report Now"
-  // server action from `src/app/dispatcher/actions.ts`).
+  // pdfkit package. PDFKIT_TRACE includes both the `./data/` and
+  // `./standard-fonts/` trees required by pdfkit v0.20+.
   outputFileTracingIncludes: {
-    "/api/cron/continuity-report": ["node_modules/pdfkit/js/data/**/*"],
-    "/api/reports/continuity-snapshot": ["node_modules/pdfkit/js/data/**/*"],
-    "/dispatcher": ["node_modules/pdfkit/js/data/**/*"],
-    // Batch Dispatch driver run sheet (see TECHNICAL.md "Batch
-    // Dispatch") — the only route whose server bundle can reach
-    // renderDispatchBatchPdf(). The dynamic segment is escaped because
-    // outputFileTracingIncludes keys are matched with picomatch, which
-    // would otherwise treat `[batchId]` as a character class rather
-    // than a literal route segment (see Next.js docs "output" config
-    // reference, `/api/login/\\[\\[\\.\\.\\.slug\\]\\]` example).
-    "/api/dispatcher/batches/\\[batchId\\]/pdf": ["node_modules/pdfkit/js/data/**/*"],
+    // Continuity report cron/email.
+    "/api/cron/continuity-report": PDFKIT_TRACE,
+    // Manual continuity report download.
+    "/api/reports/continuity-snapshot": PDFKIT_TRACE,
+    // "Send Continuity Report Now" server action lives on `/dispatcher`.
+    "/dispatcher": PDFKIT_TRACE,
+    // Delivery Run driver run sheet. The dynamic segment is escaped
+    // because outputFileTracingIncludes keys are matched with picomatch,
+    // which would otherwise treat `[batchId]` as a character class
+    // rather than a literal route segment (see Next.js docs "output"
+    // config reference, `/api/login/\\[\\[\\.\\.\\.slug\\]\\]` example).
+    "/api/dispatcher/batches/\\[batchId\\]/pdf": PDFKIT_TRACE,
   },
 };
 
