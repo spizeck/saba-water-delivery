@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkActiveRequestValidity,
+  isPhysicallyActiveDriverWork,
   type ReferencedRequestSnapshot,
 } from "../activeRequestValidation";
+import type { WaterRequestStatus } from "../types";
 
 const DRIVER = "driver-uid-1";
 
@@ -147,5 +149,33 @@ describe("checkActiveRequestValidity", () => {
     };
     const result = checkActiveRequestValidity(DRIVER, snapshot);
     expect(result).toEqual({ stale: true, reason: "reassigned" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isPhysicallyActiveDriverWork
+// ---------------------------------------------------------------------------
+
+describe("isPhysicallyActiveDriverWork", () => {
+  it("returns true only for 'claimed' status", () => {
+    expect(isPhysicallyActiveDriverWork("claimed")).toBe(true);
+  });
+
+  it.each([
+    "delivered",
+    "confirmed",
+    "disputed",
+    "requested",
+    "preferred_driver_hold",
+    "available",
+    "cancelled",
+  ] satisfies WaterRequestStatus[])("returns false for '%s'", (status) => {
+    expect(isPhysicallyActiveDriverWork(status)).toBe(false);
+  });
+
+  // Canonical rule: resident confirmation does not hold a driver busy.
+  // Once a driver marks a request delivered, they are free for new work.
+  it("delivered (awaiting confirmation) does not count as active driver work", () => {
+    expect(isPhysicallyActiveDriverWork("delivered")).toBe(false);
   });
 });

@@ -14,6 +14,20 @@
 import type { WaterRequestStatus } from "./types";
 
 // ---------------------------------------------------------------------------
+// Canonical active-driver-work definition
+// ---------------------------------------------------------------------------
+
+/**
+ * A request counts as open physical driver work ONLY when the driver still
+ * has something to physically deliver. Resident confirmation is
+ * independent: once a driver marks a request `delivered`, that driver is no
+ * longer busy with it, even if the resident has not yet confirmed.
+ */
+export function isPhysicallyActiveDriverWork(status: WaterRequestStatus): boolean {
+  return status === "claimed";
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 

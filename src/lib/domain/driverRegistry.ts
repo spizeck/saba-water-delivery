@@ -1046,46 +1046,53 @@ export async function reconcileActiveRequest(
   if (!activeRequestId) return { repaired: false };
 
   const linkedUserId: string | null = driverData.linkedUserId ?? null;
+
+  // Determine stale reason without linked account (inherently stale) or
+  // by checking the referenced request.
+  let staleReason: StaleReason;
   if (!linkedUserId) {
     // Registry entry has an activeRequestId but no linked account — the
     // lock is inherently stale (no user can ever clear it normally).
-    const now = FieldValue.serverTimestamp();
-    await driverRef.update({ activeRequestId: null, updatedAt: now, updatedBy: "system" });
-    await driverRef.collection("events").add({
+    staleReason = "not_active";
+  } else {
+    // Fetch the referenced request to check validity.
+    const requestRef = db.collection(REQUESTS_COLLECTION).doc(activeRequestId);
+    const requestSnap = await requestRef.get();
+
+    const snapshot = requestSnap.exists
+      ? {
+          status: requestSnap.data()!.status,
+          assignedDriverId: requestSnap.data()!.assignedDriverId ?? null,
+        }
+      : null;
+
+    const check = checkActiveRequestValidity(linkedUserId, snapshot);
+    if (!check.stale) return { repaired: false };
+    staleReason = check.reason;
+  }
+
+  // Clear the stale lock conditionally: only if activeRequestId still
+  // equals the value we validated. A concurrent claim transaction may
+  // have written a new (valid) activeRequestId between our read and
+  // this update; the conditional prevents overwriting that fresh lock.
+  const now = FieldValue.serverTimestamp();
+  await db.runTransaction(async (txn) => {
+    const freshSnap = await txn.get(driverRef);
+    if (!freshSnap.exists) return;
+    if (freshSnap.data()!.activeRequestId !== activeRequestId) return;
+
+    txn.update(driverRef, { activeRequestId: null, updatedAt: now, updatedBy: "system" });
+    const eventRef = driverRef.collection("events").doc();
+    txn.set(eventRef, {
       type: "stale_active_request_cleared",
       actorId: "system",
       actorRole: "system",
       createdAt: now,
-      metadata: { staleRequestId: activeRequestId, reason: "not_active" as StaleReason },
+      metadata: { staleRequestId: activeRequestId, reason: staleReason },
     });
-    return { repaired: true, staleRequestId: activeRequestId, reason: "not_active" };
-  }
-
-  // Fetch the referenced request to check validity.
-  const requestRef = db.collection(REQUESTS_COLLECTION).doc(activeRequestId);
-  const requestSnap = await requestRef.get();
-
-  const snapshot = requestSnap.exists
-    ? {
-        status: requestSnap.data()!.status,
-        assignedDriverId: requestSnap.data()!.assignedDriverId ?? null,
-      }
-    : null;
-
-  const check = checkActiveRequestValidity(linkedUserId, snapshot);
-  if (!check.stale) return { repaired: false };
-
-  const now = FieldValue.serverTimestamp();
-  await driverRef.update({ activeRequestId: null, updatedAt: now, updatedBy: "system" });
-  await driverRef.collection("events").add({
-    type: "stale_active_request_cleared",
-    actorId: "system",
-    actorRole: "system",
-    createdAt: now,
-    metadata: { staleRequestId: activeRequestId, reason: check.reason },
   });
 
-  return { repaired: true, staleRequestId: activeRequestId, reason: check.reason };
+  return { repaired: true, staleRequestId: activeRequestId, reason: staleReason };
 }
 
 /**
