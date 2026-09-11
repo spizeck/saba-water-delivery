@@ -14,7 +14,12 @@
  * PRODUCT.md "Water Situation Privacy".
  */
 
-import type { DispatchPriority, RequestedLoads, WaterRequest, WaterRequestStatus } from "./types";
+import type {
+  DispatchPriority,
+  RequestedLoads,
+  WaterRequest,
+  WaterRequestStatus,
+} from "./types";
 
 export interface DispatchBatchPdfRow {
   /** 1-based run-sheet position. */
@@ -85,7 +90,9 @@ export function buildDispatchBatchPdfData(
       requestedAt: r.requestedAt,
       ageMinutesAtGeneration: Math.max(
         0,
-        Math.round((generatedAt.getTime() - new Date(r.requestedAt).getTime()) / 60_000),
+        Math.round(
+          (generatedAt.getTime() - new Date(r.requestedAt).getTime()) / 60_000,
+        ),
       ),
       preferredDriverName: r.preferredDriverId
         ? (driverNamesByUserId.get(r.preferredDriverId) ?? "Unknown driver")

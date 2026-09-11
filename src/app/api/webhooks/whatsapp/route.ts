@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getWhatsAppClientConfig, verifyWhatsAppWebhookChallenge, verifyWhatsAppWebhookSignature } from "@/lib/whatsapp/client";
+import {
+  getWhatsAppClientConfig,
+  verifyWhatsAppWebhookChallenge,
+  verifyWhatsAppWebhookSignature,
+} from "@/lib/whatsapp/client";
 import { handleIncomingWhatsAppMessage } from "@/lib/whatsapp/handleIncomingMessage";
 import { claimMessageId } from "@/lib/whatsapp/idempotency";
 
@@ -36,7 +40,9 @@ interface WhatsAppWebhookPayload {
   }>;
 }
 
-function extractMessages(payload: WhatsAppWebhookPayload): WhatsAppInboundMessage[] {
+function extractMessages(
+  payload: WhatsAppWebhookPayload,
+): WhatsAppInboundMessage[] {
   const messages: WhatsAppInboundMessage[] = [];
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -51,7 +57,10 @@ function extractMessages(payload: WhatsAppWebhookPayload): WhatsAppInboundMessag
 export async function GET(request: NextRequest) {
   const config = getWhatsAppClientConfig();
   if (!config) {
-    return NextResponse.json({ error: "WhatsApp is not configured." }, { status: 503 });
+    return NextResponse.json(
+      { error: "WhatsApp is not configured." },
+      { status: 503 },
+    );
   }
 
   const { searchParams } = new URL(request.url);
@@ -62,7 +71,10 @@ export async function GET(request: NextRequest) {
   });
 
   if (challenge === null) {
-    return NextResponse.json({ error: "Verification failed." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Verification failed." },
+      { status: 403 },
+    );
   }
   return new Response(challenge, { status: 200 });
 }
@@ -70,7 +82,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const config = getWhatsAppClientConfig();
   if (!config) {
-    return NextResponse.json({ error: "WhatsApp is not configured." }, { status: 503 });
+    return NextResponse.json(
+      { error: "WhatsApp is not configured." },
+      { status: 503 },
+    );
   }
 
   // Signature is computed over the exact raw bytes — read as text
@@ -98,13 +113,19 @@ export async function POST(request: NextRequest) {
     if (!isNew) continue; // Meta retry of a message we've already processed — skip entirely.
 
     try {
-      await handleIncomingWhatsAppMessage(message.from, message.text?.body ?? "");
+      await handleIncomingWhatsAppMessage(
+        message.from,
+        message.text?.body ?? "",
+      );
     } catch (err) {
       // A failure processing one message must never fail the whole
       // webhook response (Meta would just retry, and we've already
       // claimed the message ID, so it wouldn't retry-safely anyway) —
       // log and continue.
-      console.error("[whatsapp webhook] failed to process message:", err instanceof Error ? err.message : err);
+      console.error(
+        "[whatsapp webhook] failed to process message:",
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 

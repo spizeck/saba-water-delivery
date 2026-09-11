@@ -30,13 +30,16 @@ export function LifecyclePanel({ driver, eligibility }: LifecyclePanelProps) {
     <Card>
       <h2 className="text-lg font-bold text-slate-900">Lifecycle</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Archive preserves history; permanent deletion is only allowed for safe, unreferenced test records.
+        Archive preserves history; permanent deletion is only allowed for safe,
+        unreferenced test records.
       </p>
 
       <div className="mt-3">
         <span
           className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-            isArchived ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"
+            isArchived
+              ? "bg-amber-50 text-amber-700"
+              : "bg-green-50 text-green-700"
           }`}
         >
           {isArchived ? "Archived" : "Active"}
@@ -58,11 +61,16 @@ export function LifecyclePanel({ driver, eligibility }: LifecyclePanelProps) {
 }
 
 function ArchiveForm({ driverId }: { driverId: string }) {
-  const [state, formAction, pending] = useActionState(archiveDriverAction, archiveInitial);
+  const [state, formAction, pending] = useActionState(
+    archiveDriverAction,
+    archiveInitial,
+  );
   const [reason, setReason] = useState("");
 
   if (state.status === "success") {
-    return <p className="text-sm font-medium text-green-700">{state.message}</p>;
+    return (
+      <p className="text-sm font-medium text-green-700">{state.message}</p>
+    );
   }
 
   return (
@@ -88,16 +96,23 @@ function ArchiveForm({ driverId }: { driverId: string }) {
       >
         {pending ? "Archiving..." : "Archive Driver"}
       </Button>
-      {state.status === "error" && <p className="text-xs font-medium text-red-700">{state.message}</p>}
+      {state.status === "error" && (
+        <p className="text-xs font-medium text-red-700">{state.message}</p>
+      )}
     </form>
   );
 }
 
 function RestoreForm({ driverId }: { driverId: string }) {
-  const [state, formAction, pending] = useActionState(restoreArchivedDriverAction, archiveInitial);
+  const [state, formAction, pending] = useActionState(
+    restoreArchivedDriverAction,
+    archiveInitial,
+  );
 
   if (state.status === "success") {
-    return <p className="text-sm font-medium text-green-700">{state.message}</p>;
+    return (
+      <p className="text-sm font-medium text-green-700">{state.message}</p>
+    );
   }
 
   return (
@@ -112,22 +127,37 @@ function RestoreForm({ driverId }: { driverId: string }) {
       >
         {pending ? "Restoring..." : "Restore from Archive"}
       </Button>
-      {state.status === "error" && <p className="mt-2 text-xs font-medium text-red-700">{state.message}</p>}
+      {state.status === "error" && (
+        <p className="mt-2 text-xs font-medium text-red-700">{state.message}</p>
+      )}
     </form>
   );
 }
 
-function DeleteSection({ driver, eligibility }: { driver: DriverRegistryEntry; eligibility: DeleteDriverEligibility }) {
-  const [state, formAction, pending] = useActionState(deleteDriverAction, deleteInitial);
+function DeleteSection({
+  driver,
+  eligibility,
+}: {
+  driver: DriverRegistryEntry;
+  eligibility: DeleteDriverEligibility;
+}) {
+  const [state, formAction, pending] = useActionState(
+    deleteDriverAction,
+    deleteInitial,
+  );
   const [confirmation, setConfirmation] = useState("");
 
   if (state.status === "success") {
-    return <p className="text-sm font-medium text-green-700">{state.message}</p>;
+    return (
+      <p className="text-sm font-medium text-green-700">{state.message}</p>
+    );
   }
 
   return (
     <div className="rounded-lg border border-red-100 bg-red-50 p-4">
-      <h3 className="text-sm font-bold text-red-900">Delete Test/Unused Record</h3>
+      <h3 className="text-sm font-bold text-red-900">
+        Delete Test/Unused Record
+      </h3>
 
       {!eligibility.canDelete ? (
         <div className="mt-2">
@@ -147,16 +177,33 @@ function DeleteSection({ driver, eligibility }: { driver: DriverRegistryEntry; e
           <div className="text-xs text-slate-700">
             <p className="font-medium">This record is safe to delete:</p>
             <ul className="mt-1 list-inside list-disc text-slate-600">
-              <li>Driver name: <strong>{driver.displayName}</strong></li>
-              <li>Account: {eligibility.summary.linkedAccount ? "linked" : "unlinked"}</li>
-              {!eligibility.summary.linkedAccount && <li>No application account is linked.</li>}
-              {eligibility.summary.historicalAssignments === 0 && <li>No historical water requests reference this record.</li>}
-              {eligibility.summary.preferredDriverReferences === 0 && <li>No preferred-driver references.</li>}
-              {eligibility.summary.meterAssignments === 0 && <li>No meter assignments.</li>}
-              {eligibility.summary.registryEvents === 0 && <li>No audit events to preserve.</li>}
+              <li>
+                Driver name: <strong>{driver.displayName}</strong>
+              </li>
+              <li>
+                Account:{" "}
+                {eligibility.summary.linkedAccount ? "linked" : "unlinked"}
+              </li>
+              {!eligibility.summary.linkedAccount && (
+                <li>No application account is linked.</li>
+              )}
+              {eligibility.summary.historicalAssignments === 0 && (
+                <li>No historical water requests reference this record.</li>
+              )}
+              {eligibility.summary.preferredDriverReferences === 0 && (
+                <li>No preferred-driver references.</li>
+              )}
+              {eligibility.summary.meterAssignments === 0 && (
+                <li>No meter assignments.</li>
+              )}
+              {eligibility.summary.registryEvents === 0 && (
+                <li>No audit events to preserve.</li>
+              )}
             </ul>
             <p className="mt-2 font-medium text-red-800">
-              Deleting removes this Driver Registry record and any unique name/phone keys. It does NOT delete any Firebase Authentication account.
+              Deleting removes this Driver Registry record and any unique
+              name/phone keys. It does NOT delete any Firebase Authentication
+              account.
             </p>
           </div>
 
@@ -176,13 +223,19 @@ function DeleteSection({ driver, eligibility }: { driver: DriverRegistryEntry; e
             type="submit"
             variant="outline"
             size="md"
-            disabled={pending || confirmation.trim().toLowerCase() !== driver.displayName.toLowerCase()}
+            disabled={
+              pending ||
+              confirmation.trim().toLowerCase() !==
+                driver.displayName.toLowerCase()
+            }
             className="!h-8 self-start !text-xs !border-red-300 !text-red-700 hover:!bg-red-100"
           >
             {pending ? "Deleting..." : "Permanently Delete Record"}
           </Button>
 
-          {state.status === "error" && <p className="text-xs font-medium text-red-700">{state.message}</p>}
+          {state.status === "error" && (
+            <p className="text-xs font-medium text-red-700">{state.message}</p>
+          )}
         </form>
       )}
     </div>

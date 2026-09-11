@@ -26,7 +26,10 @@ export function TrendChart({ data, period }: TrendChartProps) {
         {isMonthly ? "Monthly" : "Daily"} requests
       </p>
 
-      <div className="mt-4 flex items-end gap-1 overflow-x-auto pb-2" style={{ minHeight: 120 }}>
+      <div
+        className="mt-4 flex items-end gap-1 overflow-x-auto pb-2"
+        style={{ minHeight: 120 }}
+      >
         {data.map((d) => {
           const height = Math.max((d.requests / maxValue) * 100, 4);
           return (

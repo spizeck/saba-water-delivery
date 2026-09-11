@@ -8,7 +8,11 @@ import { requireRole } from "@/lib/auth/session";
 import { getDispatchBatch } from "@/lib/domain/dispatchBatches";
 import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
-import type { DispatchPriority, WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+import type {
+  DispatchPriority,
+  WaterRequest,
+  WaterRequestStatus,
+} from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getRequestsForDispatchBatch } from "@/lib/domain/waterRequests";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
@@ -71,7 +75,10 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
           <Container>
             <Card>
               <p className="text-slate-600">Delivery run not found.</p>
-              <Link href="/dispatcher/batches" className="mt-2 inline-block text-blue-700 hover:underline text-sm">
+              <Link
+                href="/dispatcher/batches"
+                className="mt-2 inline-block text-blue-700 hover:underline text-sm"
+              >
                 Back to Delivery Runs
               </Link>
             </Card>
@@ -91,13 +98,17 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
   for (const d of allDrivers) {
     if (d.linkedUserId) driverNames[d.linkedUserId] = d.displayName;
   }
-  const driverName = batch.driverDisplayName || driverNames[batch.driverId] || "Unknown driver";
-  const createdByName = createdByProfile?.displayName ?? batch.createdBy ?? "Unknown";
+  const driverName =
+    batch.driverDisplayName || driverNames[batch.driverId] || "Unknown driver";
+  const createdByName =
+    createdByProfile?.displayName ?? batch.createdBy ?? "Unknown";
 
   const sortedRequests = [...requests].sort((a, b) => {
     const seqDiff = (a.batchSequence ?? 0) - (b.batchSequence ?? 0);
     if (seqDiff !== 0) return seqDiff;
-    return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
+    return (
+      new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime()
+    );
   });
 
   // Compute progress.
@@ -106,7 +117,8 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
   const deliveredLoads = sortedRequests
     .filter((r) => ["delivered", "confirmed", "disputed"].includes(r.status))
     .reduce((sum, r) => sum + r.loads, 0);
-  const allPhysicallyDelivered = claimedRequests.length === 0 && sortedRequests.length > 0;
+  const allPhysicallyDelivered =
+    claimedRequests.length === 0 && sortedRequests.length > 0;
 
   // Run state label.
   let runStateLabel: string;
@@ -131,7 +143,10 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6 max-w-4xl">
           <div>
-            <Link href="/dispatcher/batches" className="text-blue-700 hover:underline text-sm">
+            <Link
+              href="/dispatcher/batches"
+              className="text-blue-700 hover:underline text-sm"
+            >
               &larr; Back to Delivery Runs
             </Link>
           </div>
@@ -144,7 +159,8 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
                   Delivery Run — {driverName}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  Created {formatSabaDateTime(batch.createdAt)} by {createdByName}
+                  Created {formatSabaDateTime(batch.createdAt)} by{" "}
+                  {createdByName}
                 </p>
                 {batch.originalRequestIds.length !== sortedRequests.length && (
                   <p className="text-xs text-slate-400">
@@ -155,7 +171,9 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`inline-flex shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${runStateColor}`}>
+                <span
+                  className={`inline-flex shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${runStateColor}`}
+                >
                   {runStateLabel}
                 </span>
                 <a
@@ -175,14 +193,22 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
               <div className="mt-4 rounded-lg bg-slate-50 p-3">
                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
                   <span className="text-slate-700">
-                    <span className="font-semibold">{sortedRequests.length}</span>{" "}
+                    <span className="font-semibold">
+                      {sortedRequests.length}
+                    </span>{" "}
                     request{sortedRequests.length !== 1 ? "s" : ""}
                   </span>
                   <span className="text-slate-700">
-                    <span className="font-semibold">{totalLoads}</span>{" "}
-                    load{totalLoads !== 1 ? "s" : ""}
+                    <span className="font-semibold">{totalLoads}</span> load
+                    {totalLoads !== 1 ? "s" : ""}
                   </span>
-                  <span className={allPhysicallyDelivered ? "font-semibold text-green-700" : "text-slate-700"}>
+                  <span
+                    className={
+                      allPhysicallyDelivered
+                        ? "font-semibold text-green-700"
+                        : "text-slate-700"
+                    }
+                  >
                     {deliveredLoads} of {totalLoads} delivered
                   </span>
                 </div>
@@ -190,7 +216,9 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
                   <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
                     <div
                       className="h-2 rounded-full bg-blue-600 transition-all"
-                      style={{ width: `${Math.round((deliveredLoads / totalLoads) * 100)}%` }}
+                      style={{
+                        width: `${Math.round((deliveredLoads / totalLoads) * 100)}%`,
+                      }}
                     />
                   </div>
                 )}
@@ -221,7 +249,13 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
   );
 }
 
-function RequestRow({ request: r, batchId }: { request: WaterRequest; batchId: string }) {
+function RequestRow({
+  request: r,
+  batchId,
+}: {
+  request: WaterRequest;
+  batchId: string;
+}) {
   const collectedLoads = r.loadCollections?.length ?? 0;
 
   return (
@@ -230,7 +264,10 @@ function RequestRow({ request: r, batchId }: { request: WaterRequest; batchId: s
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-900">
             {r.batchSequence ?? "—"}.{" "}
-            <Link href={`/dispatcher/${r.id}`} className="hover:underline text-blue-700">
+            <Link
+              href={`/dispatcher/${r.id}`}
+              className="hover:underline text-blue-700"
+            >
               {r.customer?.displayName ?? "Unknown"}
             </Link>
           </p>
@@ -241,7 +278,9 @@ function RequestRow({ request: r, batchId }: { request: WaterRequest; batchId: s
           </div>
           <p className="mt-1 text-xs text-slate-500">{r.deliveryDirections}</p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${PRIORITY_COLORS[r.dispatchPriority]}`}>
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${PRIORITY_COLORS[r.dispatchPriority]}`}
+            >
               {PRIORITY_LABELS[r.dispatchPriority]}
             </span>
             {r.dispatchOverrideRank != null && (
@@ -255,18 +294,23 @@ function RequestRow({ request: r, batchId }: { request: WaterRequest; batchId: s
           </div>
           {r.status === "claimed" && (
             <p className="mt-1.5 text-xs text-slate-600">
-              Water collected: {collectedLoads}/{r.loads} load{r.loads !== 1 ? "s" : ""}
+              Water collected: {collectedLoads}/{r.loads} load
+              {r.loads !== 1 ? "s" : ""}
               {r.loadCollections && r.loadCollections.length > 0 && (
                 <span className="ml-2 text-slate-400">
-                  ({r.loadCollections.map((c) =>
-                    `${c.fillStationName} — Meter ${c.meterNumber}`
-                  ).join("; ")})
+                  (
+                  {r.loadCollections
+                    .map((c) => `${c.fillStationName} — Meter ${c.meterNumber}`)
+                    .join("; ")}
+                  )
                 </span>
               )}
             </p>
           )}
         </div>
-        <span className={`inline-flex shrink-0 self-start rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLORS[r.status]}`}>
+        <span
+          className={`inline-flex shrink-0 self-start rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLORS[r.status]}`}
+        >
           {STATUS_LABELS[r.status]}
         </span>
       </div>

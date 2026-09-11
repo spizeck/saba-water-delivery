@@ -77,7 +77,8 @@ export interface WhatsAppSessionDraft {
  * this WhatsApp sender's phone number — per PRODUCT.md "Resident
  * Identity Strategy" we never guess which account to use in that case.
  */
-export type WhatsAppCustomerType = "registered" | "unregistered" | "ambiguous" | "unknown";
+export type WhatsAppCustomerType =
+  "registered" | "unregistered" | "ambiguous" | "unknown";
 
 export interface WhatsAppSession {
   /** Deterministic id derived from the normalized sender phone (see session.ts) — never the raw phone number itself, to avoid personal data in Firestore document paths. */
@@ -125,7 +126,11 @@ export type WhatsAppConversationAction =
   | {
       type: "create_request";
       customerId: string | null;
-      customer: { displayName: string; phone: string; email: string | null } | null;
+      customer: {
+        displayName: string;
+        phone: string;
+        email: string | null;
+      } | null;
       loads: 1 | 2;
       village: string;
       deliveryDirections: string;
@@ -147,7 +152,12 @@ export type WhatsAppConversationAction =
       deliveryDirections: string;
     }
   | { type: "confirm_delivery"; requestId: string; customerId: string }
-  | { type: "dispute_delivery"; requestId: string; customerId: string; reason: string };
+  | {
+      type: "dispute_delivery";
+      requestId: string;
+      customerId: string;
+      reason: string;
+    };
 
 export interface WhatsAppConversationResult {
   /** Next session state to persist (or null to end/reset the conversation). */

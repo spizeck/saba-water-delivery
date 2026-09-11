@@ -34,7 +34,11 @@ export function getWhatsAppClientConfig(): WhatsAppClientConfig | null {
  */
 export function verifyWhatsAppWebhookChallenge(
   config: WhatsAppClientConfig,
-  params: { mode: string | null; token: string | null; challenge: string | null },
+  params: {
+    mode: string | null;
+    token: string | null;
+    challenge: string | null;
+  },
 ): string | null {
   if (params.mode !== "subscribe") return null;
   if (!params.token || params.token !== config.verifyToken) return null;
@@ -57,7 +61,9 @@ export function verifyWhatsAppWebhookSignature(
   const [algo, providedHex] = signatureHeader.split("=");
   if (algo !== "sha256" || !providedHex) return false;
 
-  const expectedHex = createHmac("sha256", config.appSecret).update(rawBody, "utf8").digest("hex");
+  const expectedHex = createHmac("sha256", config.appSecret)
+    .update(rawBody, "utf8")
+    .digest("hex");
 
   const provided = Buffer.from(providedHex, "hex");
   const expected = Buffer.from(expectedHex, "hex");

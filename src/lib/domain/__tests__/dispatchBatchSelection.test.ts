@@ -13,11 +13,19 @@ import type { StandardLoadGallons, WaterRequest } from "@/lib/domain/types";
 
 const baseTime = new Date("2026-08-20T12:00:00.000Z");
 
-function makeRequest(id: string, overrides: Partial<WaterRequest> = {}): WaterRequest {
+function makeRequest(
+  id: string,
+  overrides: Partial<WaterRequest> = {},
+): WaterRequest {
   return {
     id,
     customerId: null,
-    customer: { displayName: `Customer ${id}`, phone: null, email: null, isRegistered: false },
+    customer: {
+      displayName: `Customer ${id}`,
+      phone: null,
+      email: null,
+      isRegistered: false,
+    },
     source: "resident",
     createdBy: null,
     loads: 1,
@@ -96,9 +104,14 @@ describe("sortForBatchSelection", () => {
   });
 
   it("places escalated (override rank 0) requests ahead within the same priority", () => {
-    const escalated = makeRequest("escalated", { dispatchOverrideRank: 0, requestedAt: new Date(baseTime.getTime() + 60_000).toISOString() });
+    const escalated = makeRequest("escalated", {
+      dispatchOverrideRank: 0,
+      requestedAt: new Date(baseTime.getTime() + 60_000).toISOString(),
+    });
     const older = makeRequest("older", { requestedAt: baseTime.toISOString() });
-    const newer = makeRequest("newer", { requestedAt: new Date(baseTime.getTime() + 120_000).toISOString() });
+    const newer = makeRequest("newer", {
+      requestedAt: new Date(baseTime.getTime() + 120_000).toISOString(),
+    });
 
     const sorted = sortForBatchSelection([newer, escalated, older]);
     expect(sorted.map((r) => r.id)).toEqual(["escalated", "older", "newer"]);
@@ -115,18 +128,26 @@ describe("sortForBatchSelection", () => {
     });
 
     const sorted = sortForBatchSelection([newer, older]);
-    expect(sorted.map((r) => r.id)).toEqual(["older-escalated", "newer-escalated"]);
+    expect(sorted.map((r) => r.id)).toEqual([
+      "older-escalated",
+      "newer-escalated",
+    ]);
   });
 
   it("puts an escalated newer request ahead of a non-escalated older request at the same priority", () => {
-    const nonEscalated = makeRequest("non-escalated-older", { requestedAt: baseTime.toISOString() });
+    const nonEscalated = makeRequest("non-escalated-older", {
+      requestedAt: baseTime.toISOString(),
+    });
     const escalated = makeRequest("escalated-newer", {
       dispatchOverrideRank: 0,
       requestedAt: new Date(baseTime.getTime() + 60_000).toISOString(),
     });
 
     const sorted = sortForBatchSelection([nonEscalated, escalated]);
-    expect(sorted.map((r) => r.id)).toEqual(["escalated-newer", "non-escalated-older"]);
+    expect(sorted.map((r) => r.id)).toEqual([
+      "escalated-newer",
+      "non-escalated-older",
+    ]);
   });
 
   it("keeps priority dominant over escalation (critical non-escalated before normal escalated)", () => {
@@ -141,8 +162,14 @@ describe("sortForBatchSelection", () => {
       requestedAt: new Date(baseTime.getTime() + 120_000).toISOString(),
     });
 
-    const sorted = sortForBatchSelection([normalEscalated, criticalNonEscalated]);
-    expect(sorted.map((r) => r.id)).toEqual(["critical-non-escalated", "normal-escalated"]);
+    const sorted = sortForBatchSelection([
+      normalEscalated,
+      criticalNonEscalated,
+    ]);
+    expect(sorted.map((r) => r.id)).toEqual([
+      "critical-non-escalated",
+      "normal-escalated",
+    ]);
   });
 });
 
@@ -156,36 +183,62 @@ describe("validateBatchSelection", () => {
   });
 
   it("reports TOO_MANY_REQUESTS beyond the technical safety bound", () => {
-    const ids = Array.from({ length: MAX_BATCH_SIZE + 1 }, (_, i) => `req-${i}`);
+    const ids = Array.from(
+      { length: MAX_BATCH_SIZE + 1 },
+      (_, i) => `req-${i}`,
+    );
     const snapshots = ids.map((id) => snapshotFromRequest(makeRequest(id)));
 
     const issues = validateBatchSelection(ids, snapshots, driverId, new Set());
 
-    expect(issues).toContainEqual({ code: "TOO_MANY_REQUESTS", limit: MAX_BATCH_SIZE });
+    expect(issues).toContainEqual({
+      code: "TOO_MANY_REQUESTS",
+      limit: MAX_BATCH_SIZE,
+    });
   });
 
   it("reports DUPLICATE_REQUEST_ID for a repeated selection", () => {
     const snapshots = [snapshotFromRequest(makeRequest("req-1"))];
-    const issues = validateBatchSelection(["req-1", "req-1"], snapshots, driverId, new Set());
-    expect(issues).toContainEqual({ code: "DUPLICATE_REQUEST_ID", requestId: "req-1" });
+    const issues = validateBatchSelection(
+      ["req-1", "req-1"],
+      snapshots,
+      driverId,
+      new Set(),
+    );
+    expect(issues).toContainEqual({
+      code: "DUPLICATE_REQUEST_ID",
+      requestId: "req-1",
+    });
   });
 
   it("reports REQUEST_NOT_FOUND for a request missing from the snapshots", () => {
-    const issues = validateBatchSelection(["req-missing"], [], driverId, new Set());
-    expect(issues).toEqual([{ code: "REQUEST_NOT_FOUND", requestId: "req-missing" }]);
+    const issues = validateBatchSelection(
+      ["req-missing"],
+      [],
+      driverId,
+      new Set(),
+    );
+    expect(issues).toEqual([
+      { code: "REQUEST_NOT_FOUND", requestId: "req-missing" },
+    ]);
   });
 
   it("reports REQUEST_NOT_ELIGIBLE for a request already claimed by someone else (the race scenario)", () => {
     // Simulates the request changing state (e.g. claimed by another
     // driver) between the dispatcher's review and confirmation.
-    const claimed = makeRequest("req-1", { status: "claimed", assignedDriverId: "driver-9" });
+    const claimed = makeRequest("req-1", {
+      status: "claimed",
+      assignedDriverId: "driver-9",
+    });
     const issues = validateBatchSelection(
       ["req-1"],
       [snapshotFromRequest(claimed)],
       driverId,
       new Set(),
     );
-    expect(issues).toEqual([{ code: "REQUEST_NOT_ELIGIBLE", requestId: "req-1", status: "claimed" }]);
+    expect(issues).toEqual([
+      { code: "REQUEST_NOT_ELIGIBLE", requestId: "req-1", status: "claimed" },
+    ]);
   });
 
   it("reports REQUEST_NOT_ELIGIBLE for a cancelled request", () => {
@@ -196,7 +249,9 @@ describe("validateBatchSelection", () => {
       driverId,
       new Set(),
     );
-    expect(issues).toEqual([{ code: "REQUEST_NOT_ELIGIBLE", requestId: "req-1", status: "cancelled" }]);
+    expect(issues).toEqual([
+      { code: "REQUEST_NOT_ELIGIBLE", requestId: "req-1", status: "cancelled" },
+    ]);
   });
 
   it("accepts every BATCH_ELIGIBLE_STATUSES value with no assigned driver", () => {
@@ -224,7 +279,11 @@ describe("validateBatchSelection", () => {
       new Set(),
     );
     expect(issues).toEqual([
-      { code: "PREFERRED_DRIVER_OVERRIDE_NOT_ACKNOWLEDGED", requestId: "req-1", preferredDriverId: otherDriverId },
+      {
+        code: "PREFERRED_DRIVER_OVERRIDE_NOT_ACKNOWLEDGED",
+        requestId: "req-1",
+        preferredDriverId: otherDriverId,
+      },
     ]);
   });
 
@@ -259,11 +318,15 @@ describe("validateBatchSelection", () => {
 
 describe("computeDispatchBatchStatus", () => {
   it("is active while any member is still claimed", () => {
-    expect(computeDispatchBatchStatus(["claimed", "delivered", "confirmed"])).toBe("active");
+    expect(
+      computeDispatchBatchStatus(["claimed", "delivered", "confirmed"]),
+    ).toBe("active");
   });
 
   it("is completed once no member remains claimed", () => {
-    expect(computeDispatchBatchStatus(["delivered", "confirmed", "disputed"])).toBe("completed");
+    expect(
+      computeDispatchBatchStatus(["delivered", "confirmed", "disputed"]),
+    ).toBe("completed");
   });
 
   it("is completed for an empty member set (all left the batch)", () => {

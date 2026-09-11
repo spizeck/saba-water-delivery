@@ -6,7 +6,10 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { sortForBatchSelection } from "@/lib/domain/dispatchBatchSelection";
-import { getActiveDriverRegistryEntries, reconcileActiveRequest } from "@/lib/domain/driverRegistry";
+import {
+  getActiveDriverRegistryEntries,
+  reconcileActiveRequest,
+} from "@/lib/domain/driverRegistry";
 import { getBatchEligibleRequests } from "@/lib/domain/waterRequests";
 
 import { NewBatchForm } from "./NewBatchForm";
@@ -68,7 +71,9 @@ export default async function NewDeliveryRunPage() {
     priority: r.dispatchPriority,
     requestedAt: r.requestedAt,
     preferredDriverId: r.preferredDriverId,
-    preferredDriverName: r.preferredDriverId ? (driverNames[r.preferredDriverId] ?? "Unknown driver") : null,
+    preferredDriverName: r.preferredDriverId
+      ? (driverNames[r.preferredDriverId] ?? "Unknown driver")
+      : null,
   }));
 
   return (
@@ -77,10 +82,15 @@ export default async function NewDeliveryRunPage() {
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6 max-w-3xl">
           <div>
-            <Link href="/dispatcher/batches" className="text-blue-700 hover:underline text-sm">
+            <Link
+              href="/dispatcher/batches"
+              className="text-blue-700 hover:underline text-sm"
+            >
               &larr; Back to Delivery Runs
             </Link>
-            <h1 className="mt-2 text-2xl font-bold text-slate-900">New Delivery Run</h1>
+            <h1 className="mt-2 text-2xl font-bold text-slate-900">
+              New Delivery Run
+            </h1>
             <p className="mt-1 text-sm text-slate-600">
               Select a driver, then choose the requests to assign them at once.
             </p>
@@ -89,10 +99,10 @@ export default async function NewDeliveryRunPage() {
           {driverOptions.length === 0 ? (
             <Card>
               <p className="text-sm text-slate-600">
-                No eligible, account-linked drivers are available. A driver
-                must be entered in the Driver Registry, have signed in and
-                been linked to their account, and be marked eligible before
-                they can receive a delivery run.
+                No eligible, account-linked drivers are available. A driver must
+                be entered in the Driver Registry, have signed in and been
+                linked to their account, and be marked eligible before they can
+                receive a delivery run.
               </p>
             </Card>
           ) : sortedRequests.length === 0 ? (

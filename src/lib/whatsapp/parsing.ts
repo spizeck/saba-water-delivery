@@ -6,9 +6,21 @@
  */
 
 import type { VulnerableCircumstance } from "@/lib/domain/types";
-import { isValidSabaVillage, SABA_VILLAGES, type SabaVillage } from "@/lib/domain/villages";
+import {
+  isValidSabaVillage,
+  SABA_VILLAGES,
+  type SabaVillage,
+} from "@/lib/domain/villages";
 
-const GREETING_WORDS = ["hi", "hello", "hey", "water", "start", "menu", "request water"];
+const GREETING_WORDS = [
+  "hi",
+  "hello",
+  "hey",
+  "water",
+  "start",
+  "menu",
+  "request water",
+];
 
 export function isGreeting(text: string): boolean {
   const normalized = text.trim().toLowerCase();
@@ -47,7 +59,10 @@ const VULNERABLE_OPTIONS: { value: VulnerableCircumstance; label: string }[] = [
   { value: "elderly", label: "Elderly person" },
   { value: "infant_or_young_child", label: "Infant or young child" },
   { value: "medical_need", label: "Medical need" },
-  { value: "essential_services_commercial_business", label: "Essential services (Commercial/business)" },
+  {
+    value: "essential_services_commercial_business",
+    label: "Essential services (Commercial/business)",
+  },
   { value: "hotel_or_restaurant", label: "Hotel or Restaurant" },
   { value: "none", label: "None" },
 ];
@@ -66,7 +81,9 @@ export function vulnerableCircumstanceMenuText(): string {
  * combining it with other selections just drops the others, matching
  * the web form's "None of these" checkbox behavior.
  */
-export function parseVulnerableCircumstances(text: string): VulnerableCircumstance[] | null {
+export function parseVulnerableCircumstances(
+  text: string,
+): VulnerableCircumstance[] | null {
   const parts = text
     .split(",")
     .map((p) => p.trim())
@@ -101,9 +118,12 @@ export function parseUrgencyChoice(text: string): "normal" | "critical" | null {
 }
 
 /** Parses a non-negative integer for "persons affected", or "skip"/blank for none. */
-export function parsePersonsAffected(text: string): { value: number | null } | null {
+export function parsePersonsAffected(
+  text: string,
+): { value: number | null } | null {
   const trimmed = text.trim().toLowerCase();
-  if (trimmed === "" || trimmed === "skip" || trimmed === "0") return { value: null };
+  if (trimmed === "" || trimmed === "skip" || trimmed === "0")
+    return { value: null };
   if (!/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);
   return value > 0 ? { value } : null;

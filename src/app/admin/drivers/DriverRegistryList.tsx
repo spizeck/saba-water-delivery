@@ -12,7 +12,9 @@ interface Props {
 
 export function DriverRegistryList({ drivers, title, showStatus }: Props) {
   const now = new Date();
-  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  const endOfToday = startOfSabaDay(
+    new Date(now.getTime() + 24 * 60 * 60 * 1000),
+  );
   return (
     <Card>
       <h2 className="text-lg font-bold text-slate-900">
@@ -24,9 +26,14 @@ export function DriverRegistryList({ drivers, title, showStatus }: Props) {
       ) : (
         <div className="mt-4 flex flex-col divide-y divide-slate-100">
           {drivers.map((driver) => (
-            <div key={driver.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+            <div
+              key={driver.id}
+              className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+            >
               <div className="min-w-0">
-                <p className="truncate font-medium text-slate-900">{driver.displayName}</p>
+                <p className="truncate font-medium text-slate-900">
+                  {driver.displayName}
+                </p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {driver.archivedAt ? (
                     <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
@@ -41,7 +48,9 @@ export function DriverRegistryList({ drivers, title, showStatus }: Props) {
                             : "bg-red-50 text-red-700"
                         }`}
                       >
-                        {driver.eligibilityStatus === "eligible" ? "Eligible" : "Ineligible"}
+                        {driver.eligibilityStatus === "eligible"
+                          ? "Eligible"
+                          : "Ineligible"}
                       </span>
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -50,15 +59,20 @@ export function DriverRegistryList({ drivers, title, showStatus }: Props) {
                             : "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {driver.availabilityStatus === "online" ? "Online" : "Offline"}
+                        {driver.availabilityStatus === "online"
+                          ? "Online"
+                          : "Offline"}
                       </span>
-                      {driver.cooldownUntil && new Date(driver.cooldownUntil).getTime() > now.getTime() && (
-                        <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                          {new Date(driver.cooldownUntil).getTime() >= endOfToday.getTime()
-                            ? "Daily limit reached"
-                            : `Cooldown until ${formatSabaTime(driver.cooldownUntil)}`}
-                        </span>
-                      )}
+                      {driver.cooldownUntil &&
+                        new Date(driver.cooldownUntil).getTime() >
+                          now.getTime() && (
+                          <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            {new Date(driver.cooldownUntil).getTime() >=
+                            endOfToday.getTime()
+                              ? "Daily limit reached"
+                              : `Cooldown until ${formatSabaTime(driver.cooldownUntil)}`}
+                          </span>
+                        )}
                     </>
                   )}
                   {driver.linkedUserId ? (

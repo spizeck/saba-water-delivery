@@ -8,7 +8,10 @@ export function isOfferableToDriver(
 ): boolean {
   if (request.assignedDriverId) return false;
   if (request.status === "available") return true;
-  if (request.status === "preferred_driver_hold" && request.preferredDriverId === driverId) {
+  if (
+    request.status === "preferred_driver_hold" &&
+    request.preferredDriverId === driverId
+  ) {
     if (!request.preferredDriverExpiresAt) return true;
     return new Date(request.preferredDriverExpiresAt) > now;
   }
@@ -40,8 +43,15 @@ export interface SelectNextDispatchCandidateInput {
 export function selectNextDispatchCandidate(
   input: SelectNextDispatchCandidateInput,
 ): WaterRequest | null {
-  const { activeDelivery, pendingOffer, holds, available, declinedRequestIds, driverId, now } =
-    input;
+  const {
+    activeDelivery,
+    pendingOffer,
+    holds,
+    available,
+    declinedRequestIds,
+    driverId,
+    now,
+  } = input;
 
   // One-active-delivery invariant: a driver already servicing a delivery
   // cannot be offered another until that delivery leaves "claimed" status.

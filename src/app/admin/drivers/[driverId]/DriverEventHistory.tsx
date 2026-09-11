@@ -1,7 +1,10 @@
 import { Card } from "@/components/ui/Card";
 import type { DriverEvent } from "@/lib/domain/types";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
-import { formatDriverEventDetails, DRIVER_EVENT_LABELS } from "@/lib/utils/formatAuditEvent";
+import {
+  formatDriverEventDetails,
+  DRIVER_EVENT_LABELS,
+} from "@/lib/utils/formatAuditEvent";
 
 interface Props {
   events: DriverEvent[];
@@ -23,7 +26,10 @@ export function DriverEventHistory({ events, nameMap = {} }: Props) {
               { nameMap, actorId: event.actorId },
             );
             return (
-              <div key={event.id} className="rounded-lg border border-slate-100 p-3">
+              <div
+                key={event.id}
+                className="rounded-lg border border-slate-100 p-3"
+              >
                 <p className="text-sm font-medium text-slate-900">
                   {DRIVER_EVENT_LABELS[event.type] ?? event.type}
                 </p>

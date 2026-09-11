@@ -37,7 +37,9 @@ export default async function ResidentPortalPage() {
   // above, which continues to gate water-request eligibility exactly as
   // before and is NOT changed by this feature.
   const deliveryProfileFieldsComplete = Boolean(
-    profile.phone?.trim() && profile.village?.trim() && profile.deliveryDirections?.trim(),
+    profile.phone?.trim() &&
+    profile.village?.trim() &&
+    profile.deliveryDirections?.trim(),
   );
 
   // Fetch active request and eligible drivers in parallel. The most
@@ -46,13 +48,17 @@ export default async function ResidentPortalPage() {
   // regardless, so skip this extra read (see TECHNICAL.md "Delivery
   // Profile Confirmation Reminder" — avoid scanning request history on
   // every login).
-  const [rawActiveRequest, eligibleDrivers, allRequests, mostRecentConfirmedRequest] =
-    await Promise.all([
-      profileComplete ? getActiveRequestForCustomer(uid) : null,
-      profileComplete ? getEligibleDriverOptions() : [],
-      profileComplete ? getRequestsForCustomer(uid) : [],
-      deliveryProfileFieldsComplete ? getMostRecentConfirmedRequest(uid) : null,
-    ]);
+  const [
+    rawActiveRequest,
+    eligibleDrivers,
+    allRequests,
+    mostRecentConfirmedRequest,
+  ] = await Promise.all([
+    profileComplete ? getActiveRequestForCustomer(uid) : null,
+    profileComplete ? getEligibleDriverOptions() : [],
+    profileComplete ? getRequestsForCustomer(uid) : [],
+    deliveryProfileFieldsComplete ? getMostRecentConfirmedRequest(uid) : null,
+  ]);
 
   const deliveryProfileReminder = evaluateDeliveryProfileReminder({
     phone: profile.phone,
@@ -116,7 +122,9 @@ export default async function ResidentPortalPage() {
             )
           ) : (
             <Card>
-              <h2 className="text-lg font-bold text-slate-900">Request water</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Request water
+              </h2>
               <p className="mt-2 text-slate-600">
                 Complete your profile below to unlock water requests.
               </p>

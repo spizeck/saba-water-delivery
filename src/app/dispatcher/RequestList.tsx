@@ -2,7 +2,12 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
-import type { DispatchPriority, WaterLoadCollection, WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
+import type {
+  DispatchPriority,
+  WaterLoadCollection,
+  WaterRequest,
+  WaterRequestStatus,
+} from "@/lib/domain/types";
 
 const PRIORITY_LABELS: Record<DispatchPriority, string> = {
   normal: "Normal",
@@ -90,7 +95,9 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                 {activeRequests.map((req) => (
                   <tr key={req.id} className="group">
                     <td className="py-2 pr-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[req.status]}`}>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[req.status]}`}
+                      >
                         {STATUS_LABELS[req.status]}
                       </span>
                       {req.status === "delivered" && (
@@ -99,11 +106,16 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                         </span>
                       )}
                       {req.status === "claimed" && (
-                        <CollectionProgress loads={req.loads} loadCollections={req.loadCollections} />
+                        <CollectionProgress
+                          loads={req.loads}
+                          loadCollections={req.loadCollections}
+                        />
                       )}
                     </td>
                     <td className="py-2 pr-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[req.dispatchPriority]}`}>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[req.dispatchPriority]}`}
+                      >
                         {PRIORITY_LABELS[req.dispatchPriority]}
                       </span>
                     </td>
@@ -118,11 +130,13 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                         </span>
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-slate-600">{formatWaterQuantity(req.loads)}</td>
+                    <td className="py-2 pr-3 text-slate-600">
+                      {formatWaterQuantity(req.loads)}
+                    </td>
                     <td className="py-2 pr-3 text-slate-600">{req.village}</td>
                     <td className="py-2 pr-3 text-slate-600">
                       {req.assignedDriverId
-                        ? driverNames[req.assignedDriverId] ?? "—"
+                        ? (driverNames[req.assignedDriverId] ?? "—")
                         : req.preferredDriverId
                           ? `Pref: ${driverNames[req.preferredDriverId] ?? "—"}`
                           : "—"}
@@ -162,7 +176,9 @@ export function RequestList({ requests, customerNames, driverNames }: Props) {
                 {recentResolved.map((req) => (
                   <tr key={req.id}>
                     <td className="py-2 pr-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[req.status]}`}>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[req.status]}`}
+                      >
                         {STATUS_LABELS[req.status]}
                       </span>
                     </td>

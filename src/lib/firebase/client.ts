@@ -27,7 +27,10 @@ const firebaseConfig = {
 
 /** True once all required client config values are present. */
 export const isFirebaseClientConfigured = Boolean(
-  firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId && firebaseConfig.appId,
+  firebaseConfig.apiKey &&
+  firebaseConfig.authDomain &&
+  firebaseConfig.projectId &&
+  firebaseConfig.appId,
 );
 
 let app: FirebaseApp | null = null;

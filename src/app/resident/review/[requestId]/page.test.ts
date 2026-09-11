@@ -40,16 +40,22 @@ describe("resident delivery review route", () => {
       profile: { roles: ["resident"] },
     });
     await expect(
-      ResidentDeliveryReviewPage({ params: Promise.resolve({ requestId: "request-123" }) }),
+      ResidentDeliveryReviewPage({
+        params: Promise.resolve({ requestId: "request-123" }),
+      }),
     ).resolves.toBeTruthy();
     expect(mocks.getWaterRequestById).toHaveBeenCalledWith("request-123");
-    expect(mocks.checkDeliveryConfirmationTimeout).toHaveBeenCalledWith("request-123");
+    expect(mocks.checkDeliveryConfirmationTimeout).toHaveBeenCalledWith(
+      "request-123",
+    );
   });
 
   it("sends an unauthenticated resident through login with a safe return URL", async () => {
     mocks.getSessionUser.mockResolvedValue(null);
     await expect(
-      ResidentDeliveryReviewPage({ params: Promise.resolve({ requestId: "request-123" }) }),
+      ResidentDeliveryReviewPage({
+        params: Promise.resolve({ requestId: "request-123" }),
+      }),
     ).rejects.toThrow("REDIRECT:/login?portal=resident&returnTo=");
     expect(mocks.redirect).toHaveBeenCalledWith(
       `/login?portal=resident&returnTo=${encodeURIComponent(

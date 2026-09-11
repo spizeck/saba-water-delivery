@@ -169,7 +169,13 @@ describe("evaluateDeliveryProfileReminder", () => {
   });
 
   it("canonical village is treated as complete", () => {
-    for (const village of ["St Johns", "The Bottom", "Windwardside", "Zions Hill - Lower", "Zions Hill - Upper"]) {
+    for (const village of [
+      "St Johns",
+      "The Bottom",
+      "Windwardside",
+      "Zions Hill - Lower",
+      "Zions Hill - Upper",
+    ]) {
       const result = evaluateDeliveryProfileReminder({
         ...completeProfile,
         village,

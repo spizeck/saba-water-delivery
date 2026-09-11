@@ -11,7 +11,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { establishSession, type EstablishSessionResult } from "@/lib/auth/client-session";
+import {
+  establishSession,
+  type EstablishSessionResult,
+} from "@/lib/auth/client-session";
 import { safeResidentReturnTo } from "@/lib/auth/returnTo";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -19,11 +22,7 @@ import { getFirebaseAuth } from "@/lib/firebase/client";
 
 type Mode = "sign-in" | "create-account";
 
-type SessionStep =
-  | "idle"
-  | "establishing"
-  | "ready"
-  | "error";
+type SessionStep = "idle" | "establishing" | "ready" | "error";
 
 interface LoginFormProps {
   intendedPortal: string | null;
@@ -49,7 +48,8 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
   // session from a previous visit), exchange it for a server session
   // cookie and route to the portal requested on the home page.
   useEffect(() => {
-    if (loading || !user || establishing.current || sessionStep !== "idle") return;
+    if (loading || !user || establishing.current || sessionStep !== "idle")
+      return;
     establishing.current = true;
     void (async () => {
       setError(null);
@@ -80,7 +80,9 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
   useEffect(() => {
     if (sessionStep === "ready" && sessionResult) {
       const safeReturnTo =
-        sessionResult.portal === "resident" ? safeResidentReturnTo(returnTo) : null;
+        sessionResult.portal === "resident"
+          ? safeResidentReturnTo(returnTo)
+          : null;
       router.replace(safeReturnTo ?? `/${sessionResult.portal}`);
     }
   }, [sessionStep, sessionResult, router, returnTo]);
@@ -88,11 +90,18 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
   if (!isConfigured) {
     return (
       <Card className="border-amber-200 bg-amber-50">
-        <h1 className="text-xl font-bold text-slate-900">Sign-in is not configured yet</h1>
+        <h1 className="text-xl font-bold text-slate-900">
+          Sign-in is not configured yet
+        </h1>
         <p className="mt-2 text-slate-700">
           This environment is missing Firebase configuration. Set the{" "}
-          <code className="rounded bg-white px-1 py-0.5 text-sm">NEXT_PUBLIC_FIREBASE_*</code>{" "}
-          environment variables described in <code className="rounded bg-white px-1 py-0.5 text-sm">.env.example</code>{" "}
+          <code className="rounded bg-white px-1 py-0.5 text-sm">
+            NEXT_PUBLIC_FIREBASE_*
+          </code>{" "}
+          environment variables described in{" "}
+          <code className="rounded bg-white px-1 py-0.5 text-sm">
+            .env.example
+          </code>{" "}
           to enable Google, Facebook, and email/password sign-in.
         </p>
       </Card>
@@ -107,7 +116,9 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
     if (sessionStep === "error") {
       return (
         <Card>
-          <h1 className="text-xl font-bold text-slate-900">Couldn&apos;t finish signing in</h1>
+          <h1 className="text-xl font-bold text-slate-900">
+            Couldn&apos;t finish signing in
+          </h1>
           <p className="mt-2 text-slate-600">{error}</p>
         </Card>
       );
@@ -131,7 +142,9 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
 
     return (
       <Card>
-        <h1 className="text-xl font-bold text-slate-900">Signing you in&hellip;</h1>
+        <h1 className="text-xl font-bold text-slate-900">
+          Signing you in&hellip;
+        </h1>
         <p className="mt-2 text-slate-600">
           Please wait while we securely sign you in.
         </p>
@@ -139,7 +152,9 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
     );
   }
 
-  async function handleProviderSignIn(provider: GoogleAuthProvider | FacebookAuthProvider) {
+  async function handleProviderSignIn(
+    provider: GoogleAuthProvider | FacebookAuthProvider,
+  ) {
     setError(null);
     const auth = getFirebaseAuth();
     if (!auth) return;
@@ -178,7 +193,8 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
 
       {intendedPortal === "driver" && (
         <p className="mt-2 text-sm text-slate-600">
-          This sign-in is for authorized drivers with a linked Driver Registry account.
+          This sign-in is for authorized drivers with a linked Driver Registry
+          account.
         </p>
       )}
 
@@ -232,7 +248,9 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
             type="password"
             required
             minLength={6}
-            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+            autoComplete={
+              mode === "sign-in" ? "current-password" : "new-password"
+            }
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="h-11 rounded-lg border border-slate-300 px-3 text-base text-slate-900 focus:border-blue-600 focus:outline-none"
@@ -255,9 +273,13 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
         variant="outline"
         size="lg"
         className="mt-4"
-        onClick={() => setMode(mode === "sign-in" ? "create-account" : "sign-in")}
+        onClick={() =>
+          setMode(mode === "sign-in" ? "create-account" : "sign-in")
+        }
       >
-        {mode === "sign-in" ? "Need an account? Create one" : "Already have an account? Log in"}
+        {mode === "sign-in"
+          ? "Need an account? Create one"
+          : "Already have an account? Log in"}
       </Button>
     </Card>
   );

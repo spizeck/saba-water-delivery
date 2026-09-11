@@ -55,6 +55,9 @@ export async function ensureDefaultFillStations(): Promise<void> {
 export async function getFillStations(): Promise<FillStation[]> {
   await ensureDefaultFillStations();
   const db = getAdminDb();
-  const snapshot = await db.collection(FILL_STATIONS_COLLECTION).orderBy("name", "asc").get();
+  const snapshot = await db
+    .collection(FILL_STATIONS_COLLECTION)
+    .orderBy("name", "asc")
+    .get();
   return snapshot.docs.map((doc) => toFillStation(doc.id, doc.data()));
 }

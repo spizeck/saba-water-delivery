@@ -4,12 +4,19 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { FillStation, MeterAssignment, WaterLoadCollection } from "@/lib/domain/types";
+import type {
+  FillStation,
+  MeterAssignment,
+  WaterLoadCollection,
+} from "@/lib/domain/types";
 import { DEFAULT_FILL_STATION_ID } from "@/lib/domain/types";
 import type { RequestedLoads } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
-import { recordCollectionByStaff, type StaffCollectionActionState } from "../actions";
+import {
+  recordCollectionByStaff,
+  type StaffCollectionActionState,
+} from "../actions";
 
 interface Props {
   requestId: string;
@@ -54,7 +61,12 @@ export function WaterCollectionDisplay({
           const loadNumber = (i + 1) as 1 | 2;
           const existing = collections.find((c) => c.loadNumber === loadNumber);
           return existing ? (
-            <CollectedLoadDisplay key={loadNumber} loadNumber={loadNumber} record={existing} nameMap={nameMap} />
+            <CollectedLoadDisplay
+              key={loadNumber}
+              loadNumber={loadNumber}
+              record={existing}
+              nameMap={nameMap}
+            />
           ) : (
             <UncollectedLoad
               key={loadNumber}
@@ -89,7 +101,9 @@ function CollectedLoadDisplay({
     <div className="rounded-lg border border-green-200 bg-green-50 p-3">
       <div className="flex items-center gap-2">
         <span className="text-green-700">&#10003;</span>
-        <span className="text-sm font-medium text-green-800">Load {loadNumber} — Collected</span>
+        <span className="text-sm font-medium text-green-800">
+          Load {loadNumber} — Collected
+        </span>
       </div>
       <dl className="mt-2 flex flex-col gap-0.5 text-xs text-green-700">
         <div className="flex gap-1">
@@ -98,7 +112,9 @@ function CollectedLoadDisplay({
         </div>
         <div className="flex gap-1">
           <dt className="font-medium">Meter:</dt>
-          <dd>{record.meterCode} &middot; Meter {record.meterNumber}</dd>
+          <dd>
+            {record.meterCode} &middot; Meter {record.meterNumber}
+          </dd>
         </div>
         <div className="flex gap-1">
           <dt className="font-medium">Driver:</dt>
@@ -145,8 +161,13 @@ function UncollectedLoad({
   isClaimed: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
-  const [selectedStationId, setSelectedStationId] = useState<string>(DEFAULT_FILL_STATION_ID);
-  const [state, formAction, pending] = useActionState(recordCollectionByStaff, collectionInitialState);
+  const [selectedStationId, setSelectedStationId] = useState<string>(
+    DEFAULT_FILL_STATION_ID,
+  );
+  const [state, formAction, pending] = useActionState(
+    recordCollectionByStaff,
+    collectionInitialState,
+  );
 
   const activeStations = stations.filter((s) => s.active);
   const sortedStations = [...activeStations].sort((a, b) => {
@@ -155,7 +176,9 @@ function UncollectedLoad({
     return a.name.localeCompare(b.name);
   });
 
-  const resolvedMeter = driverMeters.find((m) => m.stationId === selectedStationId);
+  const resolvedMeter = driverMeters.find(
+    (m) => m.stationId === selectedStationId,
+  );
 
   if (state.status === "success") {
     return (
@@ -192,26 +215,35 @@ function UncollectedLoad({
 
           {assignedDriverName && (
             <p className="text-xs text-slate-600">
-              Recording for driver: <span className="font-medium">{assignedDriverName}</span>
+              Recording for driver:{" "}
+              <span className="font-medium">{assignedDriverName}</span>
             </p>
           )}
 
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-600">Fill station</span>
+            <span className="text-xs font-medium text-slate-600">
+              Fill station
+            </span>
             <select
               value={selectedStationId}
               onChange={(e) => setSelectedStationId(e.target.value)}
               className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
             >
               {sortedStations.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
               ))}
             </select>
           </label>
 
           {resolvedMeter && (
             <p className="text-xs text-slate-600">
-              Meter: <span className="font-medium">{resolvedMeter.meterCode} &middot; Meter {resolvedMeter.meterNumber}</span>
+              Meter:{" "}
+              <span className="font-medium">
+                {resolvedMeter.meterCode} &middot; Meter{" "}
+                {resolvedMeter.meterNumber}
+              </span>
             </p>
           )}
           {selectedStationId && !resolvedMeter && (
@@ -221,7 +253,9 @@ function UncollectedLoad({
           )}
 
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-600">Note (required)</span>
+            <span className="text-xs font-medium text-slate-600">
+              Note (required)
+            </span>
             <textarea
               name="note"
               required

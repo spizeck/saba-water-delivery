@@ -54,7 +54,10 @@ function preferredDriverName(
   preferredDriverId: string | null,
 ): string | null {
   if (!preferredDriverId) return null;
-  return context.eligibleDrivers.find((d) => d.uid === preferredDriverId)?.displayName ?? null;
+  return (
+    context.eligibleDrivers.find((d) => d.uid === preferredDriverId)
+      ?.displayName ?? null
+  );
 }
 
 function handleMenu(
@@ -65,7 +68,12 @@ function handleMenu(
   const choice = parseMenuNumber(text);
 
   if (choice === null) {
-    return { session, outbound: [isGreeting(text) ? m.WELCOME_MENU : m.UNRECOGNIZED_MENU_CHOICE] };
+    return {
+      session,
+      outbound: [
+        isGreeting(text) ? m.WELCOME_MENU : m.UNRECOGNIZED_MENU_CHOICE,
+      ],
+    };
   }
 
   if (session.customerType === "ambiguous") {
@@ -79,7 +87,10 @@ function handleMenu(
         session,
         outbound: [
           m.DUPLICATE_ACTIVE_REQUEST_MESSAGE,
-          m.requestStatusMessage(context.activeRequest.status, context.activeRequest.dispatchPriority),
+          m.requestStatusMessage(
+            context.activeRequest.status,
+            context.activeRequest.dispatchPriority,
+          ),
         ],
       };
     }
@@ -156,33 +167,56 @@ function handleConfirmProfile(
 
   if (choice === 2) {
     return {
-      session: withSession(session, { step: "collect_village", draft: { editingProfile: true } }),
+      session: withSession(session, {
+        step: "collect_village",
+        draft: { editingProfile: true },
+      }),
       outbound: [m.ASK_VILLAGE],
     };
   }
 
-  return { session, outbound: [profile ? m.confirmProfileMessage(profile) : m.UNRECOGNIZED_MENU_CHOICE] };
+  return {
+    session,
+    outbound: [
+      profile ? m.confirmProfileMessage(profile) : m.UNRECOGNIZED_MENU_CHOICE,
+    ],
+  };
 }
 
-function handleCollectName(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleCollectName(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const name = text.trim();
   if (!name) return { session, outbound: [m.ASK_NAME] };
   return {
-    session: withSession(session, { step: "collect_village", draft: { displayName: name } }),
+    session: withSession(session, {
+      step: "collect_village",
+      draft: { displayName: name },
+    }),
     outbound: [m.ASK_VILLAGE],
   };
 }
 
-function handleCollectVillage(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleCollectVillage(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const village = parseVillageChoice(text);
   if (!village) return { session, outbound: [m.INVALID_VILLAGE] };
   return {
-    session: withSession(session, { step: "collect_directions", draft: { village } }),
+    session: withSession(session, {
+      step: "collect_directions",
+      draft: { village },
+    }),
     outbound: [m.ASK_DIRECTIONS],
   };
 }
 
-function handleCollectDirections(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleCollectDirections(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const directions = text.trim();
   if (!directions) return { session, outbound: [m.ASK_DIRECTIONS] };
   return {
@@ -194,12 +228,19 @@ function handleCollectDirections(session: WhatsAppSession, text: string): WhatsA
   };
 }
 
-function handleCollectPhone(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleCollectPhone(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const trimmed = text.trim();
-  const phone = trimmed.toUpperCase() === "SKIP" ? session.senderPhone : trimmed;
+  const phone =
+    trimmed.toUpperCase() === "SKIP" ? session.senderPhone : trimmed;
   if (!phone) return { session, outbound: [m.ASK_PHONE] };
   return {
-    session: withSession(session, { step: "collect_persons_affected", draft: { phone } }),
+    session: withSession(session, {
+      step: "collect_persons_affected",
+      draft: { phone },
+    }),
     outbound: [m.ASK_PERSONS_AFFECTED],
   };
 }
@@ -219,7 +260,10 @@ function handleCollectPersonsAffected(
   };
 }
 
-function handleCollectVulnerable(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleCollectVulnerable(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const circumstances = parseVulnerableCircumstances(text);
   if (!circumstances) return { session, outbound: [m.INVALID_VULNERABLE] };
   return {
@@ -231,7 +275,10 @@ function handleCollectVulnerable(session: WhatsAppSession, text: string): WhatsA
   };
 }
 
-function handleCollectStorage(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleCollectStorage(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const storage = parseAvailableStorage(text);
   return {
     session: withSession(session, {
@@ -273,7 +320,8 @@ function handleCollectCriticalExplanation(
   text: string,
 ): WhatsAppConversationResult {
   const explanation = text.trim();
-  if (!explanation) return { session, outbound: [m.CRITICAL_EXPLANATION_REQUIRED_MESSAGE] };
+  if (!explanation)
+    return { session, outbound: [m.CRITICAL_EXPLANATION_REQUIRED_MESSAGE] };
   return {
     session: withSession(session, {
       step: "collect_loads",
@@ -307,18 +355,28 @@ function handleCollectPreferredDriver(
   context: WhatsAppConversationContext,
 ): WhatsAppConversationResult {
   const choice = parseMenuNumber(text);
-  if (choice === null || choice < 0 || choice > context.eligibleDrivers.length) {
+  if (
+    choice === null ||
+    choice < 0 ||
+    choice > context.eligibleDrivers.length
+  ) {
     return { session, outbound: [m.INVALID_PREFERRED_DRIVER] };
   }
 
-  const preferredDriverId = choice === 0 ? null : context.eligibleDrivers[choice - 1].uid;
+  const preferredDriverId =
+    choice === 0 ? null : context.eligibleDrivers[choice - 1].uid;
   const nextSession = withSession(session, {
     step: "confirm_request",
     draft: { preferredDriverId },
   });
   return {
     session: nextSession,
-    outbound: [m.requestSummaryMessage(nextSession.draft, preferredDriverName(context, preferredDriverId))],
+    outbound: [
+      m.requestSummaryMessage(
+        nextSession.draft,
+        preferredDriverName(context, preferredDriverId),
+      ),
+    ],
   };
 }
 
@@ -328,12 +386,16 @@ function handleConfirmRequestStep(
   context: WhatsAppConversationContext,
 ): WhatsAppConversationResult {
   if (isCancelKeyword(text)) {
-    return { session: resetToMenu(session), outbound: [m.REQUEST_CANCELLED_MESSAGE] };
+    return {
+      session: resetToMenu(session),
+      outbound: [m.REQUEST_CANCELLED_MESSAGE],
+    };
   }
 
   if (isConfirmKeyword(text)) {
     const draft = session.draft;
-    const isRegistered = session.customerType === "registered" && !!session.customerId;
+    const isRegistered =
+      session.customerType === "registered" && !!session.customerId;
     const actions: WhatsAppConversationResult["actions"] = [];
 
     if (isRegistered && draft.editingProfile && session.customerId) {
@@ -376,12 +438,18 @@ function handleConfirmRequestStep(
   return {
     session,
     outbound: [
-      m.requestSummaryMessage(session.draft, preferredDriverName(context, session.draft.preferredDriverId ?? null)),
+      m.requestSummaryMessage(
+        session.draft,
+        preferredDriverName(context, session.draft.preferredDriverId ?? null),
+      ),
     ],
   };
 }
 
-function handleConfirmDelivery(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleConfirmDelivery(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const choice = parseMenuNumber(text);
   const requestId = session.draft.activeRequestId;
 
@@ -389,30 +457,48 @@ function handleConfirmDelivery(session: WhatsAppSession, text: string): WhatsApp
     return {
       session: resetToMenu(session),
       outbound: [],
-      actions: [{ type: "confirm_delivery", requestId, customerId: session.customerId }],
+      actions: [
+        { type: "confirm_delivery", requestId, customerId: session.customerId },
+      ],
     };
   }
 
   if (choice === 2) {
-    return { session: withSession(session, { step: "collect_dispute_reason" }), outbound: [m.ASK_DISPUTE_REASON] };
+    return {
+      session: withSession(session, { step: "collect_dispute_reason" }),
+      outbound: [m.ASK_DISPUTE_REASON],
+    };
   }
 
   return { session, outbound: [m.INVALID_DELIVERY_CONFIRMATION_CHOICE] };
 }
 
-function handleCollectDisputeReason(session: WhatsAppSession, text: string): WhatsAppConversationResult {
+function handleCollectDisputeReason(
+  session: WhatsAppSession,
+  text: string,
+): WhatsAppConversationResult {
   const reason = text.trim();
   if (!reason) return { session, outbound: [m.ASK_DISPUTE_REASON] };
 
   const requestId = session.draft.activeRequestId;
   if (!requestId || !session.customerId) {
-    return { session: resetToMenu(session), outbound: [m.REQUEST_STATE_CHANGED_MESSAGE] };
+    return {
+      session: resetToMenu(session),
+      outbound: [m.REQUEST_STATE_CHANGED_MESSAGE],
+    };
   }
 
   return {
     session: resetToMenu(session),
     outbound: [],
-    actions: [{ type: "dispute_delivery", requestId, customerId: session.customerId, reason }],
+    actions: [
+      {
+        type: "dispute_delivery",
+        requestId,
+        customerId: session.customerId,
+        reason,
+      },
+    ],
   };
 }
 

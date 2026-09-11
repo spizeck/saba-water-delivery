@@ -59,7 +59,10 @@ function freshSession(senderPhone: string, now: Date): WhatsAppSession {
  * has expired (see PRODUCT.md "Session Expiration") — an expired
  * conversation never resumes with stale draft data.
  */
-export async function getOrCreateSession(senderPhone: string, now: Date = new Date()): Promise<WhatsAppSession> {
+export async function getOrCreateSession(
+  senderPhone: string,
+  now: Date = new Date(),
+): Promise<WhatsAppSession> {
   const db = getAdminDb();
   const ref = db.collection(COLLECTION).doc(sessionIdForPhone(senderPhone));
   const snap = await ref.get();
@@ -72,11 +75,18 @@ export async function getOrCreateSession(senderPhone: string, now: Date = new Da
 }
 
 /** Persists the session, refreshing `updatedAt`/`expiresAt`. */
-export async function saveSession(session: WhatsAppSession, now: Date = new Date()): Promise<void> {
+export async function saveSession(
+  session: WhatsAppSession,
+  now: Date = new Date(),
+): Promise<void> {
   const db = getAdminDb();
   const expiresAt = new Date(
     now.getTime() + appConfig.whatsappSessionExpirationHours * 60 * 60 * 1000,
   ).toISOString();
-  const toSave: WhatsAppSession = { ...session, updatedAt: now.toISOString(), expiresAt };
+  const toSave: WhatsAppSession = {
+    ...session,
+    updatedAt: now.toISOString(),
+    expiresAt,
+  };
   await db.collection(COLLECTION).doc(session.id).set(toSave);
 }

@@ -28,7 +28,9 @@ export async function QrCode({ value, label, alt, size = 256 }: QrCodeProps) {
         aria-label={alt}
         role="img"
       />
-      <p className="max-w-[16rem] break-all text-center text-xs font-mono text-slate-500">{value}</p>
+      <p className="max-w-[16rem] break-all text-center text-xs font-mono text-slate-500">
+        {value}
+      </p>
       <p className="text-sm font-semibold text-slate-700">{label}</p>
     </div>
   );

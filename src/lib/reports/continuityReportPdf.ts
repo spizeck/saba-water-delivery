@@ -81,7 +81,9 @@ function drawUnassignedRow(doc: PDFKit.PDFDocument, row: UnassignedReportRow) {
     [
       `Requested: ${formatSabaDateTime(row.requestedAt)}`,
       `Age: ${formatAge(row.ageMinutes)}`,
-      row.preferredDriverName ? `Preferred driver: ${row.preferredDriverName}` : null,
+      row.preferredDriverName
+        ? `Preferred driver: ${row.preferredDriverName}`
+        : null,
     ]
       .filter(Boolean)
       .join("   |   "),
@@ -97,7 +99,9 @@ function drawAssignedRow(doc: PDFKit.PDFDocument, row: AssignedReportRow) {
     .font("Helvetica-Bold")
     .fontSize(10)
     .fillColor(row.priority === "critical" ? "#991b1b" : "#0f172a")
-    .text(`${PRIORITY_LABEL[row.priority] ?? row.priority} — ${row.customerName}`);
+    .text(
+      `${PRIORITY_LABEL[row.priority] ?? row.priority} — ${row.customerName}`,
+    );
   doc
     .font("Helvetica")
     .fontSize(9)
@@ -139,7 +143,9 @@ function drawAssignedRow(doc: PDFKit.PDFDocument, row: AssignedReportRow) {
  * both the nightly cron job (to email) and the manual staff download
  * route (to stream directly to the browser).
  */
-export function renderContinuityReportPdf(data: ContinuityReportData): Promise<Buffer> {
+export function renderContinuityReportPdf(
+  data: ContinuityReportData,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "LETTER", margin: 48 });
     const chunks: Buffer[] = [];
@@ -147,8 +153,15 @@ export function renderContinuityReportPdf(data: ContinuityReportData): Promise<B
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#0f172a").text("Saba Water Delivery");
-    doc.font("Helvetica-Bold").fontSize(14).text("Outstanding Delivery Snapshot");
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(18)
+      .fillColor("#0f172a")
+      .text("Saba Water Delivery");
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(14)
+      .text("Outstanding Delivery Snapshot");
     doc.moveDown(0.5);
     doc
       .font("Helvetica")

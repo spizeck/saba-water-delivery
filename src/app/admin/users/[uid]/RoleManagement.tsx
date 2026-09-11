@@ -7,12 +7,32 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { UserRole } from "@/lib/domain/types";
 
-import { addUserRole, removeUserRole, type RoleActionState } from "../../actions";
+import {
+  addUserRole,
+  removeUserRole,
+  type RoleActionState,
+} from "../../actions";
 
-const MANAGEABLE_ROLES: { role: UserRole; label: string; description: string }[] = [
-  { role: "dispatcher", label: "Dispatcher", description: "Access dispatcher operational functions" },
-  { role: "admin", label: "Admin", description: "Full system administration access" },
-  { role: "viewer", label: "Viewer", description: "Read-only oversight of requests and statistics" },
+const MANAGEABLE_ROLES: {
+  role: UserRole;
+  label: string;
+  description: string;
+}[] = [
+  {
+    role: "dispatcher",
+    label: "Dispatcher",
+    description: "Access dispatcher operational functions",
+  },
+  {
+    role: "admin",
+    label: "Admin",
+    description: "Full system administration access",
+  },
+  {
+    role: "viewer",
+    label: "Viewer",
+    description: "Read-only oversight of requests and statistics",
+  },
 ];
 
 interface RoleManagementProps {
@@ -28,14 +48,16 @@ export function RoleManagement({
   isOwnAccount,
   linkedDriverId,
 }: RoleManagementProps) {
-  const [confirmingRemove, setConfirmingRemove] = useState<UserRole | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState<UserRole | null>(
+    null,
+  );
 
   return (
     <Card>
       <h2 className="text-lg font-bold text-slate-900">Roles</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Resident is the baseline role and cannot be removed. The driver role is managed from the
-        Driver Registry.
+        Resident is the baseline role and cannot be removed. The driver role is
+        managed from the Driver Registry.
       </p>
 
       <div className="mt-4 flex flex-col gap-3">
@@ -55,7 +77,9 @@ export function RoleManagement({
           <div className="flex items-center justify-between rounded-lg border border-slate-100 p-3">
             <div>
               <p className="text-sm font-medium text-slate-900">Driver</p>
-              <p className="text-xs text-slate-500">Managed through the Driver Registry</p>
+              <p className="text-xs text-slate-500">
+                Managed through the Driver Registry
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
@@ -120,8 +144,14 @@ function RoleRow({
   onConfirmCancel,
 }: RoleRowProps) {
   const initialState: RoleActionState = { status: "idle" };
-  const [addState, addAction, addPending] = useActionState(addUserRole, initialState);
-  const [removeState, removeAction, removePending] = useActionState(removeUserRole, initialState);
+  const [addState, addAction, addPending] = useActionState(
+    addUserRole,
+    initialState,
+  );
+  const [removeState, removeAction, removePending] = useActionState(
+    removeUserRole,
+    initialState,
+  );
 
   return (
     <div className="rounded-lg border border-slate-100 p-3">
@@ -167,24 +197,34 @@ function RoleRow({
 
       {/* Add state feedback */}
       {addState.status === "success" && (
-        <p className="mt-2 text-xs font-medium text-green-700">{addState.message}</p>
+        <p className="mt-2 text-xs font-medium text-green-700">
+          {addState.message}
+        </p>
       )}
       {addState.status === "error" && (
-        <p className="mt-2 text-xs font-medium text-red-700">{addState.message}</p>
+        <p className="mt-2 text-xs font-medium text-red-700">
+          {addState.message}
+        </p>
       )}
 
       {/* Remove state feedback */}
       {removeState.status === "success" && (
-        <p className="mt-2 text-xs font-medium text-green-700">{removeState.message}</p>
+        <p className="mt-2 text-xs font-medium text-green-700">
+          {removeState.message}
+        </p>
       )}
       {removeState.status === "error" && (
-        <p className="mt-2 text-xs font-medium text-red-700">{removeState.message}</p>
+        <p className="mt-2 text-xs font-medium text-red-700">
+          {removeState.message}
+        </p>
       )}
 
       {/* Confirmation dialog for removal */}
       {hasRole && isConfirming && !(role === "admin" && isOwnAccount) && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-medium text-amber-800">Remove the {label} role from this user?</p>
+          <p className="text-xs font-medium text-amber-800">
+            Remove the {label} role from this user?
+          </p>
           <div className="mt-2 flex gap-2">
             <form action={removeAction}>
               <input type="hidden" name="targetUid" value={targetUid} />

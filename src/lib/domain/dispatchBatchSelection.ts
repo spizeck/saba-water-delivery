@@ -7,7 +7,11 @@
  */
 
 import { priorityRankFor } from "./priority";
-import type { DispatchBatchStatus, WaterRequest, WaterRequestStatus } from "./types";
+import type {
+  DispatchBatchStatus,
+  WaterRequest,
+  WaterRequestStatus,
+} from "./types";
 
 /**
  * Conservative technical safety bound on how many requests a single
@@ -44,7 +48,8 @@ export const BATCH_ELIGIBLE_STATUSES: WaterRequestStatus[] = [
  * and normal dispatch stay aligned.
  */
 export function dispatchQueueCompare(a: WaterRequest, b: WaterRequest): number {
-  const rankDiff = priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
+  const rankDiff =
+    priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
   if (rankDiff !== 0) return rankDiff;
   const overrideA = a.dispatchOverrideRank ?? Infinity;
   const overrideB = b.dispatchOverrideRank ?? Infinity;
@@ -52,7 +57,9 @@ export function dispatchQueueCompare(a: WaterRequest, b: WaterRequest): number {
   return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
 }
 
-export function sortForBatchSelection(requests: WaterRequest[]): WaterRequest[] {
+export function sortForBatchSelection(
+  requests: WaterRequest[],
+): WaterRequest[] {
   return [...requests].sort(dispatchQueueCompare);
 }
 
@@ -75,8 +82,16 @@ export type BatchValidationIssue =
   | { code: "TOO_MANY_REQUESTS"; limit: number }
   | { code: "DUPLICATE_REQUEST_ID"; requestId: string }
   | { code: "REQUEST_NOT_FOUND"; requestId: string }
-  | { code: "REQUEST_NOT_ELIGIBLE"; requestId: string; status: WaterRequestStatus }
-  | { code: "PREFERRED_DRIVER_OVERRIDE_NOT_ACKNOWLEDGED"; requestId: string; preferredDriverId: string };
+  | {
+      code: "REQUEST_NOT_ELIGIBLE";
+      requestId: string;
+      status: WaterRequestStatus;
+    }
+  | {
+      code: "PREFERRED_DRIVER_OVERRIDE_NOT_ACKNOWLEDGED";
+      requestId: string;
+      preferredDriverId: string;
+    };
 
 /**
  * Validates a proposed batch against fresh (or test-fixture) request
@@ -128,7 +143,11 @@ export function validateBatchSelection(
     // Already assigned to a driver (self-claimed, singly assigned, or
     // already part of a batch) — no longer eligible regardless of its
     // stored status string.
-    if (snap.assignedDriverId || !snap.status || !BATCH_ELIGIBLE_STATUSES.includes(snap.status)) {
+    if (
+      snap.assignedDriverId ||
+      !snap.status ||
+      !BATCH_ELIGIBLE_STATUSES.includes(snap.status)
+    ) {
       issues.push({
         code: "REQUEST_NOT_ELIGIBLE",
         requestId: id,
@@ -174,14 +193,19 @@ export function computeDispatchBatchStatus(
  * - `"completed"`: all members are fully resolved (confirmed/disputed)
  *    or no members remain.
  */
-export type DeliveryRunDerivedState = "in_progress" | "all_delivered" | "completed";
+export type DeliveryRunDerivedState =
+  "in_progress" | "all_delivered" | "completed";
 
 /** Pure derivation of the run's operational state from its member
  * statuses and load counts. Used by `getAllDispatchBatchSummaries`
  * and testable without Firestore. */
 export function deriveRunState(
   members: ReadonlyArray<{ loads: number; status: string }>,
-): { derivedState: DeliveryRunDerivedState; totalLoads: number; loadsDelivered: number } {
+): {
+  derivedState: DeliveryRunDerivedState;
+  totalLoads: number;
+  loadsDelivered: number;
+} {
   const totalLoads = members.reduce((sum, m) => sum + m.loads, 0);
   const claimed = members.filter((m) => m.status === "claimed");
   const delivered = members.filter((m) =>
@@ -192,7 +216,10 @@ export function deriveRunState(
   let derivedState: DeliveryRunDerivedState;
   if (claimed.length > 0) {
     derivedState = "in_progress";
-  } else if (delivered.length > 0 && delivered.some((m) => m.status === "delivered")) {
+  } else if (
+    delivered.length > 0 &&
+    delivered.some((m) => m.status === "delivered")
+  ) {
     derivedState = "all_delivered";
   } else {
     derivedState = "completed";

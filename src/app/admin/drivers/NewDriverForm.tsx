@@ -10,7 +10,10 @@ import { createDriverAction, type DriverFormActionState } from "./actions";
 const initialState: DriverFormActionState = { status: "idle" };
 
 export function NewDriverForm() {
-  const [state, formAction, pending] = useActionState(createDriverAction, initialState);
+  const [state, formAction, pending] = useActionState(
+    createDriverAction,
+    initialState,
+  );
   const formRef = useRef<HTMLFormElement>(null);
 
   return (
@@ -43,13 +46,20 @@ export function NewDriverForm() {
             className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
           />
         </label>
-        <Button type="submit" size="md" disabled={pending} className="sm:w-auto">
+        <Button
+          type="submit"
+          size="md"
+          disabled={pending}
+          className="sm:w-auto"
+        >
           {pending ? "Adding\u2026" : "Add Driver"}
         </Button>
       </form>
 
       {state.status === "success" && (
-        <p className="mt-2 text-sm font-medium text-green-700">{state.message}</p>
+        <p className="mt-2 text-sm font-medium text-green-700">
+          {state.message}
+        </p>
       )}
       {state.status === "error" && (
         <p className="mt-2 text-sm font-medium text-red-700">{state.message}</p>

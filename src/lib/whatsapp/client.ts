@@ -52,11 +52,15 @@ export async function sendWhatsAppTextMessage(
       // Never log the access token; the response body is Meta's own
       // (non-secret) error description.
       const errorText = await response.text();
-      return { ok: false, error: `Meta API error ${response.status}: ${errorText.slice(0, 500)}` };
+      return {
+        ok: false,
+        error: `Meta API error ${response.status}: ${errorText.slice(0, 500)}`,
+      };
     }
     return { ok: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown WhatsApp send error";
+    const message =
+      err instanceof Error ? err.message : "Unknown WhatsApp send error";
     return { ok: false, error: message };
   }
 }

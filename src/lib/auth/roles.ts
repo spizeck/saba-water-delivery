@@ -11,7 +11,8 @@ export const USER_ROLES: readonly UserRole[] = [
 
 export function isUserRole(value: unknown): value is UserRole {
   return (
-    typeof value === "string" && (USER_ROLES as readonly string[]).includes(value)
+    typeof value === "string" &&
+    (USER_ROLES as readonly string[]).includes(value)
   );
 }
 
@@ -26,7 +27,10 @@ export function toUserRoles(value: unknown): UserRole[] {
 /**
  * Returns true if the user possesses at least one of the specified roles.
  */
-export function hasRole(userRoles: UserRole[], required: UserRole | UserRole[]): boolean {
+export function hasRole(
+  userRoles: UserRole[],
+  required: UserRole | UserRole[],
+): boolean {
   const allowed = Array.isArray(required) ? required : [required];
   return allowed.some((r) => userRoles.includes(r));
 }

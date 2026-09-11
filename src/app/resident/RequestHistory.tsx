@@ -35,15 +35,20 @@ export function RequestHistory({ requests }: Props) {
       <h2 className="text-lg font-bold text-slate-900">Request history</h2>
       <div className="mt-4 divide-y divide-slate-100">
         {requests.map((req) => (
-          <div key={req.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+          <div
+            key={req.id}
+            className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+          >
             <div className="min-w-0">
               <p className="text-sm font-medium text-slate-900">
                 {formatWaterQuantity(req.loads)} &mdash; {req.village}
               </p>
               <p className="text-xs text-slate-500">
                 {formatDate(req.requestedAt)}
-                {req.deliveredAt && ` \u2192 delivered ${formatDate(req.deliveredAt)}`}
-                {req.confirmedAt && ` \u2192 confirmed ${formatDate(req.confirmedAt)}`}
+                {req.deliveredAt &&
+                  ` \u2192 delivered ${formatDate(req.deliveredAt)}`}
+                {req.confirmedAt &&
+                  ` \u2192 confirmed ${formatDate(req.confirmedAt)}`}
               </p>
             </div>
             <span className="ml-2 shrink-0 text-xs font-medium text-slate-600">

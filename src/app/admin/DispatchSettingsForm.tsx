@@ -7,7 +7,10 @@ import { Card } from "@/components/ui/Card";
 import type { DispatchSettings } from "@/lib/domain/types";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
-import { saveDispatchSettings, type DispatchSettingsActionState } from "./actions";
+import {
+  saveDispatchSettings,
+  type DispatchSettingsActionState,
+} from "./actions";
 
 const initialState: DispatchSettingsActionState = { status: "idle" };
 
@@ -16,15 +19,18 @@ interface Props {
 }
 
 export function DispatchSettingsForm({ settings }: Props) {
-  const [state, formAction, pending] = useActionState(saveDispatchSettings, initialState);
+  const [state, formAction, pending] = useActionState(
+    saveDispatchSettings,
+    initialState,
+  );
 
   return (
     <Card>
       <h2 className="text-lg font-bold text-slate-900">Dispatch Settings</h2>
       <p className="mt-1 text-sm text-slate-600">
         Controls how many delivery offers a driver may decline per local day
-        before new offers are temporarily paused for them. This does not
-        affect a driver&apos;s government eligibility.
+        before new offers are temporarily paused for them. This does not affect
+        a driver&apos;s government eligibility.
       </p>
 
       <form action={formAction} className="mt-4 flex flex-col gap-4">
@@ -68,7 +74,12 @@ export function DispatchSettingsForm({ settings }: Props) {
           <p className="text-sm font-medium text-green-700">{state.message}</p>
         )}
 
-        <Button type="submit" size="md" disabled={pending} className="sm:w-auto">
+        <Button
+          type="submit"
+          size="md"
+          disabled={pending}
+          className="sm:w-auto"
+        >
           {pending ? "Saving\u2026" : "Save Settings"}
         </Button>
 

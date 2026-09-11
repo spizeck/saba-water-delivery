@@ -2,7 +2,10 @@ import { Card } from "@/components/ui/Card";
 import type { RoleEvent } from "@/lib/domain/admin";
 import type { DriverEvent } from "@/lib/domain/types";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
-import { formatDriverEventDetails, DRIVER_EVENT_LABELS } from "@/lib/utils/formatAuditEvent";
+import {
+  formatDriverEventDetails,
+  DRIVER_EVENT_LABELS,
+} from "@/lib/utils/formatAuditEvent";
 
 interface UserHistoryProps {
   roleEvents: RoleEvent[];
@@ -53,7 +56,10 @@ export function UserHistory({
                   <p className="text-xs text-slate-500">
                     {formatDate(event.createdAt)}
                     {event.actorId && (
-                      <> &mdash; by {actorNames[event.actorId] ?? event.actorId}</>
+                      <>
+                        {" "}
+                        &mdash; by {actorNames[event.actorId] ?? event.actorId}
+                      </>
                     )}
                   </p>
                 </div>

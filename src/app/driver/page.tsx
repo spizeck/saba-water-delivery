@@ -14,7 +14,11 @@ import { getFillStations } from "@/lib/domain/fillStations";
 import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
-import { formatSabaDate, formatSabaTime, startOfSabaDay } from "@/lib/utils/datetime";
+import {
+  formatSabaDate,
+  formatSabaTime,
+  startOfSabaDay,
+} from "@/lib/utils/datetime";
 
 import { AvailabilityToggle } from "./AvailabilityToggle";
 import { ClaimedDeliveries } from "./ClaimedDeliveries";
@@ -26,7 +30,9 @@ export const metadata: Metadata = {
 
 /** Whether `cooldownUntil` (ISO string) represents an active cooldown as of `now`. */
 function isCooldownActive(cooldownUntil: string | null, now: Date): boolean {
-  return cooldownUntil !== null && new Date(cooldownUntil).getTime() > now.getTime();
+  return (
+    cooldownUntil !== null && new Date(cooldownUntil).getTime() > now.getTime()
+  );
 }
 
 /**
@@ -40,7 +46,10 @@ function resolveCustomerInfo(
   profileMap: Record<string, { displayName: string; phone: string | null }>,
 ): { displayName: string; phone: string | null } | null {
   if (request.customer) {
-    return { displayName: request.customer.displayName, phone: request.customer.phone };
+    return {
+      displayName: request.customer.displayName,
+      phone: request.customer.phone,
+    };
   }
   if (request.customerId) {
     return profileMap[request.customerId] ?? null;
@@ -66,8 +75,8 @@ export default async function DriverPortalPage() {
             <Card>
               <h1 className="text-2xl font-bold text-slate-900">Driver</h1>
               <p className="mt-2 text-sm text-slate-600">
-                Your account is not yet linked to a driver record. Contact
-                the water office to be added to the Driver Registry.
+                Your account is not yet linked to a driver record. Contact the
+                water office to be added to the Driver Registry.
               </p>
             </Card>
           </Container>
@@ -88,8 +97,11 @@ export default async function DriverPortalPage() {
   const cooldownUntil = driverEntry.cooldownUntil
     ? new Date(driverEntry.cooldownUntil)
     : null;
-  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
-  const isDailyCooldown = cooldownUntil !== null && cooldownUntil.getTime() >= endOfToday.getTime();
+  const endOfToday = startOfSabaDay(
+    new Date(now.getTime() + 24 * 60 * 60 * 1000),
+  );
+  const isDailyCooldown =
+    cooldownUntil !== null && cooldownUntil.getTime() >= endOfToday.getTime();
   const canReceiveOffers = isOnline && isEligible && !inCooldown;
 
   // Fetch the driver's active deliveries first; if they already have one,
@@ -115,7 +127,10 @@ export default async function DriverPortalPage() {
   const legacyCustomerIds = [
     ...new Set(requestsNeedingLookup.map((r) => r.customerId as string)),
   ];
-  const customerInfoMap: Record<string, { displayName: string; phone: string | null }> = {};
+  const customerInfoMap: Record<
+    string,
+    { displayName: string; phone: string | null }
+  > = {};
   await Promise.all(
     legacyCustomerIds.map(async (customerId) => {
       const profile = await getUserProfile(customerId);
@@ -140,9 +155,19 @@ export default async function DriverPortalPage() {
                 <h1 className="text-2xl font-bold text-slate-900">Driver</h1>
                 <p className="mt-1 text-sm text-slate-600">
                   {!isEligible && "Your delivery access is restricted."}
-                  {isEligible && inCooldown && isDailyCooldown && "You are offline for the rest of today."}
-                  {isEligible && inCooldown && !isDailyCooldown && cooldownUntil && `You are offline until ${formatSabaTime(cooldownUntil)}.`}
-                  {isEligible && !inCooldown && isOnline && "You are online and receiving offers."}
+                  {isEligible &&
+                    inCooldown &&
+                    isDailyCooldown &&
+                    "You are offline for the rest of today."}
+                  {isEligible &&
+                    inCooldown &&
+                    !isDailyCooldown &&
+                    cooldownUntil &&
+                    `You are offline until ${formatSabaTime(cooldownUntil)}.`}
+                  {isEligible &&
+                    !inCooldown &&
+                    isOnline &&
+                    "You are online and receiving offers."}
                   {isEligible && !inCooldown && !isOnline && "You are offline."}
                 </p>
               </div>
@@ -160,7 +185,10 @@ export default async function DriverPortalPage() {
               )}
               {isEligible && inCooldown && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">
-                  {isDailyCooldown ? "Daily limit reached" : "Offline until " + (cooldownUntil ? formatSabaTime(cooldownUntil) : "later")}
+                  {isDailyCooldown
+                    ? "Daily limit reached"
+                    : "Offline until " +
+                      (cooldownUntil ? formatSabaTime(cooldownUntil) : "later")}
                 </span>
               )}
               {!isEligible && (
@@ -173,7 +201,9 @@ export default async function DriverPortalPage() {
             {/* Toggle (only show if eligible and not in an enforced cooldown) */}
             {isEligible && !inCooldown && (
               <div className="mt-4">
-                <AvailabilityToggle currentStatus={isOnline ? "online" : "offline"} />
+                <AvailabilityToggle
+                  currentStatus={isOnline ? "online" : "offline"}
+                />
               </div>
             )}
 
@@ -191,7 +221,9 @@ export default async function DriverPortalPage() {
             {isEligible && inCooldown && cooldownUntil && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <p className="text-sm font-medium text-amber-800">
-                  {isDailyCooldown ? "Daily decline limit reached" : "Decline cooldown"}
+                  {isDailyCooldown
+                    ? "Daily decline limit reached"
+                    : "Decline cooldown"}
                 </p>
                 <p className="mt-1 text-sm text-amber-800">
                   {isDailyCooldown
@@ -223,7 +255,9 @@ export default async function DriverPortalPage() {
 
           {canReceiveOffers && !nextOffer && claimedDeliveries.length > 0 && (
             <Card>
-              <h2 className="text-lg font-bold text-slate-900">Next Delivery</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Next Delivery
+              </h2>
               <p className="mt-2 text-sm text-slate-600">
                 Complete your current delivery to receive the next request.
               </p>
@@ -232,7 +266,9 @@ export default async function DriverPortalPage() {
 
           {canReceiveOffers && !nextOffer && claimedDeliveries.length === 0 && (
             <Card>
-              <h2 className="text-lg font-bold text-slate-900">Next Delivery</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Next Delivery
+              </h2>
               <p className="mt-2 text-sm text-slate-600">
                 No deliveries available right now.
               </p>

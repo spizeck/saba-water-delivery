@@ -21,5 +21,8 @@ export const SABA_VILLAGES = [
 export type SabaVillage = (typeof SABA_VILLAGES)[number];
 
 export function isValidSabaVillage(value: unknown): value is SabaVillage {
-  return typeof value === "string" && (SABA_VILLAGES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (SABA_VILLAGES as readonly string[]).includes(value)
+  );
 }

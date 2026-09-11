@@ -3,7 +3,11 @@
 import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
-import type { FillStation, MeterAssignment, WaterLoadCollection } from "@/lib/domain/types";
+import type {
+  FillStation,
+  MeterAssignment,
+  WaterLoadCollection,
+} from "@/lib/domain/types";
 import { DEFAULT_FILL_STATION_ID } from "@/lib/domain/types";
 
 import { recordCollection, type RecordCollectionActionState } from "./actions";
@@ -79,7 +83,10 @@ function LoadCollectionPanel({
   const [selectedStationId, setSelectedStationId] = useState<string>(
     DEFAULT_FILL_STATION_ID,
   );
-  const [state, formAction, pending] = useActionState(recordCollection, initialState);
+  const [state, formAction, pending] = useActionState(
+    recordCollection,
+    initialState,
+  );
 
   // If already collected, show the recorded info
   if (existing) {
@@ -98,7 +105,9 @@ function LoadCollectionPanel({
           </div>
           <div className="flex gap-1">
             <dt className="font-medium">Meter:</dt>
-            <dd>{existing.meterCode} &middot; Meter {existing.meterNumber}</dd>
+            <dd>
+              {existing.meterCode} &middot; Meter {existing.meterNumber}
+            </dd>
           </div>
           {existing.collectedAt && (
             <div className="flex gap-1">
@@ -122,7 +131,9 @@ function LoadCollectionPanel({
       <div className="mt-2 flex flex-col gap-2">
         {/* Fill station select */}
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-slate-600">Fill station</span>
+          <span className="text-xs font-medium text-slate-600">
+            Fill station
+          </span>
           <select
             value={selectedStationId}
             onChange={(e) => setSelectedStationId(e.target.value)}
@@ -139,9 +150,12 @@ function LoadCollectionPanel({
         {/* Resolved meter display */}
         {resolvedMeter && (
           <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-600">Your meter</span>
+            <span className="text-xs font-medium text-slate-600">
+              Your meter
+            </span>
             <p className="text-sm text-slate-900">
-              {resolvedMeter.meterCode} &middot; Meter {resolvedMeter.meterNumber}
+              {resolvedMeter.meterCode} &middot; Meter{" "}
+              {resolvedMeter.meterNumber}
             </p>
           </div>
         )}
@@ -150,7 +164,8 @@ function LoadCollectionPanel({
         {hasNoMeter && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-2">
             <p className="text-xs font-medium text-red-800">
-              No meter is assigned to you for this fill station. Contact the Water Delivery Office.
+              No meter is assigned to you for this fill station. Contact the
+              Water Delivery Office.
             </p>
           </div>
         )}

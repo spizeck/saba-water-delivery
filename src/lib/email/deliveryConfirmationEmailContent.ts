@@ -49,8 +49,13 @@ export function buildDeliveryConfirmationEmailPayload(
   input: DeliveryConfirmationEmailInput,
   config: DeliveryConfirmationEmailConfig,
 ) {
-  const reviewUrl = buildDeliveryConfirmationReviewUrl(config.appUrl, input.requestId);
-  const salutation = input.displayName.trim() ? `Hello ${input.displayName.trim()},` : "Hello,";
+  const reviewUrl = buildDeliveryConfirmationReviewUrl(
+    config.appUrl,
+    input.requestId,
+  );
+  const salutation = input.displayName.trim()
+    ? `Hello ${input.displayName.trim()},`
+    : "Hello,";
   const quantity = `${input.loads} ${input.loads === 1 ? "load" : "loads"} (${input.gallons.toLocaleString("en-US")} gallons)`;
   const location = `${input.village} — ${input.deliveryDirections}`;
   const delivered = formatSabaDateTime(input.deliveredAt);

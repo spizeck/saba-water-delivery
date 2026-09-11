@@ -22,7 +22,10 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
+const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
+  /\\n/g,
+  "\n",
+);
 
 if (!projectId || !clientEmail || !privateKey) {
   console.error("ERROR: Firebase Admin env vars not set. See .env.example.");
@@ -87,7 +90,10 @@ async function setup() {
   return reqRef.id;
 }
 
-async function claimAttempt(requestId: string, driverId: string): Promise<"success" | string> {
+async function claimAttempt(
+  requestId: string,
+  driverId: string,
+): Promise<"success" | string> {
   const requestRef = db.collection("waterRequests").doc(requestId);
   const driverRef = db.collection("drivers").doc(driverId);
   const now = FieldValue.serverTimestamp();
@@ -103,12 +109,15 @@ async function claimAttempt(requestId: string, driverId: string): Promise<"succe
       const reqData = requestSnap.data()!;
 
       if (reqData.assignedDriverId) throw new Error("ALREADY_CLAIMED");
-      if (reqData.status !== "available") throw new Error("REQUEST_NOT_CLAIMABLE");
+      if (reqData.status !== "available")
+        throw new Error("REQUEST_NOT_CLAIMABLE");
 
       if (!driverSnap.exists) throw new Error("DRIVER_NOT_FOUND");
       const drvData = driverSnap.data()!;
-      if (drvData.eligibilityStatus !== "eligible") throw new Error("DRIVER_INELIGIBLE");
-      if (drvData.availabilityStatus !== "online") throw new Error("DRIVER_OFFLINE");
+      if (drvData.eligibilityStatus !== "eligible")
+        throw new Error("DRIVER_INELIGIBLE");
+      if (drvData.availabilityStatus !== "online")
+        throw new Error("DRIVER_OFFLINE");
 
       txn.update(requestRef, {
         assignedDriverId: driverId,
@@ -202,7 +211,9 @@ async function main() {
   const failures = [resultA, resultB].filter((r) => r !== "success");
 
   if (successes.length !== 1) {
-    console.error(`\nFAIL: Expected exactly 1 success, got ${successes.length}`);
+    console.error(
+      `\nFAIL: Expected exactly 1 success, got ${successes.length}`,
+    );
   } else if (failures.length !== 1) {
     console.error(`\nFAIL: Expected exactly 1 failure, got ${failures.length}`);
   } else {

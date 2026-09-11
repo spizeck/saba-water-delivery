@@ -11,7 +11,10 @@ vi.mock("@/lib/email/deliveryConfirmationNotification", () => ({
   notifyDeliveryConfirmation: mocks.notify,
 }));
 
-import { markWaterDelivered, markWaterDeliveredByStaff } from "../waterRequests";
+import {
+  markWaterDelivered,
+  markWaterDeliveredByStaff,
+} from "../waterRequests";
 
 function timestamp() {
   return { toDate: () => new Date("2026-09-02T18:30:00.000Z") };
@@ -20,7 +23,12 @@ function timestamp() {
 function deliveredData() {
   return {
     customerId: "resident-1",
-    customer: { displayName: "Jane", email: "jane@example.com", phone: null, isRegistered: true },
+    customer: {
+      displayName: "Jane",
+      email: "jane@example.com",
+      phone: null,
+      isRegistered: true,
+    },
     source: "resident",
     loads: 1,
     gallons: 1000,
@@ -45,12 +53,21 @@ describe("delivery confirmation notification trigger", () => {
   it("notifies after a registered request is marked delivered by its driver", async () => {
     const requestRef = {
       collection: () => ({ doc: () => ({}) }),
-      get: vi.fn().mockResolvedValue({ exists: true, data: () => deliveredData() }),
+      get: vi
+        .fn()
+        .mockResolvedValue({ exists: true, data: () => deliveredData() }),
     };
-    const driverDoc = { data: () => ({ activeRequestId: "request-1" }), ref: {} };
+    const driverDoc = {
+      data: () => ({ activeRequestId: "request-1" }),
+      ref: {},
+    };
     const transaction = {
-      get: vi.fn()
-        .mockResolvedValueOnce({ exists: true, data: () => ({ ...deliveredData(), status: "claimed" }) })
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ ...deliveredData(), status: "claimed" }),
+        })
         .mockResolvedValueOnce({ empty: false, docs: [driverDoc] }),
       update: vi.fn(),
       set: vi.fn(),
@@ -62,22 +79,32 @@ describe("delivery confirmation notification trigger", () => {
     );
     mocks.getAdminDb.mockReturnValue({
       collection,
-      runTransaction: async (callback: (txn: typeof transaction) => Promise<void>) => callback(transaction),
+      runTransaction: async (
+        callback: (txn: typeof transaction) => Promise<void>,
+      ) => callback(transaction),
     });
 
     await markWaterDelivered({ requestId: "request-1", driverId: "driver-1" });
     expect(mocks.notify).toHaveBeenCalledOnce();
-    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({ id: "request-1", status: "delivered" }));
+    expect(mocks.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "request-1", status: "delivered" }),
+    );
   });
 
   it("uses the same notification after staff marks delivery", async () => {
     const requestRef = {
       collection: () => ({ doc: () => ({}) }),
-      get: vi.fn().mockResolvedValue({ exists: true, data: () => deliveredData() }),
+      get: vi
+        .fn()
+        .mockResolvedValue({ exists: true, data: () => deliveredData() }),
     };
     const transaction = {
-      get: vi.fn()
-        .mockResolvedValueOnce({ exists: true, data: () => ({ ...deliveredData(), status: "claimed" }) })
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ ...deliveredData(), status: "claimed" }),
+        })
         .mockResolvedValueOnce({ empty: true, docs: [] }),
       update: vi.fn(),
       set: vi.fn(),
@@ -89,7 +116,9 @@ describe("delivery confirmation notification trigger", () => {
     );
     mocks.getAdminDb.mockReturnValue({
       collection,
-      runTransaction: async (callback: (txn: typeof transaction) => Promise<void>) => callback(transaction),
+      runTransaction: async (
+        callback: (txn: typeof transaction) => Promise<void>,
+      ) => callback(transaction),
     });
 
     await markWaterDeliveredByStaff({
@@ -98,6 +127,8 @@ describe("delivery confirmation notification trigger", () => {
       note: "Confirmed by radio",
     });
     expect(mocks.notify).toHaveBeenCalledOnce();
-    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({ id: "request-1", status: "delivered" }));
+    expect(mocks.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "request-1", status: "delivered" }),
+    );
   });
 });

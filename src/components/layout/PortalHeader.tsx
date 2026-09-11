@@ -26,7 +26,10 @@ export function PortalHeader({ portalName, roles }: PortalHeaderProps) {
         </div>
         <div className="flex items-center gap-1">
           {roles && roles.length > 1 && (
-            <RoleSwitcher roles={roles} currentPortal={portalName.toLowerCase()} />
+            <RoleSwitcher
+              roles={roles}
+              currentPortal={portalName.toLowerCase()}
+            />
           )}
           <Link
             href="/"

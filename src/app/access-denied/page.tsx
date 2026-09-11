@@ -15,7 +15,9 @@ interface AccessDeniedPageProps {
   searchParams: Promise<{ reason?: string }>;
 }
 
-export default async function AccessDeniedPage({ searchParams }: AccessDeniedPageProps) {
+export default async function AccessDeniedPage({
+  searchParams,
+}: AccessDeniedPageProps) {
   const session = await getSessionUser();
   const { reason } = await searchParams;
 

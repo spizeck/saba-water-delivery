@@ -100,7 +100,10 @@ describe("buildContinuityReportEmailPayload", () => {
     });
 
     expect(payload.from).toBe("ops@saba-water-delivery.gov");
-    expect(payload.to).toEqual(["dispatch@example.com", "supervisor@example.com"]);
+    expect(payload.to).toEqual([
+      "dispatch@example.com",
+      "supervisor@example.com",
+    ]);
     expect(payload.subject).toBe(
       "Saba Water Delivery - Outstanding Delivery Snapshot (2026-08-21)",
     );

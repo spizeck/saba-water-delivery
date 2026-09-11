@@ -41,7 +41,9 @@ export function toViewerRequestRow(request: WaterRequest): ViewerRequestRow {
   };
 }
 
-export function toViewerDriverRow(driver: DriverRegistryEntry): ViewerDriverRow {
+export function toViewerDriverRow(
+  driver: DriverRegistryEntry,
+): ViewerDriverRow {
   return {
     id: driver.id,
     displayName: driver.displayName,

@@ -25,7 +25,10 @@ export function LinkHistoryPanel({ targetUid }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reason, setReason] = useState("");
 
-  const [state, formAction, pending] = useActionState(linkHistoryToUser, initialState);
+  const [state, formAction, pending] = useActionState(
+    linkHistoryToUser,
+    initialState,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +47,9 @@ export function LinkHistoryPanel({ targetUid }: Props) {
   if (matches === null) {
     return (
       <Card>
-        <h2 className="text-lg font-bold text-slate-900">Possible unregistered request history</h2>
+        <h2 className="text-lg font-bold text-slate-900">
+          Possible unregistered request history
+        </h2>
         <p className="mt-2 text-sm text-slate-500">Loading...</p>
       </Card>
     );
@@ -53,9 +58,12 @@ export function LinkHistoryPanel({ targetUid }: Props) {
   if (matches.length === 0) {
     return (
       <Card>
-        <h2 className="text-lg font-bold text-slate-900">Possible unregistered request history</h2>
+        <h2 className="text-lg font-bold text-slate-900">
+          Possible unregistered request history
+        </h2>
         <p className="mt-2 text-sm text-slate-500">
-          No unregistered requests match this account&apos;s email or phone number.
+          No unregistered requests match this account&apos;s email or phone
+          number.
         </p>
       </Card>
     );
@@ -65,14 +73,19 @@ export function LinkHistoryPanel({ targetUid }: Props) {
 
   return (
     <Card>
-      <h2 className="text-lg font-bold text-slate-900">Possible unregistered request history</h2>
+      <h2 className="text-lg font-bold text-slate-900">
+        Possible unregistered request history
+      </h2>
       <p className="mt-1 text-sm text-slate-600">
-        These previously unregistered requests have a matching phone or email. Select the ones that
-        belong to this resident and link them. Historical snapshots are preserved.
+        These previously unregistered requests have a matching phone or email.
+        Select the ones that belong to this resident and link them. Historical
+        snapshots are preserved.
       </p>
 
       {hasSuccess && (
-        <p className="mt-3 text-sm font-medium text-green-700">{state.message}</p>
+        <p className="mt-3 text-sm font-medium text-green-700">
+          {state.message}
+        </p>
       )}
       {state.status === "error" && (
         <p className="mt-3 text-sm font-medium text-red-700">{state.message}</p>
@@ -107,12 +120,15 @@ export function LinkHistoryPanel({ targetUid }: Props) {
                     {request.customer?.displayName || "Unnamed"}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {formatPhoneForDisplay(request.customer?.phone) ?? "No phone"}
-                    {request.customer?.email ? ` · ${request.customer.email}` : ""}
+                    {formatPhoneForDisplay(request.customer?.phone) ??
+                      "No phone"}
+                    {request.customer?.email
+                      ? ` · ${request.customer.email}`
+                      : ""}
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
-                    {request.village} — requested {formatSabaDateTime(request.requestedAt)} (
-                    {request.status})
+                    {request.village} — requested{" "}
+                    {formatSabaDateTime(request.requestedAt)} ({request.status})
                   </p>
                   <p className="mt-0.5 text-xs text-amber-700">
                     Matched on {m.matchedOn.join(", ")}

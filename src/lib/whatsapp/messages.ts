@@ -20,7 +20,8 @@ export const WELCOME_MENU =
   "2. Check my current request\n\n" +
   "Reply with 1 or 2.";
 
-export const UNRECOGNIZED_MENU_CHOICE = "Sorry, I didn't understand that. " + WELCOME_MENU;
+export const UNRECOGNIZED_MENU_CHOICE =
+  "Sorry, I didn't understand that. " + WELCOME_MENU;
 
 export const AMBIGUOUS_IDENTITY_MESSAGE =
   "We could not automatically match your WhatsApp number to a single account. " +
@@ -58,8 +59,7 @@ export const ASK_PHONE =
 
 export const ASK_PERSONS_AFFECTED =
   "How many people rely on this water? Reply with a number, or SKIP if you'd rather not say.";
-export const INVALID_PERSONS_AFFECTED =
-  `Please reply with a positive whole number, or SKIP.\n\n${ASK_PERSONS_AFFECTED}`;
+export const INVALID_PERSONS_AFFECTED = `Please reply with a positive whole number, or SKIP.\n\n${ASK_PERSONS_AFFECTED}`;
 
 export const ASK_VULNERABLE = `Are there vulnerable persons or critical circumstances?\n\n${vulnerableCircumstanceMenuText()}`;
 export const INVALID_VULNERABLE = `Sorry, please reply with the listed numbers.\n\n${ASK_VULNERABLE}`;
@@ -67,7 +67,8 @@ export const INVALID_VULNERABLE = `Sorry, please reply with the listed numbers.\
 export const ASK_STORAGE =
   "About how much water storage/cistern capacity do you have available? Reply in your own words, or SKIP.";
 
-export const ASK_URGENCY = "How urgent is this request?\n\n1. Normal\n2. Critical\n\nReply with 1 or 2.";
+export const ASK_URGENCY =
+  "How urgent is this request?\n\n1. Normal\n2. Critical\n\nReply with 1 or 2.";
 export const INVALID_URGENCY = `Sorry, please reply with 1 or 2.\n\n${ASK_URGENCY}`;
 
 export const ASK_LOADS =
@@ -77,11 +78,13 @@ export const ASK_LOADS =
   "Reply with 1 or 2.";
 export const INVALID_LOADS = `Sorry, please reply with 1 or 2.\n\n${ASK_LOADS}`;
 
-export const ASK_CRITICAL_EXPLANATION = "Please briefly explain why this request is critical.";
-export const CRITICAL_EXPLANATION_REQUIRED_MESSAGE =
-  `A brief explanation is required for a Critical request.\n\n${ASK_CRITICAL_EXPLANATION}`;
+export const ASK_CRITICAL_EXPLANATION =
+  "Please briefly explain why this request is critical.";
+export const CRITICAL_EXPLANATION_REQUIRED_MESSAGE = `A brief explanation is required for a Critical request.\n\n${ASK_CRITICAL_EXPLANATION}`;
 
-export function preferredDriverMenuText(drivers: WhatsAppDriverOption[]): string {
+export function preferredDriverMenuText(
+  drivers: WhatsAppDriverOption[],
+): string {
   const lines = drivers.map((d, i) => `${i + 1}. ${d.displayName}`);
   return (
     "Would you like to request a preferred driver? This is a preference only, not a guarantee.\n\n" +
@@ -91,9 +94,13 @@ export function preferredDriverMenuText(drivers: WhatsAppDriverOption[]): string
   );
 }
 
-export const INVALID_PREFERRED_DRIVER = "Sorry, please reply with one of the listed numbers.";
+export const INVALID_PREFERRED_DRIVER =
+  "Sorry, please reply with one of the listed numbers.";
 
-const URGENCY_LABEL: Record<string, string> = { normal: "Normal", critical: "Critical" };
+const URGENCY_LABEL: Record<string, string> = {
+  normal: "Normal",
+  critical: "Critical",
+};
 
 export function requestSummaryMessage(
   draft: WhatsAppSessionDraft,
@@ -117,14 +124,16 @@ export function requestSummaryMessage(
   return lines.join("\n");
 }
 
-export const REQUEST_CANCELLED_MESSAGE = "Your request was not submitted. Reply HI to start over.";
+export const REQUEST_CANCELLED_MESSAGE =
+  "Your request was not submitted. Reply HI to start over.";
 export const REQUEST_SUBMITTED_MESSAGE =
   "Thank you. Your water request has been submitted and will be handled the same way as a website request.";
 
 export const DUPLICATE_ACTIVE_REQUEST_MESSAGE =
   "You already have an active water request, so a new one cannot be created. Here is its current status:";
 
-export const NO_ACTIVE_REQUEST_MESSAGE = "You do not have an active water request right now.";
+export const NO_ACTIVE_REQUEST_MESSAGE =
+  "You do not have an active water request right now.";
 
 const STATUS_LABEL: Record<WaterRequestStatus, string> = {
   requested: "Submitted, waiting to be opened for drivers",
@@ -163,7 +172,8 @@ export function deliveryConfirmationPrompt(loads: number = 1): string {
 export const INVALID_DELIVERY_CONFIRMATION_CHOICE =
   "Sorry, please reply with 1 or 2.";
 
-export const ASK_DISPUTE_REASON = "Please briefly describe the problem with your delivery.";
+export const ASK_DISPUTE_REASON =
+  "Please briefly describe the problem with your delivery.";
 
 export const DELIVERY_CONFIRMED_MESSAGE = "Thank you — delivery confirmed.";
 export const DELIVERY_DISPUTED_MESSAGE =

@@ -47,21 +47,28 @@ const COLLECTIONS = ["users", "waterRequests"];
 const BATCH_LIMIT = 450; // safe margin below Firestore's ~500 write limit
 
 function normalize(value) {
-  return String(value ?? "").trim().replace(/\s+/g, " ");
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function canonicalize(village) {
   const v = normalize(village);
   if (CANONICAL_VILLAGES.includes(v)) return { action: "ok", canonical: v };
-  if (UNAMBIGUOUS_MAP.has(v)) return { action: "map", canonical: UNAMBIGUOUS_MAP.get(v) };
-  if (UNAPPROVED_AMBIGUOUS.has(v)) return { action: "ambiguous", reason: "unapproved village" };
+  if (UNAMBIGUOUS_MAP.has(v))
+    return { action: "map", canonical: UNAMBIGUOUS_MAP.get(v) };
+  if (UNAPPROVED_AMBIGUOUS.has(v))
+    return { action: "ambiguous", reason: "unapproved village" };
   return { action: "ambiguous", reason: "unknown value" };
 }
 
 function initAdmin() {
   const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
+    /\\n/g,
+    "\n",
+  );
 
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error(
@@ -101,7 +108,12 @@ async function processCollection(db, collectionId, writeMode) {
 
     if (result.action === "map") {
       counts.map++;
-      toUpdate.push({ ref: doc.ref, id: doc.id, old: normalize(data.village), new: result.canonical });
+      toUpdate.push({
+        ref: doc.ref,
+        id: doc.id,
+        old: normalize(data.village),
+        new: result.canonical,
+      });
       mapByOld.set(result.old, (mapByOld.get(result.old) || 0) + 1);
       continue;
     }
@@ -163,7 +175,9 @@ async function main() {
   const dryRun = !writeMode;
 
   if (process.argv.includes("--help")) {
-    console.log("Usage: node --env-file=.env.local scripts/migrate-villages.mjs [--dry-run] [--write]");
+    console.log(
+      "Usage: node --env-file=.env.local scripts/migrate-villages.mjs [--dry-run] [--write]",
+    );
     console.log("  --dry-run  Show planned changes without writing (default).");
     console.log("  --write    Actually update Firestore documents.");
     process.exit(0);
@@ -186,12 +200,19 @@ async function main() {
   printSummary(summary);
 
   const totalWould = summary.reduce((sum, s) => sum + s.wouldUpdate, 0);
-  const totalAmbiguous = summary.reduce((sum, s) => sum + s.counts.ambiguous, 0);
+  const totalAmbiguous = summary.reduce(
+    (sum, s) => sum + s.counts.ambiguous,
+    0,
+  );
 
-  console.log(`\nTotal documents ${writeMode ? "updated" : "that would be updated"}: ${totalWould}`);
+  console.log(
+    `\nTotal documents ${writeMode ? "updated" : "that would be updated"}: ${totalWould}`,
+  );
   if (totalAmbiguous > 0) {
     console.log(`Total ambiguous/unapproved village values: ${totalAmbiguous}`);
-    console.log("These were NOT changed. Review them and ask the government team how to handle each value.");
+    console.log(
+      "These were NOT changed. Review them and ask the government team how to handle each value.",
+    );
   }
 
   if (writeMode) {

@@ -3,7 +3,10 @@
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { getFirebaseAuth, isFirebaseClientConfigured } from "@/lib/firebase/client";
+import {
+  getFirebaseAuth,
+  isFirebaseClientConfigured,
+} from "@/lib/firebase/client";
 
 interface AuthContextValue {
   /** The signed-in Firebase user, or null if signed out. */

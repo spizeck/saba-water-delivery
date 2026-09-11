@@ -12,7 +12,7 @@ const nameMap: Record<string, string> = {
   "staff-uid-1": "Office Staff",
   "resident-uid-1": "Jane Resident",
   "7LOoA8IQ1PVlwGijBTDjGjBDqup2": "Demo Driver",
-  "LvDp8wCgUcPZBbNoOmI8w3K4r2u1": "Office Staff",
+  LvDp8wCgUcPZBbNoOmI8w3K4r2u1: "Office Staff",
 };
 
 describe("formatRequestEventDetails", () => {
@@ -43,13 +43,17 @@ describe("formatRequestEventDetails", () => {
     });
 
     it("shows preferred driver name when available", () => {
-      const result = formatRequestEventDetails("request_created", {
-        loads: 1,
-        gallons: 1000,
-        village: "St Johns",
-        preferredDriverId: "driver-uid-1",
-        dispatchPriority: "normal",
-      }, { nameMap });
+      const result = formatRequestEventDetails(
+        "request_created",
+        {
+          loads: 1,
+          gallons: 1000,
+          village: "St Johns",
+          preferredDriverId: "driver-uid-1",
+          dispatchPriority: "normal",
+        },
+        { nameMap },
+      );
       expect(result).toContain("Preferred: Demo Driver");
     });
 
@@ -80,50 +84,68 @@ describe("formatRequestEventDetails", () => {
 
   describe("water_collected", () => {
     it("formats load, station, meter, and driver name", () => {
-      const result = formatRequestEventDetails("water_collected", {
-        loadNumber: 1,
-        fillStationId: "bottom",
-        fillStationName: "Bottom Fill Station",
-        meterCode: "42",
-        meterNumber: 42,
-        driverId: "7LOoA8IQ1PVlwGijBTDjGjBDqup2",
-      }, { nameMap, actorId: "7LOoA8IQ1PVlwGijBTDjGjBDqup2" });
+      const result = formatRequestEventDetails(
+        "water_collected",
+        {
+          loadNumber: 1,
+          fillStationId: "bottom",
+          fillStationName: "Bottom Fill Station",
+          meterCode: "42",
+          meterNumber: 42,
+          driverId: "7LOoA8IQ1PVlwGijBTDjGjBDqup2",
+        },
+        { nameMap, actorId: "7LOoA8IQ1PVlwGijBTDjGjBDqup2" },
+      );
       expect(result).toBe("Load 1 · Bottom Fill Station · Meter 42");
     });
 
     it("hides driver name when same as actor", () => {
-      const result = formatRequestEventDetails("water_collected", {
-        loadNumber: 1,
-        fillStationName: "Bottom Fill Station",
-        meterCode: "BTM2",
-        driverId: "driver-uid-1",
-      }, { nameMap, actorId: "driver-uid-1" });
+      const result = formatRequestEventDetails(
+        "water_collected",
+        {
+          loadNumber: 1,
+          fillStationName: "Bottom Fill Station",
+          meterCode: "BTM2",
+          driverId: "driver-uid-1",
+        },
+        { nameMap, actorId: "driver-uid-1" },
+      );
       expect(result).not.toContain("Driver:");
     });
 
     it("shows driver name when different from actor", () => {
-      const result = formatRequestEventDetails("water_collected", {
-        loadNumber: 1,
-        fillStationName: "Bottom Fill Station",
-        meterCode: "BTM2",
-        driverId: "driver-uid-1",
-      }, { nameMap, actorId: "staff-uid-1" });
+      const result = formatRequestEventDetails(
+        "water_collected",
+        {
+          loadNumber: 1,
+          fillStationName: "Bottom Fill Station",
+          meterCode: "BTM2",
+          driverId: "driver-uid-1",
+        },
+        { nameMap, actorId: "staff-uid-1" },
+      );
       expect(result).toContain("Driver: Demo Driver");
     });
   });
 
   describe("water_collected_by_staff", () => {
     it("shows driver name and note", () => {
-      const result = formatRequestEventDetails("water_collected_by_staff", {
-        loadNumber: 1,
-        fillStationId: "bottom",
-        fillStationName: "Bottom Fill Station",
-        meterCode: "42",
-        meterNumber: 42,
-        driverId: "7LOoA8IQ1PVlwGijBTDjGjBDqup2",
-        note: "paper",
-      }, { nameMap, actorId: "LvDp8wCgUcPZBbNoOmI8w3K4r2u1" });
-      expect(result).toBe("Load 1 · Bottom Fill Station · Meter 42 · Driver: Demo Driver · Note: paper");
+      const result = formatRequestEventDetails(
+        "water_collected_by_staff",
+        {
+          loadNumber: 1,
+          fillStationId: "bottom",
+          fillStationName: "Bottom Fill Station",
+          meterCode: "42",
+          meterNumber: 42,
+          driverId: "7LOoA8IQ1PVlwGijBTDjGjBDqup2",
+          note: "paper",
+        },
+        { nameMap, actorId: "LvDp8wCgUcPZBbNoOmI8w3K4r2u1" },
+      );
+      expect(result).toBe(
+        "Load 1 · Bottom Fill Station · Meter 42 · Driver: Demo Driver · Note: paper",
+      );
     });
   });
 
@@ -134,37 +156,55 @@ describe("formatRequestEventDetails", () => {
         newPriority: "urgent",
         reason: "Resident has been waiting 5 days",
       });
-      expect(result).toBe("From: Normal · To: Urgent · Reason: Resident has been waiting 5 days");
+      expect(result).toBe(
+        "From: Normal · To: Urgent · Reason: Resident has been waiting 5 days",
+      );
     });
   });
 
   describe("dispatcher_assigned", () => {
     it("resolves driver name", () => {
-      const result = formatRequestEventDetails("dispatcher_assigned", {
-        driverId: "driver-uid-1",
-      }, { nameMap });
+      const result = formatRequestEventDetails(
+        "dispatcher_assigned",
+        {
+          driverId: "driver-uid-1",
+        },
+        { nameMap },
+      );
       expect(result).toBe("Assigned to: Demo Driver");
     });
   });
 
   describe("dispatcher_reassigned", () => {
     it("shows from/to with resolved names", () => {
-      const result = formatRequestEventDetails("dispatcher_reassigned", {
-        previousDriverId: "driver-uid-1",
-        newDriverId: "staff-uid-1",
-        reason: "Driver unavailable",
-      }, { nameMap });
-      expect(result).toBe("From: Demo Driver · To: Office Staff · Reason: Driver unavailable");
+      const result = formatRequestEventDetails(
+        "dispatcher_reassigned",
+        {
+          previousDriverId: "driver-uid-1",
+          newDriverId: "staff-uid-1",
+          reason: "Driver unavailable",
+        },
+        { nameMap },
+      );
+      expect(result).toBe(
+        "From: Demo Driver · To: Office Staff · Reason: Driver unavailable",
+      );
     });
   });
 
   describe("request_returned_to_queue", () => {
     it("shows the previous driver and reason", () => {
-      const result = formatRequestEventDetails("request_returned_to_queue", {
-        previousDriverId: "driver-uid-1",
-        reason: "Customer requested a different delivery date",
-      }, { nameMap });
-      expect(result).toBe("Previous driver: Demo Driver · Reason: Customer requested a different delivery date");
+      const result = formatRequestEventDetails(
+        "request_returned_to_queue",
+        {
+          previousDriverId: "driver-uid-1",
+          reason: "Customer requested a different delivery date",
+        },
+        { nameMap },
+      );
+      expect(result).toBe(
+        "Previous driver: Demo Driver · Reason: Customer requested a different delivery date",
+      );
     });
   });
 
@@ -174,7 +214,9 @@ describe("formatRequestEventDetails", () => {
         reason: "Duplicate request",
         previousStatus: "available",
       });
-      expect(result).toBe("Reason: Duplicate request · Previous status: Available");
+      expect(result).toBe(
+        "Reason: Duplicate request · Previous status: Available",
+      );
     });
   });
 
@@ -197,7 +239,9 @@ describe("formatRequestEventDetails", () => {
     });
 
     it("returns null for events with no meaningful details", () => {
-      expect(formatRequestEventDetails("customer_confirmed", { something: null })).toBeNull();
+      expect(
+        formatRequestEventDetails("customer_confirmed", { something: null }),
+      ).toBeNull();
     });
   });
 
@@ -225,33 +269,45 @@ describe("formatRequestEventDetails", () => {
         customerDisplayName: { from: "Info", to: "Jane Resident" },
         customerPhone: { from: "123", to: "456" },
       });
-      expect(result).toBe("Customer name: Info → Jane Resident · Customer phone: 123 → 456");
+      expect(result).toBe(
+        "Customer name: Info → Jane Resident · Customer phone: 123 → 456",
+      );
     });
   });
 
   describe("fallback for unknown event types", () => {
     it("humanizes field names for unknown events", () => {
-      const result = formatRequestEventDetails("unknown_future_event" as never, {
-        someField: "value",
-        nullField: null,
-      });
+      const result = formatRequestEventDetails(
+        "unknown_future_event" as never,
+        {
+          someField: "value",
+          nullField: null,
+        },
+      );
       expect(result).toContain("Some Field: value");
       expect(result).not.toContain("nullField");
       expect(result).not.toContain("null");
     });
 
     it("resolves IDs via nameMap in fallback", () => {
-      const result = formatRequestEventDetails("unknown_future_event" as never, {
-        driverId: "driver-uid-1",
-      }, { nameMap });
+      const result = formatRequestEventDetails(
+        "unknown_future_event" as never,
+        {
+          driverId: "driver-uid-1",
+        },
+        { nameMap },
+      );
       expect(result).toContain("Demo Driver");
     });
 
     it("hides IDs when fillStationName exists", () => {
-      const result = formatRequestEventDetails("unknown_future_event" as never, {
-        fillStationId: "bottom",
-        fillStationName: "Bottom Fill Station",
-      });
+      const result = formatRequestEventDetails(
+        "unknown_future_event" as never,
+        {
+          fillStationId: "bottom",
+          fillStationName: "Bottom Fill Station",
+        },
+      );
       expect(result).not.toContain("bottom");
       expect(result).toContain("Bottom Fill Station");
     });
@@ -282,9 +338,13 @@ describe("formatDriverEventDetails", () => {
 
   describe("driver_account_linked", () => {
     it("resolves linked user name", () => {
-      const result = formatDriverEventDetails("driver_account_linked", {
-        linkedUserId: "resident-uid-1",
-      }, { nameMap });
+      const result = formatDriverEventDetails(
+        "driver_account_linked",
+        {
+          linkedUserId: "resident-uid-1",
+        },
+        { nameMap },
+      );
       expect(result).toBe("Linked to: Jane Resident");
     });
   });
@@ -305,22 +365,37 @@ describe("formatDriverEventDetails", () => {
 describe("EVENT_LABELS completeness", () => {
   it("REQUEST_EVENT_LABELS covers all known request event types", () => {
     const knownTypes = [
-      "request_created", "request_created_by_dispatcher",
-      "preferred_driver_selected", "preferred_driver_expired",
-      "preferred_driver_declined", "request_opened",
-      "driver_claimed", "marked_delivered",
-      "customer_confirmed", "delivery_confirmed_by_dispatcher",
-      "customer_disputed", "delivery_auto_confirmed",
-      "dispute_resolved_completed", "dispute_resolved_reopened",
-      "request_cancelled", "dispatcher_assigned",
-      "dispatcher_reassigned", "request_returned_to_queue", "request_priority_changed",
+      "request_created",
+      "request_created_by_dispatcher",
+      "preferred_driver_selected",
+      "preferred_driver_expired",
+      "preferred_driver_declined",
+      "request_opened",
+      "driver_claimed",
+      "marked_delivered",
+      "customer_confirmed",
+      "delivery_confirmed_by_dispatcher",
+      "customer_disputed",
+      "delivery_auto_confirmed",
+      "dispute_resolved_completed",
+      "dispute_resolved_reopened",
+      "request_cancelled",
+      "dispatcher_assigned",
+      "dispatcher_reassigned",
+      "request_returned_to_queue",
+      "request_priority_changed",
       "preferred_driver_bypassed_for_priority",
       "preferred_driver_hold_released_for_priority",
-      "dispatcher_batch_assigned", "dispatcher_batch_membership_removed",
-      "marked_delivered_by_dispatcher_batch", "marked_delivered_by_dispatcher",
-      "dispatch_order_overridden", "water_collected",
-      "water_collected_by_staff", "customer_history_linked",
-      "delivery_confirmation_email", "request_edited",
+      "dispatcher_batch_assigned",
+      "dispatcher_batch_membership_removed",
+      "marked_delivered_by_dispatcher_batch",
+      "marked_delivered_by_dispatcher",
+      "dispatch_order_overridden",
+      "water_collected",
+      "water_collected_by_staff",
+      "customer_history_linked",
+      "delivery_confirmation_email",
+      "request_edited",
     ];
     for (const type of knownTypes) {
       expect(REQUEST_EVENT_LABELS[type]).toBeDefined();
@@ -329,12 +404,18 @@ describe("EVENT_LABELS completeness", () => {
 
   it("DRIVER_EVENT_LABELS covers all known driver event types", () => {
     const knownTypes = [
-      "driver_online", "driver_offline",
-      "driver_access_restricted", "driver_access_restored",
-      "driver_cooldown_started", "driver_registry_created",
-      "driver_registry_updated", "driver_account_linked",
-      "driver_account_unlinked", "meter_assignment_added",
-      "meter_assignment_updated", "meter_assignment_removed",
+      "driver_online",
+      "driver_offline",
+      "driver_access_restricted",
+      "driver_access_restored",
+      "driver_cooldown_started",
+      "driver_registry_created",
+      "driver_registry_updated",
+      "driver_account_linked",
+      "driver_account_unlinked",
+      "meter_assignment_added",
+      "meter_assignment_updated",
+      "meter_assignment_removed",
     ];
     for (const type of knownTypes) {
       expect(DRIVER_EVENT_LABELS[type]).toBeDefined();

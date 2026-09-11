@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { FillStation, MeterAssignment } from "@/lib/domain/types";
 
-import { setMeterAssignmentAction, type DriverFormActionState } from "../actions";
+import {
+  setMeterAssignmentAction,
+  type DriverFormActionState,
+} from "../actions";
 
 const initialState: DriverFormActionState = { status: "idle" };
 
@@ -48,7 +51,10 @@ function StationRow({
   meter: MeterAssignment | null;
 }) {
   const [editing, setEditing] = useState(false);
-  const [state, formAction, pending] = useActionState(setMeterAssignmentAction, initialState);
+  const [state, formAction, pending] = useActionState(
+    setMeterAssignmentAction,
+    initialState,
+  );
 
   return (
     <div className="py-3 first:pt-0 last:pb-0">
@@ -56,7 +62,9 @@ function StationRow({
         <div>
           <p className="text-sm font-medium text-slate-900">{station.name}</p>
           <p className="text-sm text-slate-600">
-            {meter ? `${meter.meterCode} \u2014 Meter ${meter.meterNumber}` : "No meter assigned"}
+            {meter
+              ? `${meter.meterCode} \u2014 Meter ${meter.meterNumber}`
+              : "No meter assigned"}
           </p>
         </div>
         <Button
@@ -96,7 +104,12 @@ function StationRow({
               className="h-9 w-24 rounded-lg border border-slate-300 px-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
             />
           </label>
-          <Button type="submit" size="md" disabled={pending} className="!h-9 !text-xs">
+          <Button
+            type="submit"
+            size="md"
+            disabled={pending}
+            className="!h-9 !text-xs"
+          >
             {pending ? "Saving\u2026" : "Save"}
           </Button>
           <Button
@@ -109,10 +122,14 @@ function StationRow({
             Cancel
           </Button>
           {state.status === "error" && (
-            <p className="w-full text-xs font-medium text-red-700">{state.message}</p>
+            <p className="w-full text-xs font-medium text-red-700">
+              {state.message}
+            </p>
           )}
           {state.status === "success" && (
-            <p className="w-full text-xs font-medium text-green-700">{state.message}</p>
+            <p className="w-full text-xs font-medium text-green-700">
+              {state.message}
+            </p>
           )}
         </form>
       )}

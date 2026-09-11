@@ -53,7 +53,9 @@ describe("normalizePhoneForMatching", () => {
 
 describe("normalizeEmailForMatching", () => {
   it("lowercases and trims", () => {
-    expect(normalizeEmailForMatching("Bruce@Example.COM")).toBe("bruce@example.com");
+    expect(normalizeEmailForMatching("Bruce@Example.COM")).toBe(
+      "bruce@example.com",
+    );
   });
 
   it("returns null for empty input", () => {
@@ -99,8 +101,12 @@ describe("findIdentityMatches", () => {
       directory,
     );
     // u1 matches phone; u3 matches the same phone.
-    expect(matches.some((m) => m.resident.uid === "u1" && m.strength === "medium")).toBe(true);
-    expect(matches.some((m) => m.resident.uid === "u3" && m.strength === "medium")).toBe(true);
+    expect(
+      matches.some((m) => m.resident.uid === "u1" && m.strength === "medium"),
+    ).toBe(true);
+    expect(
+      matches.some((m) => m.resident.uid === "u3" && m.strength === "medium"),
+    ).toBe(true);
   });
 
   it("never auto-matches on name alone", () => {
@@ -111,9 +117,11 @@ describe("findIdentityMatches", () => {
     // Name-only matches are weak and excluded from default filtering in UI,
     // but the pure function still returns them as "weak".
     expect(matches.length).toBeGreaterThan(0);
-    expect(matches.every((m) => m.strength === "weak" && m.matchedOn.includes("name"))).toBe(
-      true,
-    );
+    expect(
+      matches.every(
+        (m) => m.strength === "weak" && m.matchedOn.includes("name"),
+      ),
+    ).toBe(true);
   });
 
   it("does not double-count email and phone on the same resident", () => {
@@ -130,12 +138,17 @@ describe("findIdentityMatches", () => {
 
 describe("findStrongEmailMatch", () => {
   it("returns the single email match", () => {
-    const match = findStrongEmailMatch({ email: "bruce@example.com" }, directory);
+    const match = findStrongEmailMatch(
+      { email: "bruce@example.com" },
+      directory,
+    );
     expect(match?.resident.uid).toBe("u1");
   });
 
   it("returns null when no email match", () => {
-    expect(findStrongEmailMatch({ email: "unknown@example.com" }, directory)).toBeNull();
+    expect(
+      findStrongEmailMatch({ email: "unknown@example.com" }, directory),
+    ).toBeNull();
   });
 });
 

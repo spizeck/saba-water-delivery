@@ -46,13 +46,18 @@ export function DeliveryProfileReminderModal({
 }: Props) {
   const allIssueFields = new Set([...missingFields, ...invalidFields]);
 
-  function fieldStatus(field: DeliveryProfileRequiredField): "ok" | "missing" | "invalid" {
+  function fieldStatus(
+    field: DeliveryProfileRequiredField,
+  ): "ok" | "missing" | "invalid" {
     if (missingFields.includes(field)) return "missing";
     if (invalidFields.includes(field)) return "invalid";
     return "ok";
   }
   const [open, setOpen] = useState(true);
-  const [state, formAction, pending] = useActionState(confirmDeliveryProfileInfo, initialState);
+  const [state, formAction, pending] = useActionState(
+    confirmDeliveryProfileInfo,
+    initialState,
+  );
 
   // Closing (mandatory case: only via "Review My Information", which
   // takes the resident to the profile form) or a successful
@@ -103,7 +108,11 @@ export function DeliveryProfileReminderModal({
         {mandatory ? (
           <p className="text-sm text-slate-600">
             Before requesting water, please review the following required
-            information: <strong>{[...allIssueFields].map((f) => FIELD_LABEL[f]).join(", ")}</strong>.
+            information:{" "}
+            <strong>
+              {[...allIssueFields].map((f) => FIELD_LABEL[f]).join(", ")}
+            </strong>
+            .
           </p>
         ) : (
           <p className="text-sm text-slate-600">

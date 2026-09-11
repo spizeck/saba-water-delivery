@@ -37,7 +37,11 @@ export function usePwaInstall(_portal: PwaPortal): UsePwaInstallResult {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || state.kind === "standalone" || state.kind === "ios") {
+    if (
+      typeof window === "undefined" ||
+      state.kind === "standalone" ||
+      state.kind === "ios"
+    ) {
       return;
     }
 

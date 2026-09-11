@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type { WaterRequest } from "@/lib/domain/types";
 import { processMessage } from "@/lib/whatsapp/conversationSteps";
-import type { WhatsAppConversationContext, WhatsAppSession } from "@/lib/whatsapp/types";
+import type {
+  WhatsAppConversationContext,
+  WhatsAppSession,
+} from "@/lib/whatsapp/types";
 
-function makeSession(overrides: Partial<WhatsAppSession> = {}): WhatsAppSession {
+function makeSession(
+  overrides: Partial<WhatsAppSession> = {},
+): WhatsAppSession {
   return {
     id: "session-1",
     senderPhone: "5994165363",
@@ -19,7 +24,9 @@ function makeSession(overrides: Partial<WhatsAppSession> = {}): WhatsAppSession 
   };
 }
 
-function makeContext(overrides: Partial<WhatsAppConversationContext> = {}): WhatsAppConversationContext {
+function makeContext(
+  overrides: Partial<WhatsAppConversationContext> = {},
+): WhatsAppConversationContext {
   return {
     now: new Date("2026-01-01T12:00:00.000Z"),
     activeRequest: null,
@@ -84,7 +91,10 @@ describe("Request selection", () => {
   });
 
   it("goes to confirm_profile for a uniquely matched registered resident", () => {
-    const session = makeSession({ customerType: "registered", customerId: "uid-1" });
+    const session = makeSession({
+      customerType: "registered",
+      customerId: "uid-1",
+    });
     const context = makeContext({
       registeredProfile: {
         displayName: "Jane",
@@ -146,9 +156,15 @@ describe("Critical", () => {
       step: "collect_critical_explanation",
       draft: { reportedUrgency: "critical" },
     });
-    const result = processMessage(session, "No water left at all", makeContext());
+    const result = processMessage(
+      session,
+      "No water left at all",
+      makeContext(),
+    );
     expect(result.session?.step).toBe("collect_loads");
-    expect(result.session?.draft.criticalExplanation).toBe("No water left at all");
+    expect(result.session?.draft.criticalExplanation).toBe(
+      "No water left at all",
+    );
   });
 });
 
@@ -189,7 +205,9 @@ describe("Quantity", () => {
       draft: { reportedUrgency: "normal" },
     });
     const result = processMessage(session, "2", makeContext());
-    expect(result.outbound[0]).toContain("Would you like to request a preferred driver?");
+    expect(result.outbound[0]).toContain(
+      "Would you like to request a preferred driver?",
+    );
   });
 });
 
@@ -255,7 +273,11 @@ describe("Confirmation", () => {
     });
     const result = processMessage(session, "CONFIRM", makeContext());
     expect(result.actions).toHaveLength(1);
-    expect(result.actions?.[0]).toMatchObject({ type: "create_request", customerId: "uid-1", customer: null });
+    expect(result.actions?.[0]).toMatchObject({
+      type: "create_request",
+      customerId: "uid-1",
+      customer: null,
+    });
   });
 
   it("returns an update_profile action before create_request when the resident confirmed an edit", () => {
@@ -274,8 +296,13 @@ describe("Confirmation", () => {
 
 describe("Existing request", () => {
   it("blocks a new request and reports current status when one is already active", () => {
-    const session = makeSession({ customerType: "registered", customerId: "uid-1" });
-    const context = makeContext({ activeRequest: makeRequest({ status: "claimed" }) });
+    const session = makeSession({
+      customerType: "registered",
+      customerId: "uid-1",
+    });
+    const context = makeContext({
+      activeRequest: makeRequest({ status: "claimed" }),
+    });
     const result = processMessage(session, "1", context);
     expect(result.actions).toBeUndefined();
     expect(result.session?.step).toBe("menu");
@@ -284,15 +311,27 @@ describe("Existing request", () => {
   });
 
   it("reports 'check my current request' status for a registered resident", () => {
-    const session = makeSession({ customerType: "registered", customerId: "uid-1" });
-    const context = makeContext({ activeRequest: makeRequest({ status: "available" }) });
+    const session = makeSession({
+      customerType: "registered",
+      customerId: "uid-1",
+    });
+    const context = makeContext({
+      activeRequest: makeRequest({ status: "available" }),
+    });
     const result = processMessage(session, "2", context);
     expect(result.outbound.join(" ")).toContain("Waiting for a driver");
   });
 
   it("reports no active request when there is none", () => {
-    const session = makeSession({ customerType: "registered", customerId: "uid-1" });
-    const result = processMessage(session, "2", makeContext({ activeRequest: null }));
+    const session = makeSession({
+      customerType: "registered",
+      customerId: "uid-1",
+    });
+    const result = processMessage(
+      session,
+      "2",
+      makeContext({ activeRequest: null }),
+    );
     expect(result.outbound[0]).toContain("do not have an active water request");
   });
 });
@@ -306,17 +345,26 @@ describe("Delivery confirmation", () => {
       draft: { activeRequestId: "req-1" },
     });
     const result = processMessage(session, "1", makeContext());
-    expect(result.actions).toEqual([{ type: "confirm_delivery", requestId: "req-1", customerId: "uid-1" }]);
+    expect(result.actions).toEqual([
+      { type: "confirm_delivery", requestId: "req-1", customerId: "uid-1" },
+    ]);
     expect(result.session?.step).toBe("menu");
   });
 
   it("transitions into confirm_delivery automatically when status check finds a delivered request", () => {
-    const session = makeSession({ customerType: "registered", customerId: "uid-1" });
-    const context = makeContext({ activeRequest: makeRequest({ status: "delivered" }) });
+    const session = makeSession({
+      customerType: "registered",
+      customerId: "uid-1",
+    });
+    const context = makeContext({
+      activeRequest: makeRequest({ status: "delivered" }),
+    });
     const result = processMessage(session, "2", context);
     expect(result.session?.step).toBe("confirm_delivery");
     expect(result.session?.draft.activeRequestId).toBe("req-1");
-    expect(result.outbound.join(" ")).toContain("Did you receive your 1 load (1,000 gallons)?");
+    expect(result.outbound.join(" ")).toContain(
+      "Did you receive your 1 load (1,000 gallons)?",
+    );
   });
 });
 
@@ -334,9 +382,18 @@ describe("Dispute", () => {
     );
     expect(askReason.session?.step).toBe("collect_dispute_reason");
 
-    const disputeResult = processMessage(askReason.session!, "Never arrived", makeContext());
+    const disputeResult = processMessage(
+      askReason.session!,
+      "Never arrived",
+      makeContext(),
+    );
     expect(disputeResult.actions).toEqual([
-      { type: "dispute_delivery", requestId: "req-1", customerId: "uid-1", reason: "Never arrived" },
+      {
+        type: "dispute_delivery",
+        requestId: "req-1",
+        customerId: "uid-1",
+        reason: "Never arrived",
+      },
     ]);
     expect(disputeResult.session?.step).toBe("menu");
   });

@@ -35,7 +35,10 @@ function docIdForMessageId(messageId: string): string {
  * been claimed (caller must skip processing and just return 200 so
  * Meta stops retrying).
  */
-export async function claimMessageId(messageId: string, now: Date = new Date()): Promise<boolean> {
+export async function claimMessageId(
+  messageId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
   const db = getAdminDb();
   const ref = db.collection(COLLECTION).doc(docIdForMessageId(messageId));
   try {

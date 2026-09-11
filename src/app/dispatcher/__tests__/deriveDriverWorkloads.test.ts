@@ -118,7 +118,9 @@ describe("deriveDriverWorkloads", () => {
     expect(result["driver-1"].openLoads).toBe(1);
     expect(result["driver-1"].individualRequests).toHaveLength(1);
     expect(result["driver-1"].individualRequests[0].requestId).toBe("req-1");
-    expect(result["driver-1"].individualRequests[0].customerName).toBe("Earl Ballantyne");
+    expect(result["driver-1"].individualRequests[0].customerName).toBe(
+      "Earl Ballantyne",
+    );
     expect(result["driver-1"].runs).toHaveLength(0);
   });
 
@@ -165,10 +167,34 @@ describe("deriveDriverWorkloads", () => {
 
   it("does not count a delivered, confirmed, disputed, or cancelled request as active", () => {
     const requests = [
-      makeRequest({ id: "r-delivered", assignedDriverId: "user-1", status: "delivered", loads: 1, dispatchBatchId: null }),
-      makeRequest({ id: "r-confirmed", assignedDriverId: "user-1", status: "confirmed", loads: 1, dispatchBatchId: null }),
-      makeRequest({ id: "r-disputed", assignedDriverId: "user-1", status: "disputed", loads: 1, dispatchBatchId: null }),
-      makeRequest({ id: "r-cancelled", assignedDriverId: "user-1", status: "cancelled", loads: 1, dispatchBatchId: null }),
+      makeRequest({
+        id: "r-delivered",
+        assignedDriverId: "user-1",
+        status: "delivered",
+        loads: 1,
+        dispatchBatchId: null,
+      }),
+      makeRequest({
+        id: "r-confirmed",
+        assignedDriverId: "user-1",
+        status: "confirmed",
+        loads: 1,
+        dispatchBatchId: null,
+      }),
+      makeRequest({
+        id: "r-disputed",
+        assignedDriverId: "user-1",
+        status: "disputed",
+        loads: 1,
+        dispatchBatchId: null,
+      }),
+      makeRequest({
+        id: "r-cancelled",
+        assignedDriverId: "user-1",
+        status: "cancelled",
+        loads: 1,
+        dispatchBatchId: null,
+      }),
     ];
     const result = deriveDriverWorkloads([online], requests, customerNames);
     expect(result["driver-1"].state).toBe("available");
@@ -178,8 +204,20 @@ describe("deriveDriverWorkloads", () => {
 
   it("does not show a completed Delivery Run as active", () => {
     const requests = [
-      makeRequest({ id: "req-a", assignedDriverId: "user-1", status: "confirmed", loads: 1, dispatchBatchId: "batch-2" }),
-      makeRequest({ id: "req-b", assignedDriverId: "user-1", status: "disputed", loads: 2, dispatchBatchId: "batch-2" }),
+      makeRequest({
+        id: "req-a",
+        assignedDriverId: "user-1",
+        status: "confirmed",
+        loads: 1,
+        dispatchBatchId: "batch-2",
+      }),
+      makeRequest({
+        id: "req-b",
+        assignedDriverId: "user-1",
+        status: "disputed",
+        loads: 2,
+        dispatchBatchId: "batch-2",
+      }),
     ];
     const result = deriveDriverWorkloads([online], requests, customerNames);
     expect(result["driver-1"].state).toBe("available");
@@ -187,14 +225,20 @@ describe("deriveDriverWorkloads", () => {
   });
 
   it("does not let a stale activeRequestId create false workload", () => {
-    const driverWithStale = { ...online, activeRequestId: "stale" } as DriverRegistryEntry;
+    const driverWithStale = {
+      ...online,
+      activeRequestId: "stale",
+    } as DriverRegistryEntry;
     const result = deriveDriverWorkloads([driverWithStale], [], customerNames);
     expect(result["driver-1"].state).toBe("available");
     expect(result["driver-1"].openRequests).toBe(0);
   });
 
   it("only uses canonical online/offline status, not activeRequestId, for availability", () => {
-    const offlineWithWork = { ...offline, activeRequestId: null } as DriverRegistryEntry;
+    const offlineWithWork = {
+      ...offline,
+      activeRequestId: null,
+    } as DriverRegistryEntry;
     const requests = [
       makeRequest({
         id: "req-1",
@@ -205,7 +249,11 @@ describe("deriveDriverWorkloads", () => {
         dispatchBatchId: null,
       }),
     ];
-    const result = deriveDriverWorkloads([offlineWithWork], requests, customerNames);
+    const result = deriveDriverWorkloads(
+      [offlineWithWork],
+      requests,
+      customerNames,
+    );
     expect(result["driver-2"].state).toBe("offline");
     expect(result["driver-2"].openRequests).toBe(1);
   });
@@ -242,7 +290,14 @@ describe("deriveDriverWorkloads", () => {
 
   it("keeps assignment and concurrency protections by ignoring unassigned claimed requests", () => {
     const requests = [
-      makeRequest({ id: "unassigned", assignedDriverId: null, status: "claimed", village: "The Bottom", loads: 1, dispatchBatchId: null }),
+      makeRequest({
+        id: "unassigned",
+        assignedDriverId: null,
+        status: "claimed",
+        village: "The Bottom",
+        loads: 1,
+        dispatchBatchId: null,
+      }),
     ];
     const result = deriveDriverWorkloads([online], requests, customerNames);
     expect(result["driver-1"].openRequests).toBe(0);
@@ -250,7 +305,14 @@ describe("deriveDriverWorkloads", () => {
 
   it("does not create false workload for an orphaned request assigned to a missing driver", () => {
     const requests = [
-      makeRequest({ id: "orphan", assignedDriverId: "unknown-user", status: "claimed", village: "The Bottom", loads: 1, dispatchBatchId: null }),
+      makeRequest({
+        id: "orphan",
+        assignedDriverId: "unknown-user",
+        status: "claimed",
+        village: "The Bottom",
+        loads: 1,
+        dispatchBatchId: null,
+      }),
     ];
     const result = deriveDriverWorkloads([online], requests, customerNames);
     expect(result["driver-1"].openRequests).toBe(0);
@@ -258,9 +320,30 @@ describe("deriveDriverWorkloads", () => {
 
   it("supports multiple active runs and individual requests for the same driver truthfully", () => {
     const requests = [
-      makeRequest({ id: "ind-1", assignedDriverId: "user-1", status: "claimed", village: "Village A", loads: 1, dispatchBatchId: null }),
-      makeRequest({ id: "run-1", assignedDriverId: "user-1", status: "claimed", village: "Village B", loads: 1, dispatchBatchId: "batch-A" }),
-      makeRequest({ id: "run-2", assignedDriverId: "user-1", status: "claimed", village: "Village C", loads: 2, dispatchBatchId: "batch-B" }),
+      makeRequest({
+        id: "ind-1",
+        assignedDriverId: "user-1",
+        status: "claimed",
+        village: "Village A",
+        loads: 1,
+        dispatchBatchId: null,
+      }),
+      makeRequest({
+        id: "run-1",
+        assignedDriverId: "user-1",
+        status: "claimed",
+        village: "Village B",
+        loads: 1,
+        dispatchBatchId: "batch-A",
+      }),
+      makeRequest({
+        id: "run-2",
+        assignedDriverId: "user-1",
+        status: "claimed",
+        village: "Village C",
+        loads: 2,
+        dispatchBatchId: "batch-B",
+      }),
     ];
     const result = deriveDriverWorkloads([online], requests, customerNames);
     expect(result["driver-1"].state).toBe("delivery_run");

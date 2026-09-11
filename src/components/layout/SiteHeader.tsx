@@ -7,7 +7,10 @@ export function SiteHeader() {
   return (
     <header className="border-b border-slate-200 bg-white">
       <Container className="flex h-16 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 font-bold text-slate-900">
+        <Link
+          href="/"
+          className="flex items-center gap-2 font-bold text-slate-900"
+        >
           <Logo className="relative h-8 w-8" alt="Public Entity Saba" />
           <span>Saba Water Delivery</span>
         </Link>

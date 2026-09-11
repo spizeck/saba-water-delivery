@@ -24,7 +24,9 @@ export default async function ResidentDeliveryReviewPage({
   const reviewPath = `/resident/review/${encodeURIComponent(requestId)}`;
   const session = await getSessionUser();
   if (!session) {
-    redirect(`/login?portal=resident&returnTo=${encodeURIComponent(reviewPath)}`);
+    redirect(
+      `/login?portal=resident&returnTo=${encodeURIComponent(reviewPath)}`,
+    );
   }
   if (!hasRole(session.profile.roles, "resident")) redirect("/access-denied");
 
@@ -46,13 +48,18 @@ export default async function ResidentDeliveryReviewPage({
             <ActiveRequest request={request} />
           ) : (
             <Card>
-              <h1 className="text-xl font-bold text-slate-900">Delivery review unavailable</h1>
+              <h1 className="text-xl font-bold text-slate-900">
+                Delivery review unavailable
+              </h1>
               <p className="mt-2 text-sm text-slate-600">
                 This delivery could not be found for your account.
               </p>
             </Card>
           )}
-          <Link href="/resident" className="text-sm font-medium text-blue-700 hover:underline">
+          <Link
+            href="/resident"
+            className="text-sm font-medium text-blue-700 hover:underline"
+          >
             Back to Resident portal
           </Link>
         </Container>

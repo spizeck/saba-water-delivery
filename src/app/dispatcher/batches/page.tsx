@@ -47,10 +47,15 @@ export default async function DeliveryRunsPage() {
         <Container className="flex flex-col gap-6 max-w-4xl">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <Link href="/dispatcher" className="text-blue-700 hover:underline text-sm">
+              <Link
+                href="/dispatcher"
+                className="text-blue-700 hover:underline text-sm"
+              >
                 &larr; Back to dashboard
               </Link>
-              <h1 className="mt-2 text-2xl font-bold text-slate-900">Delivery Runs</h1>
+              <h1 className="mt-2 text-2xl font-bold text-slate-900">
+                Delivery Runs
+              </h1>
               <p className="mt-1 text-sm text-slate-600">
                 Create a delivery run when you want to assign several deliveries
                 to one driver at once. The driver can use the app, or you can
@@ -70,7 +75,9 @@ export default async function DeliveryRunsPage() {
               Active Delivery Runs ({active.length})
             </h2>
             {active.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">No active delivery runs.</p>
+              <p className="mt-2 text-sm text-slate-600">
+                No active delivery runs.
+              </p>
             ) : (
               <div className="mt-3 flex flex-col gap-3">
                 {active.map((s) => (
@@ -107,19 +114,23 @@ function RunCard({ summary: s }: { summary: DispatchBatchSummary }) {
       <div className="min-w-0 flex-1">
         <p className="font-semibold text-slate-900">{s.resolvedDriverName}</p>
         <p className="mt-0.5 text-sm text-slate-600">
-          {s.currentRequestCount} request{s.currentRequestCount !== 1 ? "s" : ""}
+          {s.currentRequestCount} request
+          {s.currentRequestCount !== 1 ? "s" : ""}
           {" \u00B7 "}
           {s.totalLoads} load{s.totalLoads !== 1 ? "s" : ""}
         </p>
         {s.derivedState !== "completed" && s.totalLoads > 0 && (
           <div className="mt-1.5">
             <p className="text-xs font-medium text-slate-700">
-              {s.loadsDelivered} of {s.totalLoads} load{s.totalLoads !== 1 ? "s" : ""} delivered
+              {s.loadsDelivered} of {s.totalLoads} load
+              {s.totalLoads !== 1 ? "s" : ""} delivered
             </p>
             <div className="mt-1 h-1.5 w-full max-w-xs rounded-full bg-slate-100">
               <div
                 className="h-1.5 rounded-full bg-blue-600 transition-all"
-                style={{ width: `${Math.round((s.loadsDelivered / s.totalLoads) * 100)}%` }}
+                style={{
+                  width: `${Math.round((s.loadsDelivered / s.totalLoads) * 100)}%`,
+                }}
               />
             </div>
           </div>

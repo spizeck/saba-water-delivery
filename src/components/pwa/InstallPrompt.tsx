@@ -5,7 +5,11 @@ import Link from "next/link";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Logo } from "@/components/layout/Logo";
-import { PWA_INSTALL_PATHS, PWA_PORTAL_PATHS, type PwaPortal } from "@/lib/pwa/constants";
+import {
+  PWA_INSTALL_PATHS,
+  PWA_PORTAL_PATHS,
+  type PwaPortal,
+} from "@/lib/pwa/constants";
 
 import { usePwaInstall } from "./usePwaInstall";
 
@@ -15,8 +19,13 @@ interface InstallPromptProps {
   portalName: string;
 }
 
-export function InstallPrompt({ portal, title, portalName }: InstallPromptProps) {
-  const { state, invokeInstall, dismissed, isStandalone } = usePwaInstall(portal);
+export function InstallPrompt({
+  portal,
+  title,
+  portalName,
+}: InstallPromptProps) {
+  const { state, invokeInstall, dismissed, isStandalone } =
+    usePwaInstall(portal);
   const portalPath = PWA_PORTAL_PATHS[portal];
 
   if (state.kind === "loading") {
@@ -37,8 +46,8 @@ export function InstallPrompt({ portal, title, portalName }: InstallPromptProps)
       </div>
       <h1 className="mt-6 text-2xl font-bold text-slate-900">{title}</h1>
       <p className="mt-2 text-slate-600">
-        Add {portalName} to your home screen for the fastest way to request and manage water
-        deliveries.
+        Add {portalName} to your home screen for the fastest way to request and
+        manage water deliveries.
       </p>
 
       {isStandalone && (
@@ -46,7 +55,11 @@ export function InstallPrompt({ portal, title, portalName }: InstallPromptProps)
           <p className="mb-4 text-sm font-medium text-green-700">
             You are already using the app from your home screen.
           </p>
-          <LinkButton href={portalPath} size="lg" className="w-full justify-center sm:w-auto">
+          <LinkButton
+            href={portalPath}
+            size="lg"
+            className="w-full justify-center sm:w-auto"
+          >
             Open {portalName}
           </LinkButton>
         </div>
@@ -54,12 +67,17 @@ export function InstallPrompt({ portal, title, portalName }: InstallPromptProps)
 
       {!isStandalone && state.kind === "prompt" && (
         <div className="mt-6 space-y-3">
-          <Button size="lg" className="w-full justify-center sm:w-auto" onClick={invokeInstall}>
+          <Button
+            size="lg"
+            className="w-full justify-center sm:w-auto"
+            onClick={invokeInstall}
+          >
             Install {portalName}
           </Button>
           {dismissed && (
             <p className="text-sm text-slate-500">
-              Install prompt was dismissed. You can still install later from your browser menu.
+              Install prompt was dismissed. You can still install later from
+              your browser menu.
             </p>
           )}
           <div>
@@ -78,7 +96,9 @@ export function InstallPrompt({ portal, title, portalName }: InstallPromptProps)
       {!isStandalone && state.kind === "ios" && (
         <div className="mt-6 space-y-4 text-left">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <p className="font-semibold text-slate-900">Install on iPhone or iPad</p>
+            <p className="font-semibold text-slate-900">
+              Install on iPhone or iPad
+            </p>
             <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
               <li>Open this page in Safari.</li>
               <li>
@@ -94,8 +114,8 @@ export function InstallPrompt({ portal, title, portalName }: InstallPromptProps)
             </ol>
           </div>
           <p className="text-sm text-slate-500">
-            iOS requires Safari for the standard Add to Home Screen flow. If you are using another
-            browser, switch to Safari first.
+            iOS requires Safari for the standard Add to Home Screen flow. If you
+            are using another browser, switch to Safari first.
           </p>
           <LinkButton
             href={portalPath}
@@ -108,27 +128,33 @@ export function InstallPrompt({ portal, title, portalName }: InstallPromptProps)
         </div>
       )}
 
-      {!isStandalone && (state.kind === "unsupported" || state.kind === "standalone") && (
-        <div className="mt-6 space-y-3">
-          <p className="text-sm text-slate-500">
-            This browser does not offer an automatic install prompt. Use your browser&apos;s menu to
-            add this page to your home screen, or continue below.
-          </p>
-          <LinkButton
-            href={portalPath}
-            variant="outline"
-            size="lg"
-            className="w-full justify-center sm:w-auto"
-          >
-            Continue to {portalName}
-          </LinkButton>
-        </div>
-      )}
+      {!isStandalone &&
+        (state.kind === "unsupported" || state.kind === "standalone") && (
+          <div className="mt-6 space-y-3">
+            <p className="text-sm text-slate-500">
+              This browser does not offer an automatic install prompt. Use your
+              browser&apos;s menu to add this page to your home screen, or
+              continue below.
+            </p>
+            <LinkButton
+              href={portalPath}
+              variant="outline"
+              size="lg"
+              className="w-full justify-center sm:w-auto"
+            >
+              Continue to {portalName}
+            </LinkButton>
+          </div>
+        )}
 
       <p className="mt-6 text-xs text-slate-400">
         Having trouble?{" "}
-        <Link href={PWA_INSTALL_PATHS[portal === "driver" ? "resident" : "driver"]} className="underline">
-          Try the {portal === "driver" ? "resident" : "driver"} install page instead
+        <Link
+          href={PWA_INSTALL_PATHS[portal === "driver" ? "resident" : "driver"]}
+          className="underline"
+        >
+          Try the {portal === "driver" ? "resident" : "driver"} install page
+          instead
         </Link>
         .
       </p>

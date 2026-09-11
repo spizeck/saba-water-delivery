@@ -5,7 +5,9 @@ import { safeResidentReturnTo } from "../returnTo";
 describe("safe resident return URL", () => {
   it("accepts a resident delivery-review deep link", () => {
     expect(
-      safeResidentReturnTo("/resident?requestId=request-123#delivery-confirmation"),
+      safeResidentReturnTo(
+        "/resident?requestId=request-123#delivery-confirmation",
+      ),
     ).toBe("/resident?requestId=request-123#delivery-confirmation");
   });
 
@@ -23,6 +25,8 @@ describe("safe resident return URL", () => {
 
   it("rejects unsafe request IDs and extra parameters", () => {
     expect(safeResidentReturnTo("/resident?requestId=bad/value")).toBeNull();
-    expect(safeResidentReturnTo("/resident?requestId=ok&next=/admin")).toBeNull();
+    expect(
+      safeResidentReturnTo("/resident?requestId=ok&next=/admin"),
+    ).toBeNull();
   });
 });

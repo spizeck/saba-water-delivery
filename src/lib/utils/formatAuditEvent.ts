@@ -93,11 +93,14 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
   dispatcher_reassigned: "Dispatcher reassigned",
   request_returned_to_queue: "Returned to dispatch queue",
   request_priority_changed: "Priority changed",
-  preferred_driver_bypassed_for_priority: "Preferred driver bypassed (priority)",
-  preferred_driver_hold_released_for_priority: "Preferred driver hold released (priority)",
+  preferred_driver_bypassed_for_priority:
+    "Preferred driver bypassed (priority)",
+  preferred_driver_hold_released_for_priority:
+    "Preferred driver hold released (priority)",
   dispatcher_batch_assigned: "Assigned via delivery run",
   dispatcher_batch_membership_removed: "Removed from delivery run",
-  marked_delivered_by_dispatcher_batch: "Delivery recorded (run reconciliation)",
+  marked_delivered_by_dispatcher_batch:
+    "Delivery recorded (run reconciliation)",
   marked_delivered_by_dispatcher: "Delivery recorded by staff",
   dispatch_order_overridden: "Dispatch order overridden",
   water_collected: "Water collected",
@@ -130,7 +133,10 @@ function resolveName(id: unknown, options: FormatEventOptions): string | null {
   return options.nameMap?.[id] ?? null;
 }
 
-function resolveNameOrId(id: unknown, options: FormatEventOptions): string | null {
+function resolveNameOrId(
+  id: unknown,
+  options: FormatEventOptions,
+): string | null {
   if (typeof id !== "string" || !id) return null;
   return options.nameMap?.[id] ?? id;
 }
@@ -160,7 +166,9 @@ function formatLoads(value: unknown): string | null {
 }
 
 function isNullish(value: unknown): boolean {
-  return value === null || value === undefined || value === "" || value === "null";
+  return (
+    value === null || value === undefined || value === "" || value === "null"
+  );
 }
 
 function isDefaultOrRoutine(key: string, value: unknown): boolean {
@@ -207,7 +215,10 @@ type EventFormatter = (
   options: FormatEventOptions,
 ) => string;
 
-const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | undefined> = {
+const REQUEST_EVENT_FORMATTERS: Record<
+  WaterRequestEventType,
+  EventFormatter | undefined
+> = {
   request_created: (m, o) => {
     const parts: (string | null)[] = [];
     parts.push(formatLoads(m.loads));
@@ -233,7 +244,8 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
     const parts: (string | null)[] = [];
     const name = resolveName(m.driverId, o);
     if (name) parts.push(`Driver: ${name}`);
-    if (m.expiresAt) parts.push(`Hold expires: ${formatDatetimeValue(m.expiresAt)}`);
+    if (m.expiresAt)
+      parts.push(`Hold expires: ${formatDatetimeValue(m.expiresAt)}`);
     return join(parts);
   },
 
@@ -251,7 +263,8 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
     const parts: (string | null)[] = [];
     const name = resolveName(m.driverId, o);
     if (name) parts.push(`Driver: ${name}`);
-    if (m.dispatchPriority) parts.push(`Priority: ${formatPriority(m.dispatchPriority)}`);
+    if (m.dispatchPriority)
+      parts.push(`Priority: ${formatPriority(m.dispatchPriority)}`);
     return join(parts);
   },
 
@@ -259,7 +272,8 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
     const parts: (string | null)[] = [];
     const name = resolveName(m.driverId, o);
     if (name) parts.push(`Driver: ${name}`);
-    if (m.newPriority) parts.push(`New priority: ${formatPriority(m.newPriority)}`);
+    if (m.newPriority)
+      parts.push(`New priority: ${formatPriority(m.newPriority)}`);
     return join(parts);
   },
 
@@ -303,7 +317,8 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
   delivery_confirmation_email: (m) => {
     if (m.status === "sent") return `Sent to ${m.recipient ?? "resident"}`;
     if (m.status === "failed") return `Failed: ${m.error ?? "unknown error"}`;
-    if (m.status === "skipped") return `Not sent: ${m.error ?? "no eligible recipient"}`;
+    if (m.status === "skipped")
+      return `Not sent: ${m.error ?? "no eligible recipient"}`;
     return "Pending";
   },
 
@@ -325,7 +340,8 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
   request_cancelled: (m) => {
     const parts: (string | null)[] = [];
     if (m.reason) parts.push(`Reason: ${m.reason}`);
-    if (m.previousStatus) parts.push(`Previous status: ${capitalize(String(m.previousStatus))}`);
+    if (m.previousStatus)
+      parts.push(`Previous status: ${capitalize(String(m.previousStatus))}`);
     return join(parts);
   },
 
@@ -354,7 +370,8 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
 
   request_priority_changed: (m) => {
     const parts: (string | null)[] = [];
-    if (m.previousPriority) parts.push(`From: ${formatPriority(m.previousPriority)}`);
+    if (m.previousPriority)
+      parts.push(`From: ${formatPriority(m.previousPriority)}`);
     if (m.newPriority) parts.push(`To: ${formatPriority(m.newPriority)}`);
     if (m.reason) parts.push(`Reason: ${m.reason}`);
     return join(parts);
@@ -453,14 +470,24 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
     if (parts.length === 0) {
       for (const [field, rawChange] of Object.entries(m)) {
         const change = rawChange as { from?: unknown; to?: unknown };
-        if (!change || typeof change !== "object" || (!("from" in change) && !("to" in change))) continue;
+        if (
+          !change ||
+          typeof change !== "object" ||
+          (!("from" in change) && !("to" in change))
+        )
+          continue;
         const label = fieldLabels[field] ?? humanizeKey(field);
-        parts.push(`${label}: ${humanizeValue(change.from ?? "—")} → ${humanizeValue(change.to ?? "—")}`);
+        parts.push(
+          `${label}: ${humanizeValue(change.from ?? "—")} → ${humanizeValue(change.to ?? "—")}`,
+        );
       }
     }
     // Also handle the generic "changes" pattern if present
     if (parts.length === 0 && m.changes) {
-      const changes = m.changes as Record<string, { previous?: unknown; new?: unknown }>;
+      const changes = m.changes as Record<
+        string,
+        { previous?: unknown; new?: unknown }
+      >;
       for (const [field, change] of Object.entries(changes)) {
         const label = fieldLabels[field] ?? humanizeKey(field);
         if (change.previous != null && change.new != null) {
@@ -478,7 +505,10 @@ const REQUEST_EVENT_FORMATTERS: Record<WaterRequestEventType, EventFormatter | u
 // Driver event formatters
 // ---------------------------------------------------------------------------
 
-const DRIVER_EVENT_FORMATTERS: Record<DriverEventType, EventFormatter | undefined> = {
+const DRIVER_EVENT_FORMATTERS: Record<
+  DriverEventType,
+  EventFormatter | undefined
+> = {
   driver_online: () => "",
   driver_offline: () => "",
 
@@ -515,12 +545,14 @@ const DRIVER_EVENT_FORMATTERS: Record<DriverEventType, EventFormatter | undefine
   driver_archived: (m) => {
     const parts: (string | null)[] = [];
     if (m.reason) parts.push(`Reason: ${m.reason}`);
-    if (m.previousEligibilityStatus) parts.push(`Previous: ${m.previousEligibilityStatus}`);
+    if (m.previousEligibilityStatus)
+      parts.push(`Previous: ${m.previousEligibilityStatus}`);
     return join(parts);
   },
 
   driver_restored_from_archive: (m) => {
-    if (m.restoredToEligibilityStatus) return `Restored to: ${m.restoredToEligibilityStatus}`;
+    if (m.restoredToEligibilityStatus)
+      return `Restored to: ${m.restoredToEligibilityStatus}`;
     return "";
   },
 
@@ -536,21 +568,24 @@ const DRIVER_EVENT_FORMATTERS: Record<DriverEventType, EventFormatter | undefine
 
   meter_assignment_added: (m) => {
     const parts: (string | null)[] = [];
-    if (m.stationName ?? m.fillStationName) parts.push(String(m.stationName ?? m.fillStationName));
+    if (m.stationName ?? m.fillStationName)
+      parts.push(String(m.stationName ?? m.fillStationName));
     if (m.meterCode) parts.push(`Meter: ${m.meterCode}`);
     return join(parts);
   },
 
   meter_assignment_updated: (m) => {
     const parts: (string | null)[] = [];
-    if (m.stationName ?? m.fillStationName) parts.push(String(m.stationName ?? m.fillStationName));
+    if (m.stationName ?? m.fillStationName)
+      parts.push(String(m.stationName ?? m.fillStationName));
     if (m.meterCode) parts.push(`Meter: ${m.meterCode}`);
     return join(parts);
   },
 
   meter_assignment_removed: (m) => {
     const parts: (string | null)[] = [];
-    if (m.stationName ?? m.fillStationName) parts.push(String(m.stationName ?? m.fillStationName));
+    if (m.stationName ?? m.fillStationName)
+      parts.push(String(m.stationName ?? m.fillStationName));
     if (m.meterCode) parts.push(`Meter: ${m.meterCode}`);
     return join(parts);
   },

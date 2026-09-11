@@ -8,7 +8,10 @@ import { getActiveDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getAllRequests } from "@/lib/domain/waterRequests";
-import { toViewerDriverRow, toViewerRequestRow } from "@/lib/domain/viewerProjection";
+import {
+  toViewerDriverRow,
+  toViewerRequestRow,
+} from "@/lib/domain/viewerProjection";
 import { formatSabaDate } from "@/lib/utils/datetime";
 
 export const metadata: Metadata = {
@@ -53,7 +56,10 @@ export default async function ViewerPortalPage() {
 
   const openRequests = allRequests
     .filter((r) => OPEN_STATUSES.includes(r.status))
-    .sort((a, b) => new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime());
+    .sort(
+      (a, b) =>
+        new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime(),
+    );
 
   // Reduced, oversight-appropriate projection — no phone/email/full
   // directions, and no vulnerable-circumstance detail (see module doc
@@ -102,15 +108,27 @@ export default async function ViewerPortalPage() {
                   <tbody className="divide-y divide-slate-100">
                     {requestRows.map((r) => (
                       <tr key={r.id}>
-                        <td className="py-2 pr-3 text-slate-900">{STATUS_LABELS[r.status]}</td>
-                        <td className="py-2 pr-3 text-slate-600 capitalize">{r.dispatchPriority}</td>
-                        <td className="py-2 pr-3 text-slate-600">{formatWaterQuantity(r.loads)}</td>
-                        <td className="py-2 pr-3 text-slate-600">{r.village}</td>
-                        <td className="py-2 pr-3 text-slate-600">{formatSabaDate(r.requestedAt)}</td>
+                        <td className="py-2 pr-3 text-slate-900">
+                          {STATUS_LABELS[r.status]}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-600 capitalize">
+                          {r.dispatchPriority}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-600">
+                          {formatWaterQuantity(r.loads)}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-600">
+                          {r.village}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-600">
+                          {formatSabaDate(r.requestedAt)}
+                        </td>
                         <td className="py-2 pr-3 text-slate-600">
                           {r.source === "dispatcher" ? "Staff" : "Online"}
                         </td>
-                        <td className="py-2 text-slate-600">{r.hasAssignedDriver ? "Yes" : "No"}</td>
+                        <td className="py-2 text-slate-600">
+                          {r.hasAssignedDriver ? "Yes" : "No"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -124,7 +142,9 @@ export default async function ViewerPortalPage() {
               Drivers ({driverRows.length})
             </h2>
             {driverRows.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-600">No drivers in the registry.</p>
+              <p className="mt-3 text-sm text-slate-600">
+                No drivers in the registry.
+              </p>
             ) : (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-sm">
@@ -139,14 +159,22 @@ export default async function ViewerPortalPage() {
                   <tbody className="divide-y divide-slate-100">
                     {driverRows.map((d) => (
                       <tr key={d.id}>
-                        <td className="py-2 pr-3 text-slate-900">{d.displayName}</td>
-                        <td className="py-2 pr-3 text-slate-600">
-                          {d.eligibilityStatus === "eligible" ? "Eligible" : "Ineligible"}
+                        <td className="py-2 pr-3 text-slate-900">
+                          {d.displayName}
                         </td>
                         <td className="py-2 pr-3 text-slate-600">
-                          {d.availabilityStatus === "online" ? "Online" : "Offline"}
+                          {d.eligibilityStatus === "eligible"
+                            ? "Eligible"
+                            : "Ineligible"}
                         </td>
-                        <td className="py-2 text-slate-600">{d.accountLinked ? "Linked" : "Not linked"}</td>
+                        <td className="py-2 pr-3 text-slate-600">
+                          {d.availabilityStatus === "online"
+                            ? "Online"
+                            : "Offline"}
+                        </td>
+                        <td className="py-2 text-slate-600">
+                          {d.accountLinked ? "Linked" : "Not linked"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

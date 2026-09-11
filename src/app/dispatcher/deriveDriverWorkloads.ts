@@ -24,10 +24,7 @@ export interface DriverRunSummary {
 }
 
 export type DriverOperationalState =
-  | "offline"
-  | "available"
-  | "individual"
-  | "delivery_run";
+  "offline" | "available" | "individual" | "delivery_run";
 
 /** Per-driver operational workload, keyed by registry ID on the dashboard. */
 export interface DriverWorkload {
@@ -77,7 +74,8 @@ export function deriveDriverWorkloads(
   // Active claimed requests grouped by driver registry ID.
   const activeByDriver: Record<string, WaterRequest[]> = {};
   for (const req of requests) {
-    if (!isPhysicallyActiveDriverWork(req.status) || !req.assignedDriverId) continue;
+    if (!isPhysicallyActiveDriverWork(req.status) || !req.assignedDriverId)
+      continue;
     const registryId = uidToRegistryId.get(req.assignedDriverId);
     if (!registryId) continue;
     if (!activeByDriver[registryId]) activeByDriver[registryId] = [];
@@ -97,17 +95,27 @@ export function deriveDriverWorkloads(
 
   for (const d of drivers) {
     const activeRequests = activeByDriver[d.id] ?? [];
-    const requestSummaries = activeRequests.map((r) => toRequestSummary(r, customerNames));
-    const individualRequests = requestSummaries.filter((r) => !r.isBatchAssigned);
+    const requestSummaries = activeRequests.map((r) =>
+      toRequestSummary(r, customerNames),
+    );
+    const individualRequests = requestSummaries.filter(
+      (r) => !r.isBatchAssigned,
+    );
 
     const runIds = [
-      ...new Set(activeRequests.filter((r) => r.dispatchBatchId).map((r) => r.dispatchBatchId!)),
+      ...new Set(
+        activeRequests
+          .filter((r) => r.dispatchBatchId)
+          .map((r) => r.dispatchBatchId!),
+      ),
     ];
     const runs: DriverRunSummary[] = [];
 
     for (const batchId of runIds) {
       const allMembers = allByBatch[batchId] ?? [];
-      const remaining = allMembers.filter((m) => isPhysicallyActiveDriverWork(m.status));
+      const remaining = allMembers.filter((m) =>
+        isPhysicallyActiveDriverWork(m.status),
+      );
       if (remaining.length === 0) continue;
 
       const totalStops = allMembers.length;

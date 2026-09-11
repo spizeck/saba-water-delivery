@@ -17,7 +17,8 @@
 import { appConfig } from "./config";
 import { isValidSabaVillage } from "./villages";
 
-export type DeliveryProfileRequiredField = "phone" | "village" | "deliveryDirections";
+export type DeliveryProfileRequiredField =
+  "phone" | "village" | "deliveryDirections";
 
 export interface DeliveryProfileReminderInput {
   phone: string | null;
@@ -61,7 +62,9 @@ function isBlank(value: string | null): boolean {
 
 /** Required delivery-profile fields for this reminder — reuses the
  * existing canonical `UserProfile` fields; no duplicate fields. */
-function findMissingFields(input: DeliveryProfileReminderInput): DeliveryProfileRequiredField[] {
+function findMissingFields(
+  input: DeliveryProfileReminderInput,
+): DeliveryProfileRequiredField[] {
   const missing: DeliveryProfileRequiredField[] = [];
   if (isBlank(input.phone)) missing.push("phone");
   if (isBlank(input.village)) missing.push("village");
@@ -69,7 +72,9 @@ function findMissingFields(input: DeliveryProfileReminderInput): DeliveryProfile
   return missing;
 }
 
-function findInvalidFields(input: DeliveryProfileReminderInput): DeliveryProfileRequiredField[] {
+function findInvalidFields(
+  input: DeliveryProfileReminderInput,
+): DeliveryProfileRequiredField[] {
   const invalid: DeliveryProfileRequiredField[] = [];
   if (!isBlank(input.village) && !isValidSabaVillage(input.village)) {
     invalid.push("village");
@@ -117,7 +122,12 @@ export function evaluateDeliveryProfileReminder(
   // Never verified at all (never confirmed AND never had a completed
   // delivery) — show on first Resident portal visit.
   if (confirmedAtMs === null && lastDeliveryMs === null) {
-    return { show: true, mandatory: false, missingFields: [], invalidFields: [] };
+    return {
+      show: true,
+      mandatory: false,
+      missingFields: [],
+      invalidFields: [],
+    };
   }
 
   const lastMeaningfulVerificationMs = Math.max(
@@ -125,8 +135,14 @@ export function evaluateDeliveryProfileReminder(
     lastDeliveryMs ?? -Infinity,
   );
 
-  const windowMs = appConfig.deliveryProfileReminderWindowDays * 24 * 60 * 60 * 1000;
+  const windowMs =
+    appConfig.deliveryProfileReminderWindowDays * 24 * 60 * 60 * 1000;
   const ageMs = now.getTime() - lastMeaningfulVerificationMs;
 
-  return { show: ageMs >= windowMs, mandatory: false, missingFields: [], invalidFields: [] };
+  return {
+    show: ageMs >= windowMs,
+    mandatory: false,
+    missingFields: [],
+    invalidFields: [],
+  };
 }

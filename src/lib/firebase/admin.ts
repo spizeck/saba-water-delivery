@@ -19,9 +19,14 @@ const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
 // Private keys are typically stored with literal "\n" sequences in
 // environment variables; convert them back to real newlines.
-const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n");
+const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
+  /\\n/g,
+  "\n",
+);
 
-export const isFirebaseAdminConfigured = Boolean(projectId && clientEmail && privateKey);
+export const isFirebaseAdminConfigured = Boolean(
+  projectId && clientEmail && privateKey,
+);
 
 let app: App | null = null;
 

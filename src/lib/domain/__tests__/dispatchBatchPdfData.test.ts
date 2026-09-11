@@ -38,7 +38,8 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     attestationAcceptedAt: baseTime.toISOString(),
     dispatchPriority: "critical",
     prioritySource: "system",
-    priorityReason: "Resident reported a vulnerable-person or critical circumstance.",
+    priorityReason:
+      "Resident reported a vulnerable-person or critical circumstance.",
     priorityUpdatedBy: null,
     priorityUpdatedAt: null,
     requestedAt: baseTime.toISOString(),
@@ -78,8 +79,16 @@ describe("buildDispatchBatchPdfData", () => {
   });
 
   it("orders rows by batchSequence and maps core fields correctly", () => {
-    const second = makeRequest({ id: "req-2", batchSequence: 2, village: "The Bottom" });
-    const first = makeRequest({ id: "req-1", batchSequence: 1, village: "St Johns" });
+    const second = makeRequest({
+      id: "req-2",
+      batchSequence: 2,
+      village: "The Bottom",
+    });
+    const first = makeRequest({
+      id: "req-1",
+      batchSequence: 1,
+      village: "St Johns",
+    });
 
     const data = buildDispatchBatchPdfData(
       "batch-1",
@@ -165,11 +174,17 @@ describe("buildDispatchBatchPdfData", () => {
       driverNames,
       generatedAt,
     );
-    expect(data.rows[0].requestNotes).toBe("Call before entering the driveway.");
+    expect(data.rows[0].requestNotes).toBe(
+      "Call before entering the driveway.",
+    );
   });
 
   it("preserves the requested quantity on each row", () => {
-    const twoLoad = makeRequest({ id: "req-2", loads: 2, gallons: 2000 as StandardLoadGallons });
+    const twoLoad = makeRequest({
+      id: "req-2",
+      loads: 2,
+      gallons: 2000 as StandardLoadGallons,
+    });
     const data = buildDispatchBatchPdfData(
       "batch-1",
       "driver-1",

@@ -141,8 +141,14 @@ describe("Staff-created account compatibility", () => {
 
 describe("Account type discrimination", () => {
   it("can distinguish self-registered from staff-registered", () => {
-    const self = makeProfile({ accountOrigin: "self_registered", authStatus: "claimed" });
-    const staff = makeProfile({ accountOrigin: "staff_registered", authStatus: "unclaimed" });
+    const self = makeProfile({
+      accountOrigin: "self_registered",
+      authStatus: "claimed",
+    });
+    const staff = makeProfile({
+      accountOrigin: "staff_registered",
+      authStatus: "unclaimed",
+    });
 
     expect(self.accountOrigin).not.toBe(staff.accountOrigin);
     expect(self.authStatus).not.toBe(staff.authStatus);

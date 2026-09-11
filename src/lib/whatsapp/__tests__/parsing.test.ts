@@ -72,7 +72,10 @@ describe("parseVulnerableCircumstances", () => {
   });
 
   it("parses multiple comma-separated selections", () => {
-    expect(parseVulnerableCircumstances("1,3")).toEqual(["elderly", "medical_need"]);
+    expect(parseVulnerableCircumstances("1,3")).toEqual([
+      "elderly",
+      "medical_need",
+    ]);
   });
 
   it("collapses to just none when none (6) is included with others", () => {
@@ -131,7 +134,9 @@ describe("parsePersonsAffected", () => {
 
 describe("parseAvailableStorage", () => {
   it("returns trimmed free text", () => {
-    expect(parseAvailableStorage("  About 2,000 gallons  ")).toBe("About 2,000 gallons");
+    expect(parseAvailableStorage("  About 2,000 gallons  ")).toBe(
+      "About 2,000 gallons",
+    );
   });
 
   it("treats blank/skip as no answer", () => {

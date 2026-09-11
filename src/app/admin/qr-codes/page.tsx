@@ -10,7 +10,8 @@ import { getPwaInstallUrl, PWA_INSTALL_PATHS } from "@/lib/pwa/constants";
 
 export const metadata: Metadata = {
   title: "PWA QR Codes — Saba Water Delivery",
-  description: "Printable QR codes for the driver and resident PWA install pages.",
+  description:
+    "Printable QR codes for the driver and resident PWA install pages.",
 };
 
 export default async function QrCodesPage() {
@@ -27,10 +28,12 @@ export default async function QrCodesPage() {
           <Card className="print:shadow-none">
             <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">PWA Install QR Codes</h1>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  PWA Install QR Codes
+                </h1>
                 <p className="mt-1 text-sm text-slate-600">
-                  Print these codes and post them at the RO plant or hand them to drivers and
-                  residents.
+                  Print these codes and post them at the RO plant or hand them
+                  to drivers and residents.
                 </p>
               </div>
               <PrintButton />
@@ -39,15 +42,18 @@ export default async function QrCodesPage() {
             <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 print:hidden">
               <p>
                 These codes currently use the live pilot origin configured by{" "}
-                <code className="font-mono">NEXT_PUBLIC_APP_URL</code>. Update that setting and
-                redeploy when the permanent DNS name is available. Current driver URL:{" "}
+                <code className="font-mono">NEXT_PUBLIC_APP_URL</code>. Update
+                that setting and redeploy when the permanent DNS name is
+                available. Current driver URL:{" "}
                 <code className="font-mono">{getPwaInstallUrl("driver")}</code>.
               </p>
             </div>
 
             <div className="mt-8 grid gap-8 sm:grid-cols-2 print:grid-cols-2 print:gap-12">
               <div className="flex flex-col items-center rounded-xl border border-slate-200 bg-white p-6 text-center">
-                <h2 className="text-lg font-bold text-slate-900">Saba Water Delivery</h2>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Saba Water Delivery
+                </h2>
                 <p className="text-sm font-medium text-blue-700">Driver App</p>
                 <p className="mb-4 text-xs text-slate-500">Scan to install</p>
                 <QrCode
@@ -55,19 +61,27 @@ export default async function QrCodesPage() {
                   label="Driver App"
                   alt={`QR code for driver install: ${driverUrl}`}
                 />
-                <p className="mt-4 text-xs text-slate-400">{PWA_INSTALL_PATHS.driver}</p>
+                <p className="mt-4 text-xs text-slate-400">
+                  {PWA_INSTALL_PATHS.driver}
+                </p>
               </div>
 
               <div className="flex flex-col items-center rounded-xl border border-slate-200 bg-white p-6 text-center">
-                <h2 className="text-lg font-bold text-slate-900">Saba Water Delivery</h2>
-                <p className="text-sm font-medium text-emerald-700">Resident App</p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Saba Water Delivery
+                </h2>
+                <p className="text-sm font-medium text-emerald-700">
+                  Resident App
+                </p>
                 <p className="mb-4 text-xs text-slate-500">Scan to install</p>
                 <QrCode
                   value={residentUrl}
                   label="Resident App"
                   alt={`QR code for resident install: ${residentUrl}`}
                 />
-                <p className="mt-4 text-xs text-slate-400">{PWA_INSTALL_PATHS.resident}</p>
+                <p className="mt-4 text-xs text-slate-400">
+                  {PWA_INSTALL_PATHS.resident}
+                </p>
               </div>
             </div>
           </Card>

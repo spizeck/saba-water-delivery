@@ -21,13 +21,18 @@ export function parseWaterSituationFromFormData(
     formData.get("reportedUrgency") ?? "",
   ) as WaterSituationInput["reportedUrgency"];
 
-  const personsAffectedRaw = String(formData.get("personsAffected") ?? "").trim();
-  const personsAffected = personsAffectedRaw ? Number(personsAffectedRaw) : null;
+  const personsAffectedRaw = String(
+    formData.get("personsAffected") ?? "",
+  ).trim();
+  const personsAffected = personsAffectedRaw
+    ? Number(personsAffectedRaw)
+    : null;
 
   const availableStorageCapacity =
     String(formData.get("availableStorageCapacity") ?? "").trim() || null;
 
-  const criticalExplanation = String(formData.get("criticalExplanation") ?? "").trim() || null;
+  const criticalExplanation =
+    String(formData.get("criticalExplanation") ?? "").trim() || null;
 
   const vulnerableCircumstances = formData
     .getAll("vulnerableCircumstances")

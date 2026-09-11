@@ -20,6 +20,8 @@ describe("continuityReportPdfFilename", () => {
 
   it("never includes customer data — only a fixed prefix and a date", () => {
     const filename = continuityReportPdfFilename("2026-03-10T12:00:00.000Z");
-    expect(filename).toMatch(/^saba-water-delivery-snapshot-\d{4}-\d{2}-\d{2}\.pdf$/);
+    expect(filename).toMatch(
+      /^saba-water-delivery-snapshot-\d{4}-\d{2}-\d{2}\.pdf$/,
+    );
   });
 });

@@ -24,7 +24,9 @@ import type { ResidentDirectoryEntry } from "@/lib/domain/users";
  * simple — no country-code-aware parsing library, per DEVIN.md "Do Not
  * Overbuild".
  */
-export function normalizePhoneForMatching(phone: string | null | undefined): string | null {
+export function normalizePhoneForMatching(
+  phone: string | null | undefined,
+): string | null {
   if (!phone) return null;
   const digits = phone.replace(/\D/g, "");
   return digits.length > 0 ? digits : null;

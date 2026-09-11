@@ -43,35 +43,61 @@ describe("getWhatsAppClientConfig", () => {
 });
 
 describe("verifyWhatsAppWebhookChallenge", () => {
-  const config = { accessToken: "a", phoneNumberId: "b", appSecret: "c", verifyToken: "verify-me" };
+  const config = {
+    accessToken: "a",
+    phoneNumberId: "b",
+    appSecret: "c",
+    verifyToken: "verify-me",
+  };
 
   it("echoes the challenge for a matching subscribe request", () => {
     expect(
-      verifyWhatsAppWebhookChallenge(config, { mode: "subscribe", token: "verify-me", challenge: "1234" }),
+      verifyWhatsAppWebhookChallenge(config, {
+        mode: "subscribe",
+        token: "verify-me",
+        challenge: "1234",
+      }),
     ).toBe("1234");
   });
 
   it("rejects a mismatched verify token", () => {
     expect(
-      verifyWhatsAppWebhookChallenge(config, { mode: "subscribe", token: "wrong", challenge: "1234" }),
+      verifyWhatsAppWebhookChallenge(config, {
+        mode: "subscribe",
+        token: "wrong",
+        challenge: "1234",
+      }),
     ).toBeNull();
   });
 
   it("rejects a non-subscribe mode", () => {
     expect(
-      verifyWhatsAppWebhookChallenge(config, { mode: "unsubscribe", token: "verify-me", challenge: "1234" }),
+      verifyWhatsAppWebhookChallenge(config, {
+        mode: "unsubscribe",
+        token: "verify-me",
+        challenge: "1234",
+      }),
     ).toBeNull();
   });
 
   it("rejects a missing token", () => {
     expect(
-      verifyWhatsAppWebhookChallenge(config, { mode: "subscribe", token: null, challenge: "1234" }),
+      verifyWhatsAppWebhookChallenge(config, {
+        mode: "subscribe",
+        token: null,
+        challenge: "1234",
+      }),
     ).toBeNull();
   });
 });
 
 describe("verifyWhatsAppWebhookSignature", () => {
-  const config = { accessToken: "a", phoneNumberId: "b", appSecret: "my-app-secret", verifyToken: "d" };
+  const config = {
+    accessToken: "a",
+    phoneNumberId: "b",
+    appSecret: "my-app-secret",
+    verifyToken: "d",
+  };
   const body = JSON.stringify({ hello: "world" });
 
   function validSignature(): string {
@@ -79,7 +105,9 @@ describe("verifyWhatsAppWebhookSignature", () => {
   }
 
   it("accepts a correctly signed body", () => {
-    expect(verifyWhatsAppWebhookSignature(config, body, validSignature())).toBe(true);
+    expect(verifyWhatsAppWebhookSignature(config, body, validSignature())).toBe(
+      true,
+    );
   });
 
   it("rejects a missing signature header", () => {
@@ -88,16 +116,24 @@ describe("verifyWhatsAppWebhookSignature", () => {
 
   it("rejects a signature computed with the wrong secret", () => {
     const wrongSignature = `sha256=${createHmac("sha256", "wrong-secret").update(body, "utf8").digest("hex")}`;
-    expect(verifyWhatsAppWebhookSignature(config, body, wrongSignature)).toBe(false);
+    expect(verifyWhatsAppWebhookSignature(config, body, wrongSignature)).toBe(
+      false,
+    );
   });
 
   it("rejects a tampered body", () => {
     const sig = validSignature();
-    expect(verifyWhatsAppWebhookSignature(config, body + "tampered", sig)).toBe(false);
+    expect(verifyWhatsAppWebhookSignature(config, body + "tampered", sig)).toBe(
+      false,
+    );
   });
 
   it("rejects a malformed signature header", () => {
-    expect(verifyWhatsAppWebhookSignature(config, body, "not-a-real-signature")).toBe(false);
-    expect(verifyWhatsAppWebhookSignature(config, body, "sha1=abcd")).toBe(false);
+    expect(
+      verifyWhatsAppWebhookSignature(config, body, "not-a-real-signature"),
+    ).toBe(false);
+    expect(verifyWhatsAppWebhookSignature(config, body, "sha1=abcd")).toBe(
+      false,
+    );
   });
 });

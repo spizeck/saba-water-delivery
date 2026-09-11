@@ -8,9 +8,13 @@ import { getAdminDb } from "@/lib/firebase/admin";
 
 import { sendDeliveryConfirmationEmail } from "./deliveryConfirmationEmail";
 
-export async function notifyDeliveryConfirmation(request: WaterRequest): Promise<void> {
+export async function notifyDeliveryConfirmation(
+  request: WaterRequest,
+): Promise<void> {
   const db = getAdminDb();
-  const claimRef = db.collection("deliveryConfirmationEmailClaims").doc(request.id);
+  const claimRef = db
+    .collection("deliveryConfirmationEmailClaims")
+    .doc(request.id);
 
   try {
     await claimRef.create({
@@ -43,7 +47,8 @@ export async function notifyDeliveryConfirmation(request: WaterRequest): Promise
         recipient = profile.email.trim();
         const result = await sendDeliveryConfirmationEmail({
           to: recipient,
-          displayName: profile.displayName || request.customer?.displayName || "Resident",
+          displayName:
+            profile.displayName || request.customer?.displayName || "Resident",
           requestId: request.id,
           loads: request.loads,
           gallons: request.gallons,
@@ -58,12 +63,18 @@ export async function notifyDeliveryConfirmation(request: WaterRequest): Promise
     }
   } catch (sendError) {
     status = "failed";
-    error = sendError instanceof Error ? sendError.message : "Unknown notification error";
+    error =
+      sendError instanceof Error
+        ? sendError.message
+        : "Unknown notification error";
   }
 
   const metadata = { status, recipient, resendId, error };
   try {
-    await claimRef.update({ ...metadata, updatedAt: FieldValue.serverTimestamp() });
+    await claimRef.update({
+      ...metadata,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     await db
       .collection("waterRequests")
       .doc(request.id)
@@ -77,6 +88,9 @@ export async function notifyDeliveryConfirmation(request: WaterRequest): Promise
         metadata,
       });
   } catch (auditError) {
-    console.error("[delivery-confirmation-email] could not record notification result", auditError);
+    console.error(
+      "[delivery-confirmation-email] could not record notification result",
+      auditError,
+    );
   }
 }

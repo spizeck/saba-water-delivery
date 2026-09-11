@@ -4,8 +4,14 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { acceptDriverOffer, declineDriverOffer } from "@/lib/domain/dispatch";
-import { reconcileActiveRequestByUserId, setAvailabilityByLinkedUser } from "@/lib/domain/driverRegistry";
-import { markWaterDelivered, recordWaterCollection } from "@/lib/domain/waterRequests";
+import {
+  reconcileActiveRequestByUserId,
+  setAvailabilityByLinkedUser,
+} from "@/lib/domain/driverRegistry";
+import {
+  markWaterDelivered,
+  recordWaterCollection,
+} from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
 import { getDeclineResultMessage } from "@/lib/utils/declineResult";
 import { formatSabaTime } from "@/lib/utils/datetime";
@@ -24,7 +30,9 @@ export async function toggleAvailability(
   formData: FormData,
 ): Promise<AvailabilityActionState> {
   const session = await requireRole("driver");
-  const newStatus = String(formData.get("availabilityStatus") ?? "") as DriverAvailabilityStatus;
+  const newStatus = String(
+    formData.get("availabilityStatus") ?? "",
+  ) as DriverAvailabilityStatus;
 
   if (newStatus !== "online" && newStatus !== "offline") {
     return { status: "error", message: "Invalid availability status." };
@@ -39,23 +47,35 @@ export async function toggleAvailability(
     if (err instanceof Error) {
       switch (err.message) {
         case "DRIVER_INELIGIBLE":
-          return { status: "error", message: "You are not currently eligible to go online." };
+          return {
+            status: "error",
+            message: "You are not currently eligible to go online.",
+          };
         case "DRIVER_IN_COOLDOWN": {
-          const e = err as Error & { cooldownUntil?: string; isDailyLimit?: boolean };
+          const e = err as Error & {
+            cooldownUntil?: string;
+            isDailyLimit?: boolean;
+          };
           if (e.isDailyLimit) {
             return {
               status: "error",
-              message: "You have reached today’s decline limit and are offline for the rest of the day. You can receive offers again tomorrow.",
+              message:
+                "You have reached today’s decline limit and are offline for the rest of the day. You can receive offers again tomorrow.",
             };
           }
-          const until = e.cooldownUntil ? formatSabaTime(e.cooldownUntil) : "later";
+          const until = e.cooldownUntil
+            ? formatSabaTime(e.cooldownUntil)
+            : "later";
           return {
             status: "error",
             message: `You have reached the decline limit. You are offline until ${until}.`,
           };
         }
         case "DRIVER_NOT_FOUND":
-          return { status: "error", message: "Driver profile not found. Contact the water office." };
+          return {
+            status: "error",
+            message: "Driver profile not found. Contact the water office.",
+          };
         default:
           throw err;
       }
@@ -97,19 +117,38 @@ export async function acceptOffer(
     if (err instanceof Error) {
       switch (err.message) {
         case "ALREADY_CLAIMED":
-          return { status: "error", message: "This request was already claimed by another driver." };
+          return {
+            status: "error",
+            message: "This request was already claimed by another driver.",
+          };
         case "PREFERRED_DRIVER_RESTRICTION":
-          return { status: "error", message: "This request is reserved for a preferred driver." };
+          return {
+            status: "error",
+            message: "This request is reserved for a preferred driver.",
+          };
         case "HOLD_EXPIRED":
-          return { status: "error", message: "The preferred-driver hold has expired. Please refresh." };
+          return {
+            status: "error",
+            message: "The preferred-driver hold has expired. Please refresh.",
+          };
         case "REQUEST_NOT_CLAIMABLE":
-          return { status: "error", message: "This request is no longer available. Refresh for a new offer." };
+          return {
+            status: "error",
+            message:
+              "This request is no longer available. Refresh for a new offer.",
+          };
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "DRIVER_INELIGIBLE":
-          return { status: "error", message: "You are not currently eligible to claim requests." };
+          return {
+            status: "error",
+            message: "You are not currently eligible to claim requests.",
+          };
         case "DRIVER_OFFLINE":
-          return { status: "error", message: "You must be online to claim requests." };
+          return {
+            status: "error",
+            message: "You must be online to claim requests.",
+          };
         case "DRIVER_HAS_ACTIVE_DELIVERY":
           return {
             status: "error",
@@ -118,9 +157,15 @@ export async function acceptOffer(
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver profile not found." };
         case "OFFER_NOT_FOUND":
-          return { status: "error", message: "This offer is no longer valid. Refresh for a new offer." };
+          return {
+            status: "error",
+            message: "This offer is no longer valid. Refresh for a new offer.",
+          };
         case "OFFER_ALREADY_RESOLVED":
-          return { status: "error", message: "This offer was already responded to." };
+          return {
+            status: "error",
+            message: "This offer was already responded to.",
+          };
         default:
           throw err;
       }
@@ -148,18 +193,30 @@ export async function declineOffer(
     revalidatePath("/driver");
     const message = getDeclineResultMessage({
       state: result.availabilityStatus,
-      cooldownUntil: result.cooldownUntil ? new Date(result.cooldownUntil) : null,
+      cooldownUntil: result.cooldownUntil
+        ? new Date(result.cooldownUntil)
+        : null,
     });
     return { status: "success", message };
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
         case "OFFER_NOT_FOUND":
-          return { status: "error", message: "This offer is no longer valid. Refresh for a new offer." };
+          return {
+            status: "error",
+            message: "This offer is no longer valid. Refresh for a new offer.",
+          };
         case "OFFER_ALREADY_RESOLVED":
-          return { status: "error", message: "This offer was already responded to." };
+          return {
+            status: "error",
+            message: "This offer was already responded to.",
+          };
         case "DRIVER_NOT_LINKED_FOR_COOLDOWN":
-          return { status: "error", message: "Unable to apply the decline cooldown. Contact the water office." };
+          return {
+            status: "error",
+            message:
+              "Unable to apply the decline cooldown. Contact the water office.",
+          };
         default:
           throw err;
       }
@@ -199,11 +256,21 @@ export async function markDelivered(
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_CLAIMABLE":
-          return { status: "error", message: "This request is not in a deliverable state." };
+          return {
+            status: "error",
+            message: "This request is not in a deliverable state.",
+          };
         case "NOT_ASSIGNED_DRIVER":
-          return { status: "error", message: "You are not assigned to this delivery." };
+          return {
+            status: "error",
+            message: "You are not assigned to this delivery.",
+          };
         case "LOADS_NOT_COLLECTED":
-          return { status: "error", message: "Record water collection for all loads before marking delivered." };
+          return {
+            status: "error",
+            message:
+              "Record water collection for all loads before marking delivered.",
+          };
         default:
           throw err;
       }
@@ -237,7 +304,8 @@ export async function recordCollection(
   if (loadNumberRaw !== 1 && loadNumberRaw !== 2) {
     return { status: "error", message: "Invalid load number." };
   }
-  if (!fillStationId) return { status: "error", message: "Please select a fill station." };
+  if (!fillStationId)
+    return { status: "error", message: "Please select a fill station." };
 
   try {
     await recordWaterCollection({
@@ -254,31 +322,56 @@ export async function recordCollection(
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_CLAIMABLE":
-          return { status: "error", message: "This request is not in a deliverable state." };
+          return {
+            status: "error",
+            message: "This request is not in a deliverable state.",
+          };
         case "NOT_ASSIGNED_DRIVER":
-          return { status: "error", message: "You are not assigned to this delivery." };
+          return {
+            status: "error",
+            message: "You are not assigned to this delivery.",
+          };
         case "INVALID_LOAD_NUMBER":
-          return { status: "error", message: "Invalid load number for this request." };
+          return {
+            status: "error",
+            message: "Invalid load number for this request.",
+          };
         case "LOAD_ALREADY_COLLECTED":
-          return { status: "error", message: "This load has already been recorded as collected." };
+          return {
+            status: "error",
+            message: "This load has already been recorded as collected.",
+          };
         case "NO_METER_ASSIGNMENT":
           return {
             status: "error",
-            message: "No meter is assigned to you for this fill station. Contact the Water Delivery Office.",
+            message:
+              "No meter is assigned to you for this fill station. Contact the Water Delivery Office.",
           };
         case "FILL_STATION_NOT_FOUND":
           return { status: "error", message: "Fill station not found." };
         case "FILL_STATION_INACTIVE":
-          return { status: "error", message: "This fill station is no longer active." };
+          return {
+            status: "error",
+            message: "This fill station is no longer active.",
+          };
         case "DRIVER_NOT_FOUND":
-          return { status: "error", message: "Driver profile not found. Contact the water office." };
+          return {
+            status: "error",
+            message: "Driver profile not found. Contact the water office.",
+          };
         default:
           console.error("[recordCollection] unexpected error:", err.message);
-          return { status: "error", message: "Failed to record collection. Please try again." };
+          return {
+            status: "error",
+            message: "Failed to record collection. Please try again.",
+          };
       }
     }
     console.error("[recordCollection] unexpected error:", err);
-    return { status: "error", message: "Failed to record collection. Please try again." };
+    return {
+      status: "error",
+      message: "Failed to record collection. Please try again.",
+    };
   }
 
   revalidatePath("/driver");

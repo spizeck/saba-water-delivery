@@ -50,7 +50,10 @@ function driverUniqueKey(type: "name" | "phone", value: string) {
   return `${type}_${digest}`;
 }
 
-function toDriverRegistryEntry(id: string, data: DocumentData): DriverRegistryEntry {
+function toDriverRegistryEntry(
+  id: string,
+  data: DocumentData,
+): DriverRegistryEntry {
   return {
     id,
     displayName: data.displayName ?? "",
@@ -66,11 +69,15 @@ function toDriverRegistryEntry(id: string, data: DocumentData): DriverRegistryEn
     archivedAt: data.archivedAt?.toDate?.().toISOString() ?? null,
     archivedBy: data.archivedBy ?? null,
     archiveReason: data.archiveReason ?? null,
-    archivedPreviousEligibilityStatus: data.archivedPreviousEligibilityStatus ?? null,
-    archivedPreviousIneligibilityReason: data.archivedPreviousIneligibilityReason ?? null,
-    createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    archivedPreviousEligibilityStatus:
+      data.archivedPreviousEligibilityStatus ?? null,
+    archivedPreviousIneligibilityReason:
+      data.archivedPreviousIneligibilityReason ?? null,
+    createdAt:
+      data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     createdBy: data.createdBy ?? "",
-    updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    updatedAt:
+      data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     updatedBy: data.updatedBy ?? "",
   };
 }
@@ -93,7 +100,9 @@ async function activeDeliveryCountForUser(userId: string): Promise<number> {
 // Queries
 // ---------------------------------------------------------------------------
 
-export async function getDriver(driverId: string): Promise<DriverRegistryEntry | null> {
+export async function getDriver(
+  driverId: string,
+): Promise<DriverRegistryEntry | null> {
   const db = getAdminDb();
   const doc = await db.collection(REGISTRY_COLLECTION).doc(driverId).get();
   if (!doc.exists) return null;
@@ -121,13 +130,16 @@ export async function getDriverByLinkedUserId(
  * it must be bypassed so the request reaches the general queue without
  * delay — see PRODUCT.md "Preferred Driver Offline Edge Case".
  */
-export async function isDriverImmediatelyAvailable(userId: string): Promise<boolean> {
+export async function isDriverImmediatelyAvailable(
+  userId: string,
+): Promise<boolean> {
   const entry = await getDriverByLinkedUserId(userId);
   if (!entry) return false;
   if (entry.archivedAt) return false;
   if (entry.eligibilityStatus !== "eligible") return false;
   if (entry.availabilityStatus !== "online") return false;
-  if (entry.cooldownUntil && new Date(entry.cooldownUntil) > new Date()) return false;
+  if (entry.cooldownUntil && new Date(entry.cooldownUntil) > new Date())
+    return false;
   if (entry.activeRequestId) {
     // Reconcile before blocking — the lock may be stale.
     const result = await reconcileActiveRequest(entry.id);
@@ -137,20 +149,28 @@ export async function isDriverImmediatelyAvailable(userId: string): Promise<bool
   return true;
 }
 
-export async function getAllDriverRegistryEntries(): Promise<DriverRegistryEntry[]> {
+export async function getAllDriverRegistryEntries(): Promise<
+  DriverRegistryEntry[]
+> {
   const db = getAdminDb();
   const snapshot = await db.collection(REGISTRY_COLLECTION).get();
-  const entries = snapshot.docs.map((doc) => toDriverRegistryEntry(doc.id, doc.data()));
+  const entries = snapshot.docs.map((doc) =>
+    toDriverRegistryEntry(doc.id, doc.data()),
+  );
   entries.sort((a, b) => a.displayName.localeCompare(b.displayName));
   return entries;
 }
 
-export async function getActiveDriverRegistryEntries(): Promise<DriverRegistryEntry[]> {
+export async function getActiveDriverRegistryEntries(): Promise<
+  DriverRegistryEntry[]
+> {
   const all = await getAllDriverRegistryEntries();
   return all.filter((d) => !d.archivedAt);
 }
 
-export async function getArchivedDriverRegistryEntries(): Promise<DriverRegistryEntry[]> {
+export async function getArchivedDriverRegistryEntries(): Promise<
+  DriverRegistryEntry[]
+> {
   const all = await getAllDriverRegistryEntries();
   return all.filter((d) => d.archivedAt);
 }
@@ -166,10 +186,15 @@ export interface EligibleDriverOption {
  * cannot appear here even if marked eligible — there is no authenticated
  * account for a resident/dispatcher to hand a request to yet.
  */
-export async function getEligibleDriverOptions(): Promise<EligibleDriverOption[]> {
+export async function getEligibleDriverOptions(): Promise<
+  EligibleDriverOption[]
+> {
   const entries = await getAllDriverRegistryEntries();
   return entries
-    .filter((d) => d.eligibilityStatus === "eligible" && d.linkedUserId && !d.archivedAt)
+    .filter(
+      (d) =>
+        d.eligibilityStatus === "eligible" && d.linkedUserId && !d.archivedAt,
+    )
     .map((d) => ({ uid: d.linkedUserId as string, displayName: d.displayName }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
@@ -184,25 +209,41 @@ export interface CreateDriverInput {
   actorId: string;
 }
 
-export async function createDriver(input: CreateDriverInput): Promise<DriverRegistryEntry> {
+export async function createDriver(
+  input: CreateDriverInput,
+): Promise<DriverRegistryEntry> {
   const { displayName, phone, actorId } = input;
   if (!displayName.trim()) throw new Error("DISPLAY_NAME_REQUIRED");
 
   const normalizedName = displayName.trim().toLocaleLowerCase();
   const normalizedPhone = phone?.replace(/\D/g, "") || null;
   const existing = await getAllDriverRegistryEntries();
-  if (existing.some((driver) => driver.displayName.trim().toLocaleLowerCase() === normalizedName)) {
+  if (
+    existing.some(
+      (driver) =>
+        driver.displayName.trim().toLocaleLowerCase() === normalizedName,
+    )
+  ) {
     throw new Error("DRIVER_NAME_EXISTS");
   }
-  if (normalizedPhone && existing.some((driver) => driver.phone?.replace(/\D/g, "") === normalizedPhone)) {
+  if (
+    normalizedPhone &&
+    existing.some(
+      (driver) => driver.phone?.replace(/\D/g, "") === normalizedPhone,
+    )
+  ) {
     throw new Error("DRIVER_PHONE_EXISTS");
   }
 
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc();
-  const nameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
+  const nameKeyRef = db
+    .collection(UNIQUE_KEYS_COLLECTION)
+    .doc(driverUniqueKey("name", normalizedName));
   const phoneKeyRef = normalizedPhone
-    ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
+    ? db
+        .collection(UNIQUE_KEYS_COLLECTION)
+        .doc(driverUniqueKey("phone", normalizedPhone))
     : null;
   const now = FieldValue.serverTimestamp();
 
@@ -215,7 +256,12 @@ export async function createDriver(input: CreateDriverInput): Promise<DriverRegi
     if (phoneKey?.exists) throw new Error("DRIVER_PHONE_EXISTS");
 
     txn.create(nameKeyRef, { driverId: ref.id, type: "name", createdAt: now });
-    if (phoneKeyRef) txn.create(phoneKeyRef, { driverId: ref.id, type: "phone", createdAt: now });
+    if (phoneKeyRef)
+      txn.create(phoneKeyRef, {
+        driverId: ref.id,
+        type: "phone",
+        createdAt: now,
+      });
     txn.create(ref, {
       displayName: displayName.trim(),
       phone: phone?.trim() || null,
@@ -252,25 +298,44 @@ export interface UpdateDriverInput {
   actorId: string;
 }
 
-export async function updateDriver(input: UpdateDriverInput): Promise<DriverRegistryEntry> {
+export async function updateDriver(
+  input: UpdateDriverInput,
+): Promise<DriverRegistryEntry> {
   const { driverId, displayName, phone, actorId } = input;
   if (!displayName.trim()) throw new Error("DISPLAY_NAME_REQUIRED");
 
   const normalizedName = displayName.trim().toLocaleLowerCase();
   const normalizedPhone = phone?.replace(/\D/g, "") || null;
   const existing = await getAllDriverRegistryEntries();
-  if (existing.some((driver) => driver.id !== driverId && driver.displayName.trim().toLocaleLowerCase() === normalizedName)) {
+  if (
+    existing.some(
+      (driver) =>
+        driver.id !== driverId &&
+        driver.displayName.trim().toLocaleLowerCase() === normalizedName,
+    )
+  ) {
     throw new Error("DRIVER_NAME_EXISTS");
   }
-  if (normalizedPhone && existing.some((driver) => driver.id !== driverId && driver.phone?.replace(/\D/g, "") === normalizedPhone)) {
+  if (
+    normalizedPhone &&
+    existing.some(
+      (driver) =>
+        driver.id !== driverId &&
+        driver.phone?.replace(/\D/g, "") === normalizedPhone,
+    )
+  ) {
     throw new Error("DRIVER_PHONE_EXISTS");
   }
 
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
-  const newNameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
+  const newNameKeyRef = db
+    .collection(UNIQUE_KEYS_COLLECTION)
+    .doc(driverUniqueKey("name", normalizedName));
   const newPhoneKeyRef = normalizedPhone
-    ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
+    ? db
+        .collection(UNIQUE_KEYS_COLLECTION)
+        .doc(driverUniqueKey("phone", normalizedPhone))
     : null;
   const now = FieldValue.serverTimestamp();
 
@@ -280,25 +345,42 @@ export async function updateDriver(input: UpdateDriverInput): Promise<DriverRegi
     const previous = toDriverRegistryEntry(driverId, doc.data()!);
     const previousName = previous.displayName.trim().toLocaleLowerCase();
     const previousPhone = previous.phone?.replace(/\D/g, "") || null;
-    const oldNameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", previousName));
+    const oldNameKeyRef = db
+      .collection(UNIQUE_KEYS_COLLECTION)
+      .doc(driverUniqueKey("name", previousName));
     const oldPhoneKeyRef = previousPhone
-      ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", previousPhone))
+      ? db
+          .collection(UNIQUE_KEYS_COLLECTION)
+          .doc(driverUniqueKey("phone", previousPhone))
       : null;
-    const [newNameKey, newPhoneKey, oldNameKey, oldPhoneKey] = await Promise.all([
-      txn.get(newNameKeyRef),
-      newPhoneKeyRef ? txn.get(newPhoneKeyRef) : Promise.resolve(null),
-      txn.get(oldNameKeyRef),
-      oldPhoneKeyRef ? txn.get(oldPhoneKeyRef) : Promise.resolve(null),
-    ]);
-    if (newNameKey.exists && newNameKey.data()?.driverId !== driverId) throw new Error("DRIVER_NAME_EXISTS");
-    if (newPhoneKey?.exists && newPhoneKey.data()?.driverId !== driverId) throw new Error("DRIVER_PHONE_EXISTS");
+    const [newNameKey, newPhoneKey, oldNameKey, oldPhoneKey] =
+      await Promise.all([
+        txn.get(newNameKeyRef),
+        newPhoneKeyRef ? txn.get(newPhoneKeyRef) : Promise.resolve(null),
+        txn.get(oldNameKeyRef),
+        oldPhoneKeyRef ? txn.get(oldPhoneKeyRef) : Promise.resolve(null),
+      ]);
+    if (newNameKey.exists && newNameKey.data()?.driverId !== driverId)
+      throw new Error("DRIVER_NAME_EXISTS");
+    if (newPhoneKey?.exists && newPhoneKey.data()?.driverId !== driverId)
+      throw new Error("DRIVER_PHONE_EXISTS");
 
     txn.set(newNameKeyRef, { driverId, type: "name", updatedAt: now });
-    if (newPhoneKeyRef) txn.set(newPhoneKeyRef, { driverId, type: "phone", updatedAt: now });
-    if (oldNameKeyRef.path !== newNameKeyRef.path && oldNameKey.exists && oldNameKey.data()?.driverId === driverId) {
+    if (newPhoneKeyRef)
+      txn.set(newPhoneKeyRef, { driverId, type: "phone", updatedAt: now });
+    if (
+      oldNameKeyRef.path !== newNameKeyRef.path &&
+      oldNameKey.exists &&
+      oldNameKey.data()?.driverId === driverId
+    ) {
       txn.delete(oldNameKeyRef);
     }
-    if (oldPhoneKeyRef && oldPhoneKeyRef.path !== newPhoneKeyRef?.path && oldPhoneKey?.exists && oldPhoneKey.data()?.driverId === driverId) {
+    if (
+      oldPhoneKeyRef &&
+      oldPhoneKeyRef.path !== newPhoneKeyRef?.path &&
+      oldPhoneKey?.exists &&
+      oldPhoneKey.data()?.driverId === driverId
+    ) {
       txn.delete(oldPhoneKeyRef);
     }
     txn.update(ref, {
@@ -314,7 +396,10 @@ export async function updateDriver(input: UpdateDriverInput): Promise<DriverRegi
       createdAt: now,
       metadata: {
         previous: { displayName: previous.displayName, phone: previous.phone },
-        updated: { displayName: displayName.trim(), phone: phone?.trim() || null },
+        updated: {
+          displayName: displayName.trim(),
+          phone: phone?.trim() || null,
+        },
       },
     });
   });
@@ -508,7 +593,9 @@ export interface RestrictDriverInput {
   reason: string;
 }
 
-export async function restrictDriver(input: RestrictDriverInput): Promise<DriverRegistryEntry> {
+export async function restrictDriver(
+  input: RestrictDriverInput,
+): Promise<DriverRegistryEntry> {
   const { driverId, restrictedBy, reason } = input;
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
@@ -543,7 +630,9 @@ export interface RestoreDriverInput {
   restoredBy: string;
 }
 
-export async function restoreDriver(input: RestoreDriverInput): Promise<DriverRegistryEntry> {
+export async function restoreDriver(
+  input: RestoreDriverInput,
+): Promise<DriverRegistryEntry> {
   const { driverId, restoredBy } = input;
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
@@ -582,7 +671,9 @@ export interface ArchiveDriverInput {
   reason: string;
 }
 
-export async function archiveDriver(input: ArchiveDriverInput): Promise<DriverRegistryEntry> {
+export async function archiveDriver(
+  input: ArchiveDriverInput,
+): Promise<DriverRegistryEntry> {
   const { driverId, archivedBy, reason } = input;
   if (!reason.trim()) throw new Error("ARCHIVE_REASON_REQUIRED");
 
@@ -621,11 +712,14 @@ export async function archiveDriver(input: ArchiveDriverInput): Promise<DriverRe
           .where("assignedDriverId", "==", currentLinkedUserId)
           .where("status", "==", "claimed"),
       );
-      if (activeDeliveries.size > 0) throw new Error("DRIVER_HAS_ACTIVE_DELIVERIES");
+      if (activeDeliveries.size > 0)
+        throw new Error("DRIVER_HAS_ACTIVE_DELIVERIES");
     }
 
-    const previousEligibility = (current.eligibilityStatus ?? "ineligible") as DriverEligibilityStatus;
-    const previousReason = (current.ineligibilityReason ?? null) as string | null;
+    const previousEligibility = (current.eligibilityStatus ??
+      "ineligible") as DriverEligibilityStatus;
+    const previousReason = (current.ineligibilityReason ?? null) as
+      string | null;
 
     txn.update(ref, {
       eligibilityStatus: "ineligible",
@@ -661,7 +755,9 @@ export interface RestoreArchivedDriverInput {
   restoredBy: string;
 }
 
-export async function restoreArchivedDriver(input: RestoreArchivedDriverInput): Promise<DriverRegistryEntry> {
+export async function restoreArchivedDriver(
+  input: RestoreArchivedDriverInput,
+): Promise<DriverRegistryEntry> {
   const { driverId, restoredBy } = input;
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
@@ -671,8 +767,10 @@ export async function restoreArchivedDriver(input: RestoreArchivedDriverInput): 
   if (!data.archivedAt) throw new Error("DRIVER_NOT_ARCHIVED");
 
   const now = FieldValue.serverTimestamp();
-  const previousEligibility = (data.archivedPreviousEligibilityStatus ?? "ineligible") as DriverEligibilityStatus;
-  const previousReason = (data.archivedPreviousIneligibilityReason ?? null) as string | null;
+  const previousEligibility = (data.archivedPreviousEligibilityStatus ??
+    "ineligible") as DriverEligibilityStatus;
+  const previousReason = (data.archivedPreviousIneligibilityReason ?? null) as
+    string | null;
 
   await db.runTransaction(async (txn) => {
     const snap = await txn.get(ref);
@@ -724,7 +822,10 @@ export interface DeleteDriverEligibility {
   };
 }
 
-const ACTIVE_REQUEST_STATUSES: WaterRequestStatus[] = ["claimed", "preferred_driver_hold"];
+const ACTIVE_REQUEST_STATUSES: WaterRequestStatus[] = [
+  "claimed",
+  "preferred_driver_hold",
+];
 
 async function getReferenceCounts(linkedUserId: string | null) {
   const db = getAdminDb();
@@ -741,15 +842,30 @@ async function getReferenceCounts(linkedUserId: string | null) {
   const BATCHES_COLLECTION = "dispatchBatches";
   const OFFERS_COLLECTION = "driverOffers";
 
-  const [assignmentsSnap, preferredSnap, batchesSnap, offersSnap] = await Promise.all([
-    db.collection(REQUESTS_COLLECTION).where("assignedDriverId", "==", linkedUserId).get(),
-    db.collection(REQUESTS_COLLECTION).where("preferredDriverId", "==", linkedUserId).get(),
-    db.collection(BATCHES_COLLECTION).where("driverId", "==", linkedUserId).get(),
-    db.collection(OFFERS_COLLECTION).where("driverId", "==", linkedUserId).get(),
-  ]);
+  const [assignmentsSnap, preferredSnap, batchesSnap, offersSnap] =
+    await Promise.all([
+      db
+        .collection(REQUESTS_COLLECTION)
+        .where("assignedDriverId", "==", linkedUserId)
+        .get(),
+      db
+        .collection(REQUESTS_COLLECTION)
+        .where("preferredDriverId", "==", linkedUserId)
+        .get(),
+      db
+        .collection(BATCHES_COLLECTION)
+        .where("driverId", "==", linkedUserId)
+        .get(),
+      db
+        .collection(OFFERS_COLLECTION)
+        .where("driverId", "==", linkedUserId)
+        .get(),
+    ]);
 
   const activeStatuses = new Set(ACTIVE_REQUEST_STATUSES as string[]);
-  const activeAssignments = assignmentsSnap.docs.filter((d) => activeStatuses.has(d.data().status)).length;
+  const activeAssignments = assignmentsSnap.docs.filter((d) =>
+    activeStatuses.has(d.data().status),
+  ).length;
 
   return {
     activeAssignments,
@@ -760,7 +876,9 @@ async function getReferenceCounts(linkedUserId: string | null) {
   };
 }
 
-export async function getDeleteDriverEligibility(driverId: string): Promise<DeleteDriverEligibility> {
+export async function getDeleteDriverEligibility(
+  driverId: string,
+): Promise<DeleteDriverEligibility> {
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
   const doc = await ref.get();
@@ -790,7 +908,9 @@ export async function getDeleteDriverEligibility(driverId: string): Promise<Dele
     reasons.push("This driver has an active request lock.");
   }
   if (references.activeAssignments > 0) {
-    reasons.push(`This driver has ${references.activeAssignments} active assigned request(s).`);
+    reasons.push(
+      `This driver has ${references.activeAssignments} active assigned request(s).`,
+    );
   }
   if (references.historicalAssignments > 0) {
     reasons.push(
@@ -798,16 +918,24 @@ export async function getDeleteDriverEligibility(driverId: string): Promise<Dele
     );
   }
   if (references.preferredDriverReferences > 0) {
-    reasons.push(`${references.preferredDriverReferences} request(s) list this driver as preferred.`);
+    reasons.push(
+      `${references.preferredDriverReferences} request(s) list this driver as preferred.`,
+    );
   }
   if (references.dispatchBatchMemberships > 0) {
-    reasons.push(`${references.dispatchBatchMemberships} dispatch batch(es) reference this driver.`);
+    reasons.push(
+      `${references.dispatchBatchMemberships} dispatch batch(es) reference this driver.`,
+    );
   }
   if (references.driverOfferReferences > 0) {
-    reasons.push(`${references.driverOfferReferences} dispatch offer(s) reference this driver.`);
+    reasons.push(
+      `${references.driverOfferReferences} dispatch offer(s) reference this driver.`,
+    );
   }
   if (meterAssignments > 0) {
-    reasons.push(`${meterAssignments} meter assignment(s) exist. Remove them first or archive the driver.`);
+    reasons.push(
+      `${meterAssignments} meter assignment(s) exist. Remove them first or archive the driver.`,
+    );
   }
   if (registryEvents > 0) {
     reasons.push(
@@ -873,10 +1001,15 @@ export async function deleteDriver(input: DeleteDriverInput): Promise<void> {
     }
 
     const normalizedName = displayName.toLowerCase();
-    const normalizedPhone = (data.phone?.replace(/\D/g, "") || null) as string | null;
-    const nameKeyRef = db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("name", normalizedName));
+    const normalizedPhone = (data.phone?.replace(/\D/g, "") || null) as
+      string | null;
+    const nameKeyRef = db
+      .collection(UNIQUE_KEYS_COLLECTION)
+      .doc(driverUniqueKey("name", normalizedName));
     const phoneKeyRef = normalizedPhone
-      ? db.collection(UNIQUE_KEYS_COLLECTION).doc(driverUniqueKey("phone", normalizedPhone))
+      ? db
+          .collection(UNIQUE_KEYS_COLLECTION)
+          .doc(driverUniqueKey("phone", normalizedPhone))
       : null;
 
     txn.delete(ref);
@@ -901,13 +1034,18 @@ export async function setAvailabilityByLinkedUser(
   const entry = await getDriverByLinkedUserId(userId);
   if (!entry) throw new Error("DRIVER_NOT_FOUND");
 
-  if (availabilityStatus === "online" && entry.eligibilityStatus !== "eligible") {
+  if (
+    availabilityStatus === "online" &&
+    entry.eligibilityStatus !== "eligible"
+  ) {
     throw new Error("DRIVER_INELIGIBLE");
   }
   if (availabilityStatus === "online" && entry.cooldownUntil) {
     const cooldownUntil = new Date(entry.cooldownUntil);
     if (cooldownUntil > new Date()) {
-      const endOfToday = startOfSabaDay(new Date(Date.now() + 24 * 60 * 60 * 1000));
+      const endOfToday = startOfSabaDay(
+        new Date(Date.now() + 24 * 60 * 60 * 1000),
+      );
       const err = new Error("DRIVER_IN_COOLDOWN") as Error & {
         cooldownUntil: string;
         isDailyLimit: boolean;
@@ -975,7 +1113,9 @@ export async function startCooldownByLinkedUser(
 // Event history
 // ---------------------------------------------------------------------------
 
-export async function getDriverEvents(driverId: string): Promise<DriverEvent[]> {
+export async function getDriverEvents(
+  driverId: string,
+): Promise<DriverEvent[]> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(REGISTRY_COLLECTION)
@@ -992,7 +1132,8 @@ export async function getDriverEvents(driverId: string): Promise<DriverEvent[]> 
       type: data.type,
       actorId: data.actorId ?? null,
       actorRole: data.actorRole ?? null,
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+      createdAt:
+        data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
       metadata: data.metadata ?? null,
     };
   });
@@ -1081,7 +1222,11 @@ export async function reconcileActiveRequest(
     if (!freshSnap.exists) return;
     if (freshSnap.data()!.activeRequestId !== activeRequestId) return;
 
-    txn.update(driverRef, { activeRequestId: null, updatedAt: now, updatedBy: "system" });
+    txn.update(driverRef, {
+      activeRequestId: null,
+      updatedAt: now,
+      updatedBy: "system",
+    });
     const eventRef = driverRef.collection("events").doc();
     txn.set(eventRef, {
       type: "stale_active_request_cleared",
@@ -1092,7 +1237,11 @@ export async function reconcileActiveRequest(
     });
   });
 
-  return { repaired: true, staleRequestId: activeRequestId, reason: staleReason };
+  return {
+    repaired: true,
+    staleRequestId: activeRequestId,
+    reason: staleReason,
+  };
 }
 
 /**
@@ -1112,17 +1261,23 @@ export async function reconcileActiveRequestByUserId(
 // Fill-station meter assignments
 // ---------------------------------------------------------------------------
 
-function toMeterAssignment(stationId: string, data: DocumentData): MeterAssignment {
+function toMeterAssignment(
+  stationId: string,
+  data: DocumentData,
+): MeterAssignment {
   return {
     stationId,
     meterCode: data.meterCode ?? "",
     meterNumber: data.meterNumber ?? 0,
-    updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    updatedAt:
+      data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     updatedBy: data.updatedBy ?? "",
   };
 }
 
-export async function getMeterAssignments(driverId: string): Promise<MeterAssignment[]> {
+export async function getMeterAssignments(
+  driverId: string,
+): Promise<MeterAssignment[]> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(REGISTRY_COLLECTION)
@@ -1145,7 +1300,8 @@ export async function setMeterAssignment(
 ): Promise<MeterAssignment> {
   const { driverId, stationId, meterCode, meterNumber, actorId } = input;
   if (!meterCode.trim()) throw new Error("METER_CODE_REQUIRED");
-  if (!Number.isFinite(meterNumber) || meterNumber < 0) throw new Error("INVALID_METER_NUMBER");
+  if (!Number.isFinite(meterNumber) || meterNumber < 0)
+    throw new Error("INVALID_METER_NUMBER");
 
   const db = getAdminDb();
   const driverRef = db.collection(REGISTRY_COLLECTION).doc(driverId);
@@ -1164,14 +1320,19 @@ export async function setMeterAssignment(
   });
 
   await driverRef.collection("events").add({
-    type: existing.exists ? "meter_assignment_updated" : "meter_assignment_added",
+    type: existing.exists
+      ? "meter_assignment_updated"
+      : "meter_assignment_added",
     actorId,
     actorRole: "admin",
     createdAt: now,
     metadata: {
       stationId,
       previous: existing.exists
-        ? { meterCode: existing.data()!.meterCode, meterNumber: existing.data()!.meterNumber }
+        ? {
+            meterCode: existing.data()!.meterCode,
+            meterNumber: existing.data()!.meterNumber,
+          }
         : null,
       updated: { meterCode: meterCode.trim(), meterNumber },
     },
@@ -1187,7 +1348,9 @@ export interface RemoveMeterAssignmentInput {
   actorId: string;
 }
 
-export async function removeMeterAssignment(input: RemoveMeterAssignmentInput): Promise<void> {
+export async function removeMeterAssignment(
+  input: RemoveMeterAssignmentInput,
+): Promise<void> {
   const { driverId, stationId, actorId } = input;
   const db = getAdminDb();
   const driverRef = db.collection(REGISTRY_COLLECTION).doc(driverId);
@@ -1205,7 +1368,10 @@ export async function removeMeterAssignment(input: RemoveMeterAssignmentInput): 
     createdAt: FieldValue.serverTimestamp(),
     metadata: {
       stationId,
-      previous: { meterCode: previous.meterCode, meterNumber: previous.meterNumber },
+      previous: {
+        meterCode: previous.meterCode,
+        meterNumber: previous.meterNumber,
+      },
     },
   });
 }
@@ -1219,7 +1385,11 @@ export async function removeMeterAssignment(input: RemoveMeterAssignmentInput): 
 
 interface SeedDriverSpec {
   displayName: string;
-  meters: { stationId: FillStationId; meterCode: string; meterNumber: number }[];
+  meters: {
+    stationId: FillStationId;
+    meterCode: string;
+    meterNumber: number;
+  }[];
 }
 
 const INITIAL_ROSTER: SeedDriverSpec[] = [
@@ -1285,9 +1455,13 @@ export interface SeedInitialRosterResult {
  * registry. Must be explicitly triggered by an admin — never run
  * automatically on deploy.
  */
-export async function seedInitialRoster(actorId: string): Promise<SeedInitialRosterResult> {
+export async function seedInitialRoster(
+  actorId: string,
+): Promise<SeedInitialRosterResult> {
   const existing = await getAllDriverRegistryEntries();
-  const existingNames = new Set(existing.map((d) => d.displayName.trim().toLowerCase()));
+  const existingNames = new Set(
+    existing.map((d) => d.displayName.trim().toLowerCase()),
+  );
 
   let created = 0;
   let skipped = 0;
@@ -1298,7 +1472,11 @@ export async function seedInitialRoster(actorId: string): Promise<SeedInitialRos
       continue;
     }
 
-    const driver = await createDriver({ displayName: spec.displayName, phone: null, actorId });
+    const driver = await createDriver({
+      displayName: spec.displayName,
+      phone: null,
+      actorId,
+    });
     for (const meter of spec.meters) {
       await setMeterAssignment({
         driverId: driver.id,

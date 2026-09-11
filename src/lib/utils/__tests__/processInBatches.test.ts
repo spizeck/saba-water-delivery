@@ -23,9 +23,8 @@ describe("processInBatches", () => {
   });
 
   it("rejects an invalid batch size", async () => {
-    await expect(processInBatches([1], 0, async () => undefined)).rejects.toThrow(
-      "INVALID_BATCH_SIZE",
-    );
+    await expect(
+      processInBatches([1], 0, async () => undefined),
+    ).rejects.toThrow("INVALID_BATCH_SIZE");
   });
 });
-

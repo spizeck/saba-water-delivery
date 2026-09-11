@@ -14,7 +14,9 @@ function formatDuration(hours: number | null): string {
   return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
-export function PreferredDriverSection({ metrics }: PreferredDriverSectionProps) {
+export function PreferredDriverSection({
+  metrics,
+}: PreferredDriverSectionProps) {
   return (
     <Card>
       <h2 className="text-lg font-bold text-slate-900">Preferred Driver</h2>

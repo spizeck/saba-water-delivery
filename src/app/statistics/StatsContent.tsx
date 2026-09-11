@@ -78,10 +78,7 @@ export function StatsContent({ stats }: StatsContentProps) {
           value={stats.summary.cancelled}
           color="slate"
         />
-        <MetricCard
-          label="Total Loads"
-          value={stats.summary.totalLoads}
-        />
+        <MetricCard label="Total Loads" value={stats.summary.totalLoads} />
         <MetricCard
           label="Gallons"
           value={stats.summary.gallonsDelivered.toLocaleString()}
@@ -92,9 +89,10 @@ export function StatsContent({ stats }: StatsContentProps) {
 
       {/* Request source breakdown */}
       <p className="text-xs text-slate-500">
-        {stats.summary.bySource.resident.toLocaleString()} submitted online &middot;{" "}
-        {stats.summary.bySource.whatsapp.toLocaleString()} via WhatsApp &middot;{" "}
-        {stats.summary.bySource.dispatcher.toLocaleString()} entered by staff
+        {stats.summary.bySource.resident.toLocaleString()} submitted online
+        &middot; {stats.summary.bySource.whatsapp.toLocaleString()} via WhatsApp
+        &middot; {stats.summary.bySource.dispatcher.toLocaleString()} entered by
+        staff
       </p>
 
       {/* Current operations */}
@@ -102,7 +100,9 @@ export function StatsContent({ stats }: StatsContentProps) {
 
       {/* Priority breakdown */}
       <Card>
-        <h2 className="text-lg font-bold text-slate-900">Requests by Priority</h2>
+        <h2 className="text-lg font-bold text-slate-900">
+          Requests by Priority
+        </h2>
         <p className="mt-1 text-xs text-slate-500">
           Current dispatch priority (initial or staff-overridden), and average
           request-to-delivery time by priority.
@@ -110,10 +110,15 @@ export function StatsContent({ stats }: StatsContentProps) {
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {stats.priorityTiming.map((row) => (
             <div key={row.priority}>
-              <p className="text-xs font-medium uppercase text-slate-500">{row.priority}</p>
-              <p className="mt-0.5 text-xl font-bold text-slate-900">{row.count}</p>
+              <p className="text-xs font-medium uppercase text-slate-500">
+                {row.priority}
+              </p>
+              <p className="mt-0.5 text-xl font-bold text-slate-900">
+                {row.count}
+              </p>
               <p className="text-xs text-slate-500">
-                Avg delivery time: {formatDuration(row.avgRequestToDeliveryHours)}
+                Avg delivery time:{" "}
+                {formatDuration(row.avgRequestToDeliveryHours)}
               </p>
             </div>
           ))}
@@ -162,7 +167,10 @@ export function StatsContent({ stats }: StatsContentProps) {
           One-request-at-a-time driver offers, accept/decline outcomes
         </p>
         <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <StatItem label="Offers Sent" value={stats.dispatchOffers.offersSent} />
+          <StatItem
+            label="Offers Sent"
+            value={stats.dispatchOffers.offersSent}
+          />
           <StatItem label="Accepted" value={stats.dispatchOffers.accepted} />
           <StatItem label="Declined" value={stats.dispatchOffers.declined} />
           <StatItem
@@ -179,9 +187,12 @@ export function StatsContent({ stats }: StatsContentProps) {
       {/* Fill station usage */}
       {stats.fillStations.length > 0 && (
         <Card>
-          <h2 className="text-lg font-bold text-slate-900">Fill Station Usage</h2>
+          <h2 className="text-lg font-bold text-slate-900">
+            Fill Station Usage
+          </h2>
           <p className="mt-1 text-xs text-slate-500">
-            Physical loads collected per fill station (from recorded collection events)
+            Physical loads collected per fill station (from recorded collection
+            events)
           </p>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -194,10 +205,19 @@ export function StatsContent({ stats }: StatsContentProps) {
               </thead>
               <tbody>
                 {stats.fillStations.map((fs) => (
-                  <tr key={fs.fillStationId} className="border-b border-slate-100">
-                    <td className="py-2 pr-4 font-medium text-slate-900">{fs.fillStationName}</td>
-                    <td className="py-2 pr-4 text-right text-slate-700">{fs.loadsCollected}</td>
-                    <td className="py-2 text-right text-slate-700">{fs.gallonsCollected.toLocaleString()}</td>
+                  <tr
+                    key={fs.fillStationId}
+                    className="border-b border-slate-100"
+                  >
+                    <td className="py-2 pr-4 font-medium text-slate-900">
+                      {fs.fillStationName}
+                    </td>
+                    <td className="py-2 pr-4 text-right text-slate-700">
+                      {fs.loadsCollected}
+                    </td>
+                    <td className="py-2 text-right text-slate-700">
+                      {fs.gallonsCollected.toLocaleString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -225,11 +245,22 @@ export function StatsContent({ stats }: StatsContentProps) {
               </thead>
               <tbody>
                 {stats.meters.map((m) => (
-                  <tr key={`${m.fillStationId}-${m.meterCode}`} className="border-b border-slate-100">
-                    <td className="py-2 pr-4 text-slate-700">{m.fillStationName}</td>
-                    <td className="py-2 pr-4 font-medium text-slate-900">{m.meterCode} &middot; Meter {m.meterNumber}</td>
-                    <td className="py-2 pr-4 text-right text-slate-700">{m.loadsCollected}</td>
-                    <td className="py-2 text-right text-slate-700">{m.gallonsCollected.toLocaleString()}</td>
+                  <tr
+                    key={`${m.fillStationId}-${m.meterCode}`}
+                    className="border-b border-slate-100"
+                  >
+                    <td className="py-2 pr-4 text-slate-700">
+                      {m.fillStationName}
+                    </td>
+                    <td className="py-2 pr-4 font-medium text-slate-900">
+                      {m.meterCode} &middot; Meter {m.meterNumber}
+                    </td>
+                    <td className="py-2 pr-4 text-right text-slate-700">
+                      {m.loadsCollected}
+                    </td>
+                    <td className="py-2 text-right text-slate-700">
+                      {m.gallonsCollected.toLocaleString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -259,12 +290,13 @@ function MetricCard({
   sublabel?: string;
   color?: "green" | "red" | "blue" | "slate";
 }) {
-  const colorClass = {
-    green: "text-green-700",
-    red: "text-red-700",
-    blue: "text-blue-700",
-    slate: "text-slate-500",
-  }[color ?? "slate"] ?? "text-slate-900";
+  const colorClass =
+    {
+      green: "text-green-700",
+      red: "text-red-700",
+      blue: "text-blue-700",
+      slate: "text-slate-500",
+    }[color ?? "slate"] ?? "text-slate-900";
 
   return (
     <Card className="!p-4">

@@ -38,5 +38,7 @@ export function isConfirmationWindowExpired(
   now: Date = new Date(),
   windowHours: number = appConfig.deliveryConfirmationWindowHours,
 ): boolean {
-  return now.getTime() >= confirmationDeadline(deliveredAt, windowHours).getTime();
+  return (
+    now.getTime() >= confirmationDeadline(deliveredAt, windowHours).getTime()
+  );
 }

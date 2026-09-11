@@ -55,7 +55,10 @@ export async function addUserRole(
         case "USER_NOT_FOUND":
           return { status: "error", message: "User not found." };
         case "ROLE_ALREADY_EXISTS":
-          return { status: "error", message: `User already has the ${role} role.` };
+          return {
+            status: "error",
+            message: `User already has the ${role} role.`,
+          };
         case "DRIVER_ROLE_SYSTEM_MANAGED":
           return {
             status: "error",
@@ -84,20 +87,36 @@ export async function removeUserRole(
   if (!isUserRole(role)) return { status: "error", message: "Invalid role." };
 
   try {
-    await removeRole({ targetUid, role: role as UserRole, actorId: session.uid });
+    await removeRole({
+      targetUid,
+      role: role as UserRole,
+      actorId: session.uid,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
         case "USER_NOT_FOUND":
           return { status: "error", message: "User not found." };
         case "ROLE_NOT_FOUND":
-          return { status: "error", message: `User does not have the ${role} role.` };
+          return {
+            status: "error",
+            message: `User does not have the ${role} role.`,
+          };
         case "CANNOT_REMOVE_RESIDENT":
-          return { status: "error", message: "The resident role cannot be removed." };
+          return {
+            status: "error",
+            message: "The resident role cannot be removed.",
+          };
         case "CANNOT_REMOVE_OWN_ADMIN":
-          return { status: "error", message: "You cannot remove your own admin role." };
+          return {
+            status: "error",
+            message: "You cannot remove your own admin role.",
+          };
         case "LAST_ADMIN":
-          return { status: "error", message: "Cannot remove the last admin from the system." };
+          return {
+            status: "error",
+            message: "Cannot remove the last admin from the system.",
+          };
         case "DRIVER_ROLE_SYSTEM_MANAGED":
           return {
             status: "error",
@@ -147,7 +166,8 @@ export async function saveDispatchSettings(
         case "INVALID_MAX_DECLINES":
           return {
             status: "error",
-            message: "Maximum declines per day must be a whole number of at least 1.",
+            message:
+              "Maximum declines per day must be a whole number of at least 1.",
           };
         case "INVALID_COOLDOWN_HOURS":
           return {
@@ -171,7 +191,9 @@ export async function saveDispatchSettings(
 
 export type { PossibleHistoryMatch, AccountMergePreview };
 
-export async function getHistoryMatchesForUser(uid: string): Promise<PossibleHistoryMatch[]> {
+export async function getHistoryMatchesForUser(
+  uid: string,
+): Promise<PossibleHistoryMatch[]> {
   await requireAdmin();
   return findPossibleRequestHistoryMatchesForUser(uid);
 }
@@ -190,11 +212,15 @@ export async function linkHistoryToUser(
 
   const targetUid = String(formData.get("targetUid") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
-  const requestIds = formData.getAll("requestIds").map((v) => String(v)).filter(Boolean);
+  const requestIds = formData
+    .getAll("requestIds")
+    .map((v) => String(v))
+    .filter(Boolean);
 
   if (!targetUid) return { status: "error", message: "Missing user ID." };
   if (!reason) return { status: "error", message: "A reason is required." };
-  if (requestIds.length === 0) return { status: "error", message: "Select at least one request." };
+  if (requestIds.length === 0)
+    return { status: "error", message: "Select at least one request." };
 
   try {
     const result = await linkRequestHistoryToUser({
@@ -218,11 +244,15 @@ export async function linkHistoryToUser(
         case "NO_REQUESTS_SELECTED":
           return { status: "error", message: "Select at least one request." };
         case "REQUEST_NOT_FOUND":
-          return { status: "error", message: "One or more requests were not found." };
+          return {
+            status: "error",
+            message: "One or more requests were not found.",
+          };
         case "REQUEST_ALREADY_LINKED":
           return {
             status: "error",
-            message: "One or more requests are no longer unregistered. Refresh and try again.",
+            message:
+              "One or more requests are no longer unregistered. Refresh and try again.",
           };
       }
     }
@@ -253,7 +283,10 @@ export async function mergeAccounts(
   const duplicateUid = String(formData.get("duplicateUid") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
   const roleMergePolicy = String(formData.get("roleMergePolicy") ?? "union");
-  const explicitRolesRaw = formData.getAll("explicitRoles").map((v) => String(v)).filter(Boolean);
+  const explicitRolesRaw = formData
+    .getAll("explicitRoles")
+    .map((v) => String(v))
+    .filter(Boolean);
 
   if (!canonicalUid || !duplicateUid) {
     return { status: "error", message: "Both accounts are required." };
@@ -263,7 +296,8 @@ export async function mergeAccounts(
   }
   if (!reason) return { status: "error", message: "A reason is required." };
 
-  const explicitRoles = roleMergePolicy === "explicit" ? explicitRolesRaw : undefined;
+  const explicitRoles =
+    roleMergePolicy === "explicit" ? explicitRolesRaw : undefined;
 
   try {
     const result = await mergeUserAccounts({
@@ -281,7 +315,9 @@ export async function mergeAccounts(
     const parts = [`${result.requestsRelinked} request(s) relinked`];
     if (result.driverRegistryRelinked) parts.push("driver registry link moved");
     if (!result.duplicateAuthDeleted && result.error) {
-      parts.push(`duplicate auth account could not be deleted (${result.error})`);
+      parts.push(
+        `duplicate auth account could not be deleted (${result.error})`,
+      );
     }
 
     return {
@@ -292,13 +328,25 @@ export async function mergeAccounts(
     if (err instanceof Error) {
       switch (err.message) {
         case "SAME_USER":
-          return { status: "error", message: "Cannot merge an account into itself." };
+          return {
+            status: "error",
+            message: "Cannot merge an account into itself.",
+          };
         case "USER_NOT_FOUND":
-          return { status: "error", message: "One or both users were not found." };
+          return {
+            status: "error",
+            message: "One or both users were not found.",
+          };
         case "MERGE_BLOCKED":
-          return { status: "error", message: "These accounts cannot be merged." };
+          return {
+            status: "error",
+            message: "These accounts cannot be merged.",
+          };
         case "EXPLICIT_ROLES_REQUIRED":
-          return { status: "error", message: "Select the final roles for explicit merge." };
+          return {
+            status: "error",
+            message: "Select the final roles for explicit merge.",
+          };
         default:
           return { status: "error", message: err.message };
       }
@@ -314,7 +362,12 @@ export async function mergeAccounts(
 export interface RegisterPersonActionState {
   status: "idle" | "success" | "error" | "duplicate_warning";
   message?: string;
-  duplicates?: Array<{ uid: string; displayName: string; phone: string | null; email: string | null }>;
+  duplicates?: Array<{
+    uid: string;
+    displayName: string;
+    phone: string | null;
+    email: string | null;
+  }>;
   createdUid?: string;
 }
 
@@ -334,17 +387,23 @@ export async function registerPersonAction(
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim() || null;
   const village = String(formData.get("village") ?? "").trim() || null;
-  const deliveryDirections = String(formData.get("deliveryDirections") ?? "").trim() || null;
+  const deliveryDirections =
+    String(formData.get("deliveryDirections") ?? "").trim() || null;
   const overrideDuplicate = formData.get("overrideDuplicate") === "true";
 
   // Parse roles from form
   const rolesRaw = formData.getAll("roles").map((v) => String(v));
   const roles: UserRole[] = rolesRaw.filter(isUserRole) as UserRole[];
   if (roles.some((role) => role !== "resident" && role !== "driver")) {
-    return { status: "error", message: "Only resident and driver roles can be assigned during registration." };
+    return {
+      status: "error",
+      message:
+        "Only resident and driver roles can be assigned during registration.",
+    };
   }
 
-  if (!displayName) return { status: "error", message: "Full name is required." };
+  if (!displayName)
+    return { status: "error", message: "Full name is required." };
   if (!phone) return { status: "error", message: "Phone number is required." };
 
   // Check for existing accounts with the same phone

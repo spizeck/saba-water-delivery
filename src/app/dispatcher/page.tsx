@@ -5,14 +5,23 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { isConfirmationWindowExpired } from "@/lib/domain/deliveryConfirmation";
-import { getActiveDriverRegistryEntries, reconcileActiveRequest } from "@/lib/domain/driverRegistry";
+import {
+  getActiveDriverRegistryEntries,
+  reconcileActiveRequest,
+} from "@/lib/domain/driverRegistry";
 import { priorityRankFor } from "@/lib/domain/priority";
 import type { WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
-import { checkDeliveryConfirmationTimeout, getAllRequests } from "@/lib/domain/waterRequests";
+import {
+  checkDeliveryConfirmationTimeout,
+  getAllRequests,
+} from "@/lib/domain/waterRequests";
 
 import { DriverList } from "./DriverList";
-import { deriveDriverWorkloads, type DriverWorkload } from "./deriveDriverWorkloads";
+import {
+  deriveDriverWorkloads,
+  type DriverWorkload,
+} from "./deriveDriverWorkloads";
 import { RequestList } from "./RequestList";
 import { SendContinuityReportButton } from "./SendContinuityReportButton";
 
@@ -53,9 +62,12 @@ export default async function DispatcherPortalPage() {
     )
     .map((r) => r.id);
   if (expiredDeliveredIds.length > 0) {
-    await Promise.all(expiredDeliveredIds.map((id) => checkDeliveryConfirmationTimeout(id)));
+    await Promise.all(
+      expiredDeliveredIds.map((id) => checkDeliveryConfirmationTimeout(id)),
+    );
   }
-  const allRequests = expiredDeliveredIds.length > 0 ? await getAllRequests() : initialRequests;
+  const allRequests =
+    expiredDeliveredIds.length > 0 ? await getAllRequests() : initialRequests;
 
   // Sort by operational status group first (disputes/unconfirmed need
   // staff attention regardless of dispatch priority), then by dispatch
@@ -65,12 +77,15 @@ export default async function DispatcherPortalPage() {
     const pa = STATUS_PRIORITY[a.status] ?? 99;
     const pb = STATUS_PRIORITY[b.status] ?? 99;
     if (pa !== pb) return pa - pb;
-    const priorityDiff = priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
+    const priorityDiff =
+      priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
     if (priorityDiff !== 0) return priorityDiff;
     const overrideA = a.dispatchOverrideRank ?? Infinity;
     const overrideB = b.dispatchOverrideRank ?? Infinity;
     if (overrideA !== overrideB) return overrideA - overrideB;
-    return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
+    return (
+      new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime()
+    );
   });
 
   // Resolve customer display names, keyed by REQUEST id (not customer id —

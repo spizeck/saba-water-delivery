@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { areAllLoadsCollected, assertQuantityEditable, getMissingLoadNumbers } from "../loadCollection";
+import {
+  areAllLoadsCollected,
+  assertQuantityEditable,
+  getMissingLoadNumbers,
+} from "../loadCollection";
 import type { WaterLoadCollection } from "../types";
 
 function makeCollection(loadNumber: 1 | 2): WaterLoadCollection {
@@ -32,7 +36,9 @@ describe("areAllLoadsCollected", () => {
   });
 
   it("returns true for 2-load request with 2 collections", () => {
-    expect(areAllLoadsCollected(2, [makeCollection(1), makeCollection(2)])).toBe(true);
+    expect(
+      areAllLoadsCollected(2, [makeCollection(1), makeCollection(2)]),
+    ).toBe(true);
   });
 
   it("returns false for 2-load request with only 1 collection", () => {
@@ -66,7 +72,9 @@ describe("getMissingLoadNumbers", () => {
   });
 
   it("returns [] for 2-load request with both collected", () => {
-    expect(getMissingLoadNumbers(2, [makeCollection(1), makeCollection(2)])).toEqual([]);
+    expect(
+      getMissingLoadNumbers(2, [makeCollection(1), makeCollection(2)]),
+    ).toEqual([]);
   });
 });
 
@@ -127,7 +135,10 @@ describe("Statistics computation from collections", () => {
     };
     const stationMap = new Map<string, number>();
     for (const lc of [load1, load2]) {
-      stationMap.set(lc.fillStationId, (stationMap.get(lc.fillStationId) ?? 0) + 1000);
+      stationMap.set(
+        lc.fillStationId,
+        (stationMap.get(lc.fillStationId) ?? 0) + 1000,
+      );
     }
     expect(stationMap.get("bottom")).toBe(1000);
     expect(stationMap.get("wws")).toBe(1000);
@@ -154,9 +165,9 @@ describe("assertQuantityEditable", () => {
   });
 
   it("throws when multiple collections exist", () => {
-    expect(() => assertQuantityEditable([makeCollection(1), makeCollection(2)])).toThrow(
-      "QUANTITY_LOCKED_BY_COLLECTION",
-    );
+    expect(() =>
+      assertQuantityEditable([makeCollection(1), makeCollection(2)]),
+    ).toThrow("QUANTITY_LOCKED_BY_COLLECTION");
   });
 });
 
@@ -168,7 +179,9 @@ describe("Collection record timestamp safety", () => {
     // ISO string by toWaterRequest. Verify the parsed shape is a string.
     const collection = makeCollection(1);
     expect(typeof collection.collectedAt).toBe("string");
-    expect(new Date(collection.collectedAt).toISOString()).toBe(collection.collectedAt);
+    expect(new Date(collection.collectedAt).toISOString()).toBe(
+      collection.collectedAt,
+    );
   });
 
   it("collection record has all required fields for audit trail", () => {

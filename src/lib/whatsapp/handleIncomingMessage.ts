@@ -35,12 +35,16 @@ import type { WhatsAppConversationContext, WhatsAppSession } from "./types";
 
 /** Resident-friendly translations of canonical domain error codes — never expose raw codes/stack traces (see PRODUCT.md "Error Handling"). */
 const ERROR_MESSAGES: Record<string, string> = {
-  DUPLICATE_ACTIVE_REQUEST: "You already have an active request, so a new one could not be created.",
+  DUPLICATE_ACTIVE_REQUEST:
+    "You already have an active request, so a new one could not be created.",
   CUSTOMER_NAME_REQUIRED: "Please provide your name and try again.",
   CUSTOMER_PHONE_REQUIRED: "Please provide a phone number and try again.",
-  ATTESTATION_REQUIRED: "Your request could not be submitted. Please try again.",
-  INVALID_PERSONS_AFFECTED: "Please provide a valid number of persons affected.",
-  CRITICAL_EXPLANATION_REQUIRED: "A brief explanation is required for a Critical request.",
+  ATTESTATION_REQUIRED:
+    "Your request could not be submitted. Please try again.",
+  INVALID_PERSONS_AFFECTED:
+    "Please provide a valid number of persons affected.",
+  CRITICAL_EXPLANATION_REQUIRED:
+    "A brief explanation is required for a Critical request.",
   REQUEST_NOT_FOUND: m.REQUEST_STATE_CHANGED_MESSAGE,
   NOT_REQUEST_OWNER: m.REQUEST_STATE_CHANGED_MESSAGE,
   INVALID_STATUS_FOR_CONFIRM: m.REQUEST_STATE_CHANGED_MESSAGE,
@@ -50,14 +54,18 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 function friendlyErrorMessage(err: unknown): string {
-  if (err instanceof Error && ERROR_MESSAGES[err.message]) return ERROR_MESSAGES[err.message];
+  if (err instanceof Error && ERROR_MESSAGES[err.message])
+    return ERROR_MESSAGES[err.message];
   // Never surface raw Firebase errors, stack traces, document IDs, or
   // internal enum names — see PRODUCT.md "Error Handling".
   return m.BACKEND_UNAVAILABLE_MESSAGE;
 }
 
-async function buildContext(session: WhatsAppSession): Promise<WhatsAppConversationContext> {
-  let registeredProfile: WhatsAppConversationContext["registeredProfile"] = null;
+async function buildContext(
+  session: WhatsAppSession,
+): Promise<WhatsAppConversationContext> {
+  let registeredProfile: WhatsAppConversationContext["registeredProfile"] =
+    null;
   let activeRequest: WhatsAppConversationContext["activeRequest"] = null;
 
   if (session.customerType === "registered" && session.customerId) {
@@ -95,7 +103,9 @@ export async function handleIncomingWhatsAppMessage(
 ): Promise<void> {
   const config = getWhatsAppClientConfig();
   if (!config) {
-    console.error("[whatsapp] received a message but WhatsApp is not configured; dropping.");
+    console.error(
+      "[whatsapp] received a message but WhatsApp is not configured; dropping.",
+    );
     return;
   }
 
@@ -108,7 +118,11 @@ export async function handleIncomingWhatsAppMessage(
   if (session.customerType === "unknown") {
     const match = await matchResidentByPhone(senderPhone);
     if (match.type === "unique") {
-      session = { ...session, customerId: match.resident.uid, customerType: "registered" };
+      session = {
+        ...session,
+        customerId: match.resident.uid,
+        customerType: "registered",
+      };
     } else if (match.type === "ambiguous") {
       session = { ...session, customerType: "ambiguous" };
     } else {
@@ -148,7 +162,10 @@ export async function handleIncomingWhatsAppMessage(
           });
           break;
         case "confirm_delivery":
-          await confirmWaterDelivery({ requestId: action.requestId, customerId: action.customerId });
+          await confirmWaterDelivery({
+            requestId: action.requestId,
+            customerId: action.customerId,
+          });
           outbound.push(m.DELIVERY_CONFIRMED_MESSAGE);
           break;
         case "dispute_delivery":

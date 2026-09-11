@@ -61,7 +61,9 @@ function classifyLock(requestSnap, linkedUserId) {
 // ---------------------------------------------------------------------------
 
 const writeMode = process.argv.includes("--write");
-console.log(`Mode: ${writeMode ? "WRITE (will clear stale locks)" : "DRY RUN (report only)"}\n`);
+console.log(
+  `Mode: ${writeMode ? "WRITE (will clear stale locks)" : "DRY RUN (report only)"}\n`,
+);
 
 const driversSnap = await db.collection("driverRegistry").get();
 let staleCount = 0;
@@ -78,7 +80,10 @@ for (const doc of driversSnap.docs) {
   }
 
   const linkedUserId = data.linkedUserId ?? null;
-  const requestSnap = await db.collection("waterRequests").doc(activeRequestId).get();
+  const requestSnap = await db
+    .collection("waterRequests")
+    .doc(activeRequestId)
+    .get();
   const reason = classifyLock(requestSnap, linkedUserId);
 
   if (reason === null) {
@@ -96,13 +101,21 @@ for (const doc of driversSnap.docs) {
 
   if (writeMode) {
     const now = FieldValue.serverTimestamp();
-    await doc.ref.update({ activeRequestId: null, updatedAt: now, updatedBy: "system" });
+    await doc.ref.update({
+      activeRequestId: null,
+      updatedAt: now,
+      updatedBy: "system",
+    });
     await doc.ref.collection("events").add({
       type: "stale_active_request_cleared",
       actorId: "system",
       actorRole: "system",
       createdAt: now,
-      metadata: { staleRequestId: activeRequestId, reason, source: "prelaunch_script" },
+      metadata: {
+        staleRequestId: activeRequestId,
+        reason,
+        source: "prelaunch_script",
+      },
     });
     console.log(`         → Cleared and audit event recorded.`);
   }

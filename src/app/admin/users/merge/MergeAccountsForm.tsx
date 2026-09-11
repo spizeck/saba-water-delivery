@@ -21,18 +21,29 @@ interface Props {
 
 const initialState: MergeAccountsActionState = { status: "idle" };
 
-const ALL_ROLES: UserRole[] = ["resident", "driver", "dispatcher", "admin", "viewer"];
+const ALL_ROLES: UserRole[] = [
+  "resident",
+  "driver",
+  "dispatcher",
+  "admin",
+  "viewer",
+];
 
 export function MergeAccountsForm({ users }: Props) {
   const [canonicalUid, setCanonicalUid] = useState("");
   const [duplicateUid, setDuplicateUid] = useState("");
   const [preview, setPreview] = useState<AccountMergePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [roleMergePolicy, setRoleMergePolicy] = useState<"union" | "explicit">("union");
+  const [roleMergePolicy, setRoleMergePolicy] = useState<"union" | "explicit">(
+    "union",
+  );
   const [explicitRoles, setExplicitRoles] = useState<UserRole[]>(["resident"]);
   const [reason, setReason] = useState("");
 
-  const [state, formAction, pending] = useActionState(mergeAccounts, initialState);
+  const [state, formAction, pending] = useActionState(
+    mergeAccounts,
+    initialState,
+  );
 
   async function loadPreview() {
     if (!canonicalUid || !duplicateUid || canonicalUid === duplicateUid) {
@@ -51,7 +62,9 @@ export function MergeAccountsForm({ users }: Props) {
     }
   }
 
-  const canPreview = Boolean(canonicalUid && duplicateUid && canonicalUid !== duplicateUid);
+  const canPreview = Boolean(
+    canonicalUid && duplicateUid && canonicalUid !== duplicateUid,
+  );
   const canSubmit =
     canPreview &&
     preview &&
@@ -64,9 +77,10 @@ export function MergeAccountsForm({ users }: Props) {
       <Card>
         <h2 className="text-lg font-bold text-slate-900">Select accounts</h2>
         <p className="mt-1 text-xs text-slate-500">
-          The <strong>canonical</strong> account remains active. The <strong>duplicate</strong>{" "}
-          account&apos;s application data is relinked, then the duplicate Firebase Auth account is
-          deleted when possible.
+          The <strong>canonical</strong> account remains active. The{" "}
+          <strong>duplicate</strong> account&apos;s application data is
+          relinked, then the duplicate Firebase Auth account is deleted when
+          possible.
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -83,7 +97,8 @@ export function MergeAccountsForm({ users }: Props) {
               <option value="">Select the account to keep...</option>
               {users.map((u) => (
                 <option key={u.uid} value={u.uid}>
-                  {u.displayName || "Unnamed"} — {u.email ?? u.phone ?? u.uid.slice(0, 8)}
+                  {u.displayName || "Unnamed"} —{" "}
+                  {u.email ?? u.phone ?? u.uid.slice(0, 8)}
                 </option>
               ))}
             </select>
@@ -102,7 +117,8 @@ export function MergeAccountsForm({ users }: Props) {
               <option value="">Select the account to merge...</option>
               {users.map((u) => (
                 <option key={u.uid} value={u.uid}>
-                  {u.displayName || "Unnamed"} — {u.email ?? u.phone ?? u.uid.slice(0, 8)}
+                  {u.displayName || "Unnamed"} —{" "}
+                  {u.email ?? u.phone ?? u.uid.slice(0, 8)}
                 </option>
               ))}
             </select>
@@ -129,7 +145,12 @@ export function MergeAccountsForm({ users }: Props) {
           <input type="hidden" name="roleMergePolicy" value={roleMergePolicy} />
           {roleMergePolicy === "explicit" &&
             explicitRoles.map((role) => (
-              <input key={role} type="hidden" name="explicitRoles" value={role} />
+              <input
+                key={role}
+                type="hidden"
+                name="explicitRoles"
+                value={role}
+              />
             ))}
 
           <Card>
@@ -137,7 +158,9 @@ export function MergeAccountsForm({ users }: Props) {
 
             {preview.blocked && (
               <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
-                <p className="text-sm font-medium text-red-800">Merge blocked</p>
+                <p className="text-sm font-medium text-red-800">
+                  Merge blocked
+                </p>
                 <p className="text-xs text-red-700">{preview.blockedReason}</p>
               </div>
             )}
@@ -154,13 +177,16 @@ export function MergeAccountsForm({ users }: Props) {
                   {preview.canonicalUser.email ?? "No email"}
                 </p>
                 <p className="text-xs text-slate-600">
-                  {formatPhoneForDisplay(preview.canonicalUser.phone) ?? "No phone"}
+                  {formatPhoneForDisplay(preview.canonicalUser.phone) ??
+                    "No phone"}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   Roles: {preview.canonicalRoles.join(", ") || "none"}
                 </p>
                 {preview.canonicalDriverId && (
-                  <p className="text-xs text-blue-700">Driver registry link: yes</p>
+                  <p className="text-xs text-blue-700">
+                    Driver registry link: yes
+                  </p>
                 )}
               </div>
 
@@ -175,7 +201,8 @@ export function MergeAccountsForm({ users }: Props) {
                   {preview.duplicateUser.email ?? "No email"}
                 </p>
                 <p className="text-xs text-slate-600">
-                  {formatPhoneForDisplay(preview.duplicateUser.phone) ?? "No phone"}
+                  {formatPhoneForDisplay(preview.duplicateUser.phone) ??
+                    "No phone"}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
                   Roles: {preview.duplicateRoles.join(", ") || "none"}
@@ -184,13 +211,17 @@ export function MergeAccountsForm({ users }: Props) {
                   Requests to relink: {preview.requestCountForDuplicate}
                 </p>
                 {preview.duplicateDriverId && (
-                  <p className="text-xs text-blue-700">Driver registry link: yes</p>
+                  <p className="text-xs text-blue-700">
+                    Driver registry link: yes
+                  </p>
                 )}
               </div>
             </div>
 
             <div className="mt-4">
-              <p className="text-sm font-medium text-slate-700">Role merge policy</p>
+              <p className="text-sm font-medium text-slate-700">
+                Role merge policy
+              </p>
               <div className="mt-2 flex gap-4">
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -217,8 +248,10 @@ export function MergeAccountsForm({ users }: Props) {
 
               {roleMergePolicy === "union" && (
                 <p className="mt-2 text-xs text-slate-500">
-                  Resulting roles: {preview.defaultUnionRoles.join(", ") || "none"}. Admin,
-                  dispatcher, and driver roles are not transferred automatically.
+                  Resulting roles:{" "}
+                  {preview.defaultUnionRoles.join(", ") || "none"}. Admin,
+                  dispatcher, and driver roles are not transferred
+                  automatically.
                 </p>
               )}
 
@@ -229,7 +262,10 @@ export function MergeAccountsForm({ users }: Props) {
                   </p>
                   <div className="mt-2 flex flex-wrap gap-3">
                     {ALL_ROLES.map((role) => (
-                      <label key={role} className="flex items-center gap-1 text-sm text-slate-700">
+                      <label
+                        key={role}
+                        className="flex items-center gap-1 text-sm text-slate-700"
+                      >
                         <input
                           type="checkbox"
                           checked={explicitRoles.includes(role)}
