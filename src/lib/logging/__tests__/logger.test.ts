@@ -120,6 +120,40 @@ describe("Logger", () => {
   });
 });
 
+describe("LOG_LEVEL validation", () => {
+  const validLevels = ["debug", "info", "warn", "error"] as const;
+
+  it.each(validLevels)("accepts the valid level %s", (level) => {
+    process.env.LOG_LEVEL = level;
+    const log = getLogger("t");
+    // The configured minimum level always emits its own level.
+    const lines = captureLogs(() => log[level](`${level}.event`));
+    expect(lines.map((l) => l.event)).toContain(`${level}.event`);
+  });
+
+  // Inherited property names (constructor/toString/__proto__) must NOT be
+  // accepted as levels — the `in` operator would have let them through, which
+  // would suppress every real level, including errors.
+  const invalidLevels = ["constructor", "toString", "__proto__", "banana"];
+
+  it.each(invalidLevels)(
+    "falls back to the safe default (never disables logging) for LOG_LEVEL=%s",
+    (bad) => {
+      process.env.LOG_LEVEL = bad;
+      const log = getLogger("t");
+      const events = captureLogs(() => {
+        log.error("error.event");
+        log.warn("warn.event");
+        log.info("info.event");
+      }).map((l) => l.event);
+      // Errors especially must never be silently swallowed by a bad value.
+      expect(events).toContain("error.event");
+      expect(events).toContain("warn.event");
+      expect(events).toContain("info.event");
+    },
+  );
+});
+
 describe("critical-path logging does not leak personal data", () => {
   it("does not emit raw WhatsApp message content or sender phone", () => {
     const log = getLogger("whatsapp.handler");

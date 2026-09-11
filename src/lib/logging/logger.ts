@@ -69,7 +69,11 @@ export function generateId(): string {
 }
 
 function isLogLevel(value: string): value is LogLevel {
-  return value in LEVEL_PRIORITY;
+  // Own-property check only. The `in` operator would also match inherited
+  // names like "constructor", "toString", or "__proto__", which would make
+  // minimumLogLevel() return an invalid level and cause shouldLog() to
+  // suppress every real level — including errors.
+  return Object.prototype.hasOwnProperty.call(LEVEL_PRIORITY, value);
 }
 
 /**
