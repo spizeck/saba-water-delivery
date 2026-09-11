@@ -133,8 +133,17 @@ Vitest covers the pure domain logic extensively, including:
   email/phone/tokens/secrets and nested objects, safe error serialization
   (provider error objects are never spread), request/correlation ID
   generation and validation, that the logger never throws and always emits
-  JSON, and that representative critical-path logs do not leak request
-  notes, delivery directions, or raw WhatsApp message content.
+  JSON, that representative critical-path logs do not leak request notes,
+  delivery directions, or raw WhatsApp message content, and that
+  `security.*` events carry only safe metadata.
+- Error handling (`src/lib/errors/__tests__/`, `src/lib/http/__tests__/`):
+  `AppError` category/code/status mapping, `normalizeError` for known/unknown
+  errors, the flat client error body (public message vs. generic; no raw
+  exception message, stack, Firebase, or provider detail; `requestId`
+  included), preservation of 4xx statuses, and the `withApiRoute` boundary —
+  an unexpected throw yields a safe 500 with the request ID in the header and
+  body, a thrown `AppError` yields its intended status, `redirect()` still
+  propagates, and one failure is logged exactly once.
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently

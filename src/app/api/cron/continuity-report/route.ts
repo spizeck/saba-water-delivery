@@ -2,7 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
 import { sendContinuityReportEmail } from "@/lib/email/continuityReportEmail";
-import { getLogger, serializeError, withRequestLogging } from "@/lib/logging";
+import {
+  getLogger,
+  logSecurityEvent,
+  SECURITY_EVENTS,
+  serializeError,
+} from "@/lib/logging";
+import { withApiRoute } from "@/lib/http";
 import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
 
 const log = getLogger("api.cron.continuity-report");
@@ -27,7 +33,7 @@ const log = getLogger("api.cron.continuity-report");
  * header are rejected so this endpoint cannot be triggered by an
  * arbitrary public request.
  */
-export const GET = withRequestLogging(
+export const GET = withApiRoute(
   "cron.continuity-report",
   async (request: NextRequest) => {
     const cronSecret = process.env.CRON_SECRET;
@@ -40,7 +46,9 @@ export const GET = withRequestLogging(
     }
     const authHeader = request.headers.get("authorization");
     if (authHeader !== `Bearer ${cronSecret}`) {
-      log.warn("report.continuity.unauthorized");
+      logSecurityEvent(SECURITY_EVENTS.cronUnauthorized, {
+        route: "cron.continuity-report",
+      });
       return NextResponse.json(
         { ok: false, error: "Unauthorized" },
         { status: 401 },

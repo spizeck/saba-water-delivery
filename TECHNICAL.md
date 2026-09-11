@@ -2059,35 +2059,22 @@ log.error("email.delivery_confirmation.notify_failed", {
 
 Dotted, lowercase, `area.subject.outcome` — for example
 `report.continuity.generated`, `report.continuity.email_failed`,
-`auth.session.verify_failed`, `whatsapp.webhook.signature_invalid`,
-`whatsapp.message.processing_failed`, `email.delivery_confirmation.failed`,
-`dispatch.record_collection.failed`. Keep the taxonomy small; reuse an existing
-name before inventing one.
+`auth.session.verify_failed`, `whatsapp.message.processing_failed`,
+`email.delivery_confirmation.failed`, `dispatch.record_collection.failed`.
+Security events use the `security.*` namespace (see "Server error handling").
+Keep the taxonomy small; reuse an existing name before inventing one.
 
 ## Request / correlation IDs
 
-HTTP routes are wrapped with `withRequestLogging(name, handler)`
-(`src/lib/logging/requestContext.ts`), which:
-
-- adopts a safe inbound `x-request-id` header or generates a random UUID;
-- makes that ID ambient (via `AsyncLocalStorage`) so every log line for the
-  request — including downstream domain logs — shares it;
-- echoes the ID back in the `x-request-id` **response header** on every
-  response the route *returns* — successes and the handled error responses
-  routes build themselves (401/500/etc.);
-- logs completion/failure, then re-throws unchanged (it does **not** reshape
-  responses or convert errors — routes keep their own status codes).
-
-**Header coverage limitation.** If a handler *throws* instead of returning
-(an unexpected bug), the platform generates the 500 and there is no response
-object for the wrapper to set the header on. The request ID is still emitted
-on the `unhandled_error` log line, so it stays discoverable in the server
-logs (find it by matching the failing request's route and time). Attaching
-the ID to platform-generated error responses would require response reshaping
-or edge middleware that changes error semantics — that belongs to the #30
-error-normalization work, not this observability layer.
-
-IDs are always random and non-identifying — never a phone, email, or uid.
+HTTP routes are wrapped with the canonical boundary `withApiRoute(name,
+handler)` (`src/lib/http`; the request-ID primitives it uses live in
+`src/lib/logging/requestContext.ts`). It adopts a safe inbound `x-request-id`
+header or generates a random UUID, makes it ambient (via `AsyncLocalStorage`)
+so every downstream log shares it, and returns it in the `x-request-id`
+**response header**. On an unexpected throw it also returns the ID in the
+canonical error **body** — see "Server error handling" below, which fully
+describes `withApiRoute`. IDs are always random and non-identifying — never a
+phone, email, or uid.
 
 ## Redaction policy and prohibited fields
 
@@ -2132,7 +2119,110 @@ required for the app to run. See `docs/DEPLOYMENT.md`.
 ## Diagnosing with request IDs
 
 A user-reported failure can be correlated to logs via the `x-request-id`
-response header — see `docs/OPERATIONS.md`.
+response header (and, for an unexpected failure, the `requestId` field in the
+canonical error body) — see `docs/OPERATIONS.md`.
+
+---
+
+# Server error handling
+
+Three concerns are kept deliberately separate and must not be collapsed:
+
+1. **Client-facing errors** — the safe message/code/status returned to the
+   browser or API caller (`src/lib/errors`).
+2. **Operational / security logs** — structured Vercel telemetry
+   (`src/lib/logging`, above).
+3. **Business audit events** — durable Firestore history (see "Auditability").
+
+Firestore audit events remain the authoritative business history; operational
+and security logs are never written to Firestore for observability.
+
+## The application error model (`src/lib/errors`)
+
+`AppError` carries a `category`, a stable client `code`, an HTTP `statusCode`,
+an `isPublic` flag (may the message be shown to the caller?), and an optional
+`cause` (the original error, for redacted server-side logging only). Typed
+subclasses cover the taxonomy:
+
+| Category | Code | Status | Public? |
+| --- | --- | --- | --- |
+| validation | `VALIDATION_ERROR` | 400 | yes |
+| authentication | `AUTHENTICATION_REQUIRED` | 401 | yes |
+| authorization | `AUTHORIZATION_DENIED` | 403 | yes |
+| not_found | `NOT_FOUND` | 404 | yes |
+| conflict | `CONFLICT` | 409 | yes |
+| rate_limit | `RATE_LIMITED` | 429 | yes |
+| external_service | `EXTERNAL_SERVICE_ERROR` | 502 | no |
+| internal | `INTERNAL_ERROR` | 500 | no |
+
+Keep the taxonomy small; domain code may still throw meaningful existing
+string codes where they are already useful.
+
+`normalizeError(error)` returns an `AppError` for any thrown value: an existing
+`AppError` is preserved (status/code/message intact); any other error becomes a
+generic `AppInternalError` keeping the original as `cause`. The original
+exception message is **never** promoted to the client.
+
+## Canonical client error response
+
+The boundary returns a **flat** JSON body (chosen for backward compatibility —
+existing clients such as `establishSession`/`LoginForm` read `data.error` as a
+string; a nested shape would break them):
+
+```json
+{ "error": "<safe message>", "code": "<STABLE_CODE>", "requestId": "<id>" }
+```
+
+The message is the `AppError`'s own message only when it is public; otherwise a
+generic "An unexpected error occurred. Please try again later." is used, so no
+stack trace, provider payload, Firebase internal, secret, or personal data ever
+reaches the caller.
+
+## The route boundary (`withApiRoute`)
+
+`withApiRoute(name, handler)` (`src/lib/http`) is the **one** canonical route
+mechanism. For a handler's whole execution it:
+
+- resolves and shares the request ID (see "Request / correlation IDs");
+- returns the handler's own response with the `x-request-id` header + a
+  completion log;
+- on an unexpected throw, normalizes the error, logs it **once**, and returns
+  the canonical safe response whose `x-request-id` header **and** body both
+  carry the request ID — this closes the earlier gap where a thrown route
+  produced a platform 500 with no correlation ID;
+- lets framework control-flow (`redirect()`, `notFound()`) propagate unchanged
+  via `unstable_rethrow`, so `requireRole` redirects keep working.
+
+**Boundary logging ownership (no double logging).** The boundary owns logging
+of *unhandled* throws. Handlers and domain/integration code that catch a
+failure and **return** a response (or degrade gracefully — e.g. a
+delivery-confirmation email that fails after delivery is committed) log their
+own distinct operational events and must **not** also re-throw the same error,
+so one failure is never logged three times.
+
+Existing endpoints keep their current handled response shapes for
+compatibility (the session route's `{ error: "DRIVER_ACCESS_DENIED" }` is a
+client contract). The canonical shape applies to the boundary's normalized
+responses; routes may additionally `throw` an `AppError` to get a typed
+response.
+
+## Security events (`security.*`)
+
+Security-relevant failures are logged on the same structured logger via
+`logSecurityEvent(event, metadata)` (`src/lib/logging`), **not** a separate
+backend. Stable names:
+
+- `security.authorization.denied` — an authenticated user attempted an action
+  their roles do not allow (`requireRole`, and the session route's driver
+  check). Routine "not signed in → /login" is **not** logged as security.
+- `security.webhook.signature_invalid` — inbound WhatsApp HMAC failed.
+- `security.cron.unauthorized` — the continuity-report cron was hit without the
+  correct `CRON_SECRET`.
+
+Security logs obey the same redaction policy: safe metadata only (opaque
+`uid`, role names, request IDs) — never tokens, cookies, signatures, request
+bodies, phone numbers, emails, or other personal data. They are operational
+telemetry, distinct from the durable Firestore audit trail.
 
 ---
 

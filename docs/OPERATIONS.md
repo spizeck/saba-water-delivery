@@ -192,16 +192,16 @@ Firestore keeps.
 
 Every server request is tagged with a random **request ID**, included on
 every log line for that request and returned to the browser in the
-`x-request-id` response header (present on the responses the app returns,
-including handled errors). To diagnose a specific user-reported failure:
+`x-request-id` response header. When an unexpected error occurs, the same
+ID is also included in the JSON error body as `requestId`, so it is
+available even for a server fault. To diagnose a specific user-reported
+failure:
 
 1. Ask the reporter (or read from their browser's network tab) for the
-   `x-request-id` value on the failed request, if available. (An
-   unexpected server crash produces a generic 500 without this header —
-   in that case skip to step 2 and locate the request in the logs by its
-   route and the time it happened; the request ID is still logged there.)
-2. In Vercel → Logs, search for that ID (or the route/time) to see every
-   log line for that request, including the safe error name/code.
+   `x-request-id` header, or the `requestId` shown in the error response.
+2. In Vercel → Logs, search for that ID (or, if it is unavailable, the
+   route and the time it happened) to see every log line for that
+   request, including the safe error name/code.
 3. Each log line names a stable **event** (for example
    `whatsapp.message.processing_failed`,
    `report.continuity.email_failed`, `auth.session.verify_failed`) and
@@ -212,6 +212,20 @@ resident's name, phone, email, delivery directions, request notes, or
 any secret or access token. If you need the full business detail of a
 request (who, what, when), use the in-app request history / audit trail,
 not the logs.
+
+### Security events
+
+A few log lines use the `security.*` prefix and flag noteworthy access
+failures worth monitoring: `security.authorization.denied` (a signed-in
+user tried to reach a portal/action they are not permitted to use),
+`security.webhook.signature_invalid` (an inbound WhatsApp webhook failed
+signature verification — a forged or misconfigured request), and
+`security.cron.unauthorized` (the nightly report endpoint was called
+without the correct secret). An occasional one is normal (a mistaken URL,
+a stale cron secret); a sustained burst from one source is worth a closer
+look. These carry only safe identifiers (an opaque user ID, role names),
+never personal data or secrets. Routine "not signed in" redirects are
+deliberately NOT flagged as security events.
 
 By default only `info` and above are logged in production. A maintainer
 can temporarily raise verbosity by setting the `LOG_LEVEL` environment

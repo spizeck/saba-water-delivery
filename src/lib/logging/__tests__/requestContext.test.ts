@@ -1,17 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { describe, expect, it } from "vitest";
 
 import {
   REQUEST_ID_HEADER,
   extractRequestId,
   generateRequestId,
   sanitizeRequestId,
-  withRequestLogging,
 } from "../requestContext";
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 function makeRequest(headers: Record<string, string> = {}): NextRequest {
   return new NextRequest("https://example.com/api/thing", { headers });
@@ -58,28 +53,5 @@ describe("extractRequestId", () => {
     );
     expect(fromBad).not.toBe("not valid!");
     expect(fromBad).toMatch(/^[a-zA-Z0-9\-_]+$/);
-  });
-});
-
-describe("withRequestLogging", () => {
-  it("echoes the request id in the response header and returns the response", async () => {
-    vi.spyOn(console, "info").mockImplementation(() => {});
-    const wrapped = withRequestLogging("thing", async () =>
-      NextResponse.json({ ok: true }, { status: 200 }),
-    );
-    const response = await wrapped(
-      makeRequest({ [REQUEST_ID_HEADER]: "corr-42" }),
-    );
-    expect(response.status).toBe(200);
-    expect(response.headers.get(REQUEST_ID_HEADER)).toBe("corr-42");
-  });
-
-  it("re-throws handler errors unchanged (does not reshape the response)", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const boom = new Error("handler exploded");
-    const wrapped = withRequestLogging("thing", async () => {
-      throw boom;
-    });
-    await expect(wrapped(makeRequest())).rejects.toBe(boom);
   });
 });

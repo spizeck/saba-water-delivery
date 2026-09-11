@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth/session";
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
+import { withApiRoute } from "@/lib/http";
 import {
   continuityReportPdfFilename,
   renderContinuityReportPdf,
@@ -20,7 +21,7 @@ import {
  * redirects an unauthenticated or unauthorized request rather than
  * exposing operational/customer data.
  */
-export async function GET() {
+export const GET = withApiRoute("reports.continuity-snapshot", async () => {
   await requireRole(["dispatcher", "admin"]);
 
   const data = await generateContinuityReportData();
@@ -34,4 +35,4 @@ export async function GET() {
       "Cache-Control": "no-store",
     },
   });
-}
+});

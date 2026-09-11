@@ -24,11 +24,13 @@ export {
 
 export { serializeError, type SerializedError } from "./serializeError";
 
+export { logSecurityEvent, SECURITY_EVENTS } from "./securityEvents";
+
 export {
-  withRequestLogging,
   extractRequestId,
   sanitizeRequestId,
   generateRequestId,
+  setRequestIdHeader,
   REQUEST_ID_HEADER,
 } from "./requestContext";
 
