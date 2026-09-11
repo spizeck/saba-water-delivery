@@ -25,7 +25,20 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.VERCEL_ENV;
+  delete process.env.RATE_LIMIT_HASH_SECRET;
 });
+
+/** A store that records the (hashed) keys it is asked to increment. */
+function capturingStore(): { store: RateLimitStore; keys: string[] } {
+  const keys: string[] = [];
+  const store: RateLimitStore = {
+    async increment(key, windowMs, nowMs) {
+      keys.push(key);
+      return { count: 1, resetAtMs: nowMs + windowMs };
+    },
+  };
+  return { store, keys };
+}
 
 function logLines(level: "warn" | "error"): Record<string, unknown>[] {
   const idx = { debug: 0, info: 1, warn: 2, error: 3 }[level];
@@ -186,6 +199,70 @@ describe("privacy — keys and logs never contain the raw identifier", () => {
       (l) => l.event === "security.rate_limit.exceeded",
     );
     expect(event?.uid).toBe("user_42");
+  });
+});
+
+describe("HMAC secret configuration", () => {
+  const ip = { type: "ip" as const, value: "203.0.113.5" };
+
+  it("produces deterministic opaque keys for a configured secret", async () => {
+    process.env.RATE_LIMIT_HASH_SECRET = "prod-secret-abc";
+    const { store, keys } = capturingStore();
+    await checkRateLimit("auth-session", ip, { store, now: 1 });
+    await checkRateLimit("auth-session", ip, { store, now: 1 });
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[0]).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("produces different keys for different secrets", async () => {
+    process.env.RATE_LIMIT_HASH_SECRET = "secret-one";
+    const one = capturingStore();
+    await checkRateLimit("auth-session", ip, { store: one.store, now: 1 });
+
+    process.env.RATE_LIMIT_HASH_SECRET = "secret-two";
+    const two = capturingStore();
+    await checkRateLimit("auth-session", ip, { store: two.store, now: 1 });
+
+    expect(one.keys[0]).not.toBe(two.keys[0]);
+  });
+
+  it("uses the deterministic local fallback when NOT deployed (VERCEL_ENV unset)", async () => {
+    delete process.env.RATE_LIMIT_HASH_SECRET;
+    delete process.env.VERCEL_ENV;
+    const { store, keys } = capturingStore();
+    const d = await checkRateLimit("auth-session", ip, { store, now: 1 });
+    expect(d.enforced).toBe(true);
+    expect(keys[0]).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("fails open (never hashes with the static salt) when deployed without the secret", async () => {
+    process.env.VERCEL_ENV = "production";
+    delete process.env.RATE_LIMIT_HASH_SECRET;
+    const { store, keys } = capturingStore();
+
+    const d = await checkRateLimit("auth-session", ip, { store, now: 1 });
+
+    expect(d.allowed).toBe(true);
+    expect(d.enforced).toBe(false);
+    // The store is never touched, so no key was derived from the public salt.
+    expect(keys).toHaveLength(0);
+    // ...and a high-severity operational log names the misconfiguration.
+    expect(
+      logLines("error").some((e) => e.event === "rate_limit.secret_missing"),
+    ).toBe(true);
+    // No spurious rejection security event on a config failure.
+    expect(
+      logLines("warn").some((l) => l.event === "security.rate_limit.exceeded"),
+    ).toBe(false);
+  });
+
+  it("also refuses the static fallback on preview without the secret", async () => {
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.RATE_LIMIT_HASH_SECRET;
+    const { store, keys } = capturingStore();
+    const d = await checkRateLimit("auth-session", ip, { store, now: 1 });
+    expect(d.enforced).toBe(false);
+    expect(keys).toHaveLength(0);
   });
 });
 

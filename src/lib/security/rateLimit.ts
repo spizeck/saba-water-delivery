@@ -46,11 +46,14 @@ const log = getLogger("security.rate-limit");
 const COLLECTION = "rateLimits";
 
 // Keys are HMAC-hashed with a server secret so a raw identifier (especially a
-// small-space value like an IP) is never stored and cannot be trivially
-// reversed from the document ID. A default salt keeps the app working when the
-// optional RATE_LIMIT_HASH_SECRET is unset; production should set it (see
-// .env.example / docs/DEPLOYMENT.md).
-const DEFAULT_HASH_SALT = "saba-water-delivery/rate-limit/v1";
+// small-space value like an IP) is never stored and cannot be reversed from the
+// document ID. In DEPLOYED environments (Vercel Production/Preview) a real
+// RATE_LIMIT_HASH_SECRET is REQUIRED — this repository is public, so a
+// repo-known static salt would NOT prevent precomputation/dictionary recovery
+// of an IP. The fallback below is deterministic and used ONLY locally / in
+// tests (VERCEL_ENV unset) so contributors and the emulator need no production
+// secret; it is not a production privacy control. See docs/DEPLOYMENT.md.
+const LOCAL_DEV_HASH_SALT = "saba-water-delivery/rate-limit/local-dev-only/v1";
 
 // Kept in Firestore after the window ends only so a TTL policy can reclaim the
 // document; correctness never depends on physical cleanup (an expired window is
@@ -221,9 +224,30 @@ function getDefaultStore(): RateLimitStore {
   return defaultStore;
 }
 
-function hashSecret(): string {
+/** True on Vercel Production/Preview — where a real secret is mandatory. */
+function isDeployedVercelEnv(): boolean {
+  const env = process.env.VERCEL_ENV;
+  return env === "production" || env === "preview";
+}
+
+type SecretResolution = { secret: string } | { missing: true };
+
+/**
+ * Resolves the HMAC secret. A configured `RATE_LIMIT_HASH_SECRET` always wins.
+ * When it is absent, a DEPLOYED environment reports `missing` (the caller then
+ * treats the limiter as unavailable and fails open — it never hashes with the
+ * public static salt); local/test environments use the deterministic
+ * development-only fallback.
+ */
+function resolveHashSecret(): SecretResolution {
   const configured = process.env.RATE_LIMIT_HASH_SECRET?.trim();
-  return configured && configured.length > 0 ? configured : DEFAULT_HASH_SALT;
+  if (configured && configured.length > 0) {
+    return { secret: configured };
+  }
+  if (isDeployedVercelEnv()) {
+    return { missing: true };
+  }
+  return { secret: LOCAL_DEV_HASH_SALT };
 }
 
 function normalizeIdentifierValue(identifier: RateLimitIdentifier): string {
@@ -236,9 +260,10 @@ function normalizeIdentifierValue(identifier: RateLimitIdentifier): string {
 function deriveKey(
   policy: RateLimitPolicyName,
   identifier: RateLimitIdentifier,
+  secret: string,
 ): string {
   const material = `${policy}:${identifier.type}:${normalizeIdentifierValue(identifier)}`;
-  return createHmac("sha256", hashSecret()).update(material).digest("hex");
+  return createHmac("sha256", secret).update(material).digest("hex");
 }
 
 /**
@@ -290,8 +315,22 @@ export async function checkRateLimit(
     return { ...base, allowed: true, enforced: false };
   }
 
+  const secretResolution = resolveHashSecret();
+  if ("missing" in secretResolution) {
+    // Deployed without the required secret. We refuse to hash identifiers with
+    // the public static salt, so the limiter is unavailable — fail open (allow)
+    // and log loudly so the misconfiguration is fixed. This never blocks
+    // auth/water-delivery availability just because config is missing.
+    log.error("rate_limit.secret_missing", {
+      policy: policyName,
+      identifierType: identifier.type,
+      vercelEnv: process.env.VERCEL_ENV,
+    });
+    return { ...base, allowed: true, enforced: false };
+  }
+
   const store = options.store ?? getDefaultStore();
-  const key = deriveKey(policyName, identifier);
+  const key = deriveKey(policyName, identifier, secretResolution.secret);
 
   let entry: RateLimitEntry;
   try {

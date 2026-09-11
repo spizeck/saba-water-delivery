@@ -241,16 +241,29 @@ Abuse-sensitive operations are rate limited server-side (see
 [`../TECHNICAL.md`](../TECHNICAL.md) "Rate limiting" and
 [`OPERATIONS.md`](./OPERATIONS.md)). Two deployment points:
 
-### `RATE_LIMIT_HASH_SECRET` (optional)
+### `RATE_LIMIT_HASH_SECRET` (required in deployed environments)
 
 Rate-limit identifiers (e.g. IPs) are HMAC-hashed before being used as Firestore
-keys so a raw identifier is never stored. Set `RATE_LIMIT_HASH_SECRET` in Vercel
-to a unique random value (`openssl rand -hex 32`) in production so those hashes
-cannot be reversed by precomputation. It is **optional** — the limiter works
-without it (using a static salt) — but recommended. It is a **secret** (never
-commit a real value); rotating it just resets in-flight limiter windows
-(harmless). Do not reuse `CRON_SECRET`, the Firebase private key, or any
-WhatsApp/Resend secret for it.
+keys so a raw identifier is never stored or reversible. Because this repository
+is **public**, there is no built-in salt that could protect a small-space value
+like an IP, so this secret is **required in every deployed Vercel environment**:
+
+- Set `RATE_LIMIT_HASH_SECRET` on **Production and Preview** (each its own unique
+  random value, `openssl rand -hex 32`) in Vercel Project Settings → Environment
+  Variables.
+- If it is **missing** in a deployed environment the limiter treats itself as
+  unavailable and **fails open** — it logs a high-severity
+  `rate_limit.secret_missing` operational event and allows the request. It never
+  blocks sign-in or water delivery just because the config is missing, and it
+  never hashes with a repo-known salt. (So a missing secret means rate limiting
+  is effectively OFF until you set it — search the logs for
+  `rate_limit.secret_missing` to catch this.)
+- **Local development and automated tests** need no secret: they use a
+  deterministic dev-only fallback, which is **not** a production privacy control.
+
+It is a **secret** (never commit a real value). Rotating it just resets in-flight
+limiter windows (harmless — they re-fill). Do not reuse `CRON_SECRET`, the
+Firebase private key, or any WhatsApp/Resend secret for it.
 
 ### Firestore TTL for `rateLimits` (one-time, manual)
 

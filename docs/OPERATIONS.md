@@ -283,6 +283,12 @@ maintainer:
 - **If Firestore is unavailable**, the limiter *fails open* — it logs
   `rate_limit.storage_unavailable` and lets the request through, so a
   Firestore outage never blocks water-delivery operations.
+- **If `RATE_LIMIT_HASH_SECRET` is missing on a deployed environment**, the
+  limiter is treated as unavailable and also *fails open*, logging a
+  high-severity `rate_limit.secret_missing` event on each check. This means
+  rate limiting is effectively **off** until the secret is set: if you see
+  that event, set `RATE_LIMIT_HASH_SECRET` in Vercel (Production and Preview
+  each need one) and redeploy. See [`DEPLOYMENT.md`](./DEPLOYMENT.md).
 - **Firebase TTL:** cleanup of expired `rateLimits` documents relies on a
   one-time Firestore TTL policy (see [`DEPLOYMENT.md`](./DEPLOYMENT.md)). If
   it has not been configured, the app is still correct — expired counters

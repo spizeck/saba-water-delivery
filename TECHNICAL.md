@@ -2345,10 +2345,17 @@ NOT replaced by it.
   inside a **transaction** so simultaneous requests cannot all read a stale
   count and bypass the limit (proven by an emulator concurrency test). No new
   external service (Redis/Upstash/KV) was added.
-- **Keys are HMAC-SHA256 hashes** (`RATE_LIMIT_HASH_SECRET`, or a static salt if
-  unset) of `policy:type:identifier`, so a raw identifier — especially a
-  small-space value like an IP — is never stored and cannot be trivially
-  reversed from the document id.
+- **Keys are HMAC-SHA256 hashes** of `policy:type:identifier`, so a raw
+  identifier — especially a small-space value like an IP — is never stored and
+  cannot be reversed from the document id. The HMAC secret,
+  **`RATE_LIMIT_HASH_SECRET`, is REQUIRED in deployed Vercel environments**
+  (Production and Preview). Because this repository is public, there is no
+  built-in salt that could protect a small-space value; if the secret is missing
+  in a deployed environment the limiter treats itself as **unavailable** — it
+  logs a high-severity `rate_limit.secret_missing` event and **fails open**
+  (allows the request) rather than hashing with a repo-known salt or blocking
+  availability. Local development and tests use a deterministic, dev-only
+  fallback (no secret needed) that is **not** a production privacy control.
 
 ## Policies and thresholds
 
