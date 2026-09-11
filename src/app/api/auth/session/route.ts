@@ -17,6 +17,7 @@ import {
   serializeError,
 } from "@/lib/logging";
 import { withApiRoute } from "@/lib/http";
+import { enforceRateLimit, getTrustedClientIp } from "@/lib/security/rateLimit";
 
 const log = getLogger("api.auth.session");
 
@@ -41,6 +42,15 @@ export const POST = withApiRoute(
 );
 
 async function handleSessionPost(request: NextRequest) {
+  // Abuse protection for this pre-auth, public endpoint, keyed by the
+  // edge-trusted client IP. Exceeding the (generous) limit throws
+  // AppRateLimitError, which withApiRoute turns into a 429 with Retry-After.
+  // On Vercel the IP is trusted; locally it is null and limiting is inactive.
+  await enforceRateLimit("auth-session", {
+    type: "ip",
+    value: getTrustedClientIp(request),
+  });
+
   if (!isFirebaseAdminConfigured) {
     return NextResponse.json(
       { error: "Authentication is not configured on this server yet." },

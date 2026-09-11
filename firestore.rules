@@ -173,6 +173,15 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Abuse rate-limit counters (see TECHNICAL.md "Rate limiting"). Each
+    // document is an opaque HMAC-hashed bucket with a fixed-window count,
+    // written and read only by server-side code via the Admin SDK (which
+    // bypasses these rules). No resident/driver/staff ever reads limiter
+    // state directly, so it is fully deny-by-default.
+    match /rateLimits/{limitId} {
+      allow read, write: if false;
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;
