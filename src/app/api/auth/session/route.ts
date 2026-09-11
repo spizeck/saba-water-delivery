@@ -10,7 +10,13 @@ import {
 } from "@/lib/auth/session";
 import type { UserRole } from "@/lib/domain/types";
 import { hasRole, isUserRole } from "@/lib/auth/roles";
-import { getLogger, serializeError, withRequestLogging } from "@/lib/logging";
+import {
+  getLogger,
+  logSecurityEvent,
+  SECURITY_EVENTS,
+  serializeError,
+} from "@/lib/logging";
+import { withApiRoute } from "@/lib/http";
 
 const log = getLogger("api.auth.session");
 
@@ -27,7 +33,7 @@ const log = getLogger("api.auth.session");
  * list and the user's actual roles to avoid open redirects. The driver portal
  * additionally requires a linked Driver Registry entry.
  */
-export const POST = withRequestLogging(
+export const POST = withApiRoute(
   "auth.session",
   async (request: NextRequest) => {
     return handleSessionPost(request);
@@ -93,6 +99,11 @@ async function handleSessionPost(request: NextRequest) {
       if (requestedPortal === "driver") {
         const linkedDriver = await getDriverByLinkedUserId(decoded.uid);
         if (!linkedDriver) {
+          logSecurityEvent(SECURITY_EVENTS.authorizationDenied, {
+            uid: decoded.uid,
+            portal: "driver",
+            reason: "no_linked_driver",
+          });
           return NextResponse.json(
             { error: "DRIVER_ACCESS_DENIED" },
             { status: 403 },
@@ -104,6 +115,11 @@ async function handleSessionPost(request: NextRequest) {
       requestedPortal === "driver" &&
       !hasRole(profile.roles, "driver")
     ) {
+      logSecurityEvent(SECURITY_EVENTS.authorizationDenied, {
+        uid: decoded.uid,
+        portal: "driver",
+        reason: "missing_driver_role",
+      });
       return NextResponse.json(
         { error: "DRIVER_ACCESS_DENIED" },
         { status: 403 },

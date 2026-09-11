@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { getAdminAuth } from "@/lib/firebase/admin";
 import { getUserProfile } from "@/lib/domain/users";
 import { hasRole } from "@/lib/auth/roles";
+import { logSecurityEvent, SECURITY_EVENTS } from "@/lib/logging";
 import type { UserProfile, UserRole } from "@/lib/domain/types";
 
 /**
@@ -60,9 +61,21 @@ export async function requireRole(
   allowed: UserRole | UserRole[],
 ): Promise<SessionUser> {
   const session = await getSessionUser();
+  // Not signed in is routine (every unauthenticated navigation) — redirect
+  // to login without a security event.
   if (!session) redirect("/login");
 
-  if (!hasRole(session.profile.roles, allowed)) redirect("/access-denied");
+  // Authenticated but lacking the required role IS a noteworthy security
+  // event: a real user tried to reach a portal/action they are not permitted
+  // to use. Role names and the opaque uid are safe to log; no PII.
+  if (!hasRole(session.profile.roles, allowed)) {
+    logSecurityEvent(SECURITY_EVENTS.authorizationDenied, {
+      uid: session.uid,
+      requiredRoles: Array.isArray(allowed) ? allowed : [allowed],
+      actualRoles: session.profile.roles,
+    });
+    redirect("/access-denied");
+  }
 
   return session;
 }

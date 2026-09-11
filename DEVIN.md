@@ -909,10 +909,47 @@ and observability"):
 - **Stable event names**: dotted `area.subject.outcome`
   (`whatsapp.message.processing_failed`). Reuse before inventing.
 - **Errors** go through `serializeError(err)`, never a raw spread.
-- HTTP routes are wrapped with `withRequestLogging(...)`, which attaches a
-  request ID (`x-request-id`), shares it across the request's logs, and
-  returns it as a response header. The logger is fail-safe — it can never
-  throw into a caller, so it must never gate core correctness.
+- HTTP routes are wrapped with the canonical boundary `withApiRoute(...)`
+  (see below), which shares the request ID across the request's logs. The
+  logger is fail-safe — it can never throw into a caller, so it must never
+  gate core correctness.
+- Server-side application code must use the logger, never `console.*` — an
+  ESLint `no-console` rule enforces this for `src/**` (the logger itself and
+  the `scripts/` CLIs are the exceptions).
+
+---
+
+# Server error handling and security events
+
+Full reference in `TECHNICAL.md` "Server error handling". The essentials:
+
+- **One route boundary.** Wrap every API route handler with
+  `withApiRoute(name, handler)` from `@/lib/http`. It adds the request ID
+  (header + on an unexpected throw, the error body), logs completion/failure
+  once, normalizes errors into a safe response, and lets `redirect()` /
+  `notFound()` propagate. Do not stack additional error wrappers.
+- **Typed errors.** Throw an `AppError` subclass (`@/lib/errors`:
+  `AppValidationError`, `AppAuthenticationError`, `AppAuthorizationError`,
+  `AppNotFoundError`, `AppConflictError`, `AppRateLimitError`,
+  `AppExternalServiceError`, `AppInternalError`) to control status/code/message.
+  Anything else becomes a generic 500 — never leak a raw exception message,
+  stack, Firebase/Firestore internal, or provider payload to a client.
+- **Client shape** is flat: `{ error, code, requestId }`. Public messages come
+  from the `AppError`; internal errors return a generic message.
+- **Preserve HTTP semantics.** Keep the correct 400/401/403/404/409/429/500
+  distinctions; authorization fails closed; do not turn every failure into 500.
+- **Don't double-log.** If you catch a failure and return/degrade, log your own
+  specific event and do NOT also re-throw — the boundary logs unhandled throws.
+- **Preserve graceful degradation.** A non-critical integration failure (e.g. a
+  delivery-confirmation email) must never roll back valid delivery state just
+  because normalization now exists.
+- **Server actions** keep their existing return contracts (sanitized messages);
+  do not force the HTTP response abstraction onto them.
+- **Security events** use `logSecurityEvent(SECURITY_EVENTS.*, meta)` from
+  `@/lib/logging` (`security.*` names). Log genuinely noteworthy
+  authorization/validation failures (authenticated-but-denied, invalid webhook
+  signature, unauthorized cron) — not routine "not signed in" redirects — with
+  safe metadata only (opaque uid, role names, request IDs).
 
 ---
 
