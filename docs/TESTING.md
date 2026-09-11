@@ -136,6 +136,17 @@ Vitest covers the pure domain logic extensively, including:
   JSON, that representative critical-path logs do not leak request notes,
   delivery directions, or raw WhatsApp message content, and that
   `security.*` events carry only safe metadata.
+- Browser security headers (`src/lib/security/__tests__/`): the generated
+  Content-Security-Policy and companion headers as structured directives — a
+  restrictive `default-src`/`base-uri`/`object-src`/`frame-ancestors`, no
+  wildcards in `script`/`connect`/`frame` sources, no `'unsafe-eval'` in
+  production, the required Firebase/Google auth origins present, server-only
+  (Meta/Resend/Firestore) and GA4 origins absent, dev/preview allowances not
+  leaking into production, the `CSP_REPORT_ONLY` toggle, COOP
+  `same-origin-allow-popups` with no COEP, and intentional Permissions-Policy
+  and HSTS. CSP is a browser-runtime concern, so these unit tests are backed by
+  the required Vercel **preview smoke test** in [`DEPLOYMENT.md`](./DEPLOYMENT.md)
+  (an automated browser test arrives with issue #34's Playwright work).
 - Error handling (`src/lib/errors/__tests__/`, `src/lib/http/__tests__/`):
   `AppError` category/code/status mapping, `normalizeError` for known/unknown
   errors, the flat client error body (public message vs. generic; no raw

@@ -953,6 +953,31 @@ Full reference in `TECHNICAL.md` "Server error handling". The essentials:
 
 ---
 
+# Browser security headers / CSP
+
+Full reference in `TECHNICAL.md` "Browser security headers / CSP". The
+essentials for contributors:
+
+- All browser security headers (CSP, COOP, Referrer-Policy, X-Frame-Options,
+  X-Content-Type-Options, Permissions-Policy, HSTS) come from ONE place:
+  `src/lib/security/headers.ts`, applied in `next.config.ts`. Do not add
+  security headers elsewhere.
+- The CSP is **derived from what the browser actually loads.** If you add a
+  browser dependency (a new external script/style/font/image host, a client
+  fetch/websocket to a new origin, client-side Firestore, Firebase Storage in
+  the browser, an analytics tag, or a real Facebook login), you MUST add its
+  exact origin to the right directive AND re-run the preview auth/console smoke
+  test. Never widen a directive with a wildcard or add a **server-only**
+  integration (Meta/WhatsApp, Resend, Firestore Admin) to the browser CSP.
+- `'unsafe-inline'` (scripts/styles) is a documented, deliberate compromise for
+  Next's inline bootstrap scripts and inline style attributes; **never add
+  `'unsafe-eval'` to production**. Dev-only relaxations live behind the
+  `nodeEnv`/`vercelEnv` checks in `headers.ts`.
+- COOP is `same-origin-allow-popups` (Firebase `signInWithPopup` needs it);
+  do not set COEP or plain `same-origin` — either can break Google sign-in.
+
+---
+
 # Public pages and legal
 
 - `/` — public homepage with the PES logo, resident/driver login buttons, Need Help card, and footer.
