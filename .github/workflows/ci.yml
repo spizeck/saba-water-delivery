@@ -1,0 +1,70 @@
+name: CI
+
+# Verifies every pull request and every push to main. The single
+# `verify` job is what GitHub branch protection / rulesets should require
+# (the check name is "CI / verify"). Keeping it one job keeps that
+# configuration simple. See docs/DEPLOYMENT.md and docs/TESTING.md.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# CI only needs to read the repository. It never uses production secrets:
+# the build runs with no Firebase configuration (the app renders a "not
+# configured" state), unit tests exercise pure domain logic, and the rules
+# tests run entirely against local Firebase emulators.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # Pinned by .nvmrc (Node 24, matching the Vercel production runtime).
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Set up Java (Firebase emulators)
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and domain tests
+        run: npm run test
+
+      - name: Production build (runs the PDFKit postbuild trace verification)
+        run: npm run build
+
+      - name: Firestore & Storage rules tests (local emulators)
+        run: npm run test:rules
+
+      # Informational only. The codebase has not yet had its one-time
+      # repo-wide Prettier pass, so this is not a merge gate. Tracked in #37.
+      - name: Formatting check (informational)
+        run: npm run format:check
+        continue-on-error: true
+
+      # Advisory. The only outstanding advisories are transitive
+      # (firebase-admin/@google-cloud/* and next's sharp) and require
+      # breaking upstream bumps, so this must not block merges. Dependabot
+      # handles dependency updates.
+      - name: Dependency audit (informational)
+        run: npm audit --audit-level=high
+        continue-on-error: true

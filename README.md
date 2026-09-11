@@ -73,6 +73,10 @@ dependence on the original volunteer developer.
 
 ## Development quick start
 
+This project targets **Node.js 24** (pinned in `.nvmrc` and
+`package.json` `engines`, matching the Vercel production runtime). With
+`fnm` or `nvm`, run `fnm use` / `nvm use` to select it.
+
 ```bash
 npm install
 npm run dev
@@ -82,13 +86,23 @@ Then open [http://localhost:3000](http://localhost:3000). Without
 Firebase environment variables configured, the app still builds and
 runs, showing a clear "not configured" state instead of failing.
 
+Run the full non-destructive verification suite before opening a pull
+request:
+
 ```bash
-npm run lint    # ESLint
-npm run build   # Production build (webpack, also runs the TypeScript compiler)
-npm run test    # Vitest
+npm run check   # lint + typecheck + Vitest + production build (incl. PDFKit trace check)
 ```
 
-See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for environment
-variables and production setup, [`TECHNICAL.md`](./TECHNICAL.md) for
-architecture, and [`docs/TESTING.md`](./docs/TESTING.md) for the full
-verification and smoke-test process.
+Individual steps are also available (`npm run lint`, `npm run typecheck`,
+`npm run test`, `npm run build`). The Firestore/Storage security-rules
+tests need the Firebase emulators and a JVM and are run separately:
+
+```bash
+npm run test:rules
+```
+
+Every pull request and push to `main` is verified by GitHub Actions (the
+`CI / verify` check). See [`docs/TESTING.md`](./docs/TESTING.md) for the
+full verification reference and CI details, [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
+for environment variables, the release flow, and branch protection, and
+[`TECHNICAL.md`](./TECHNICAL.md) for architecture.

@@ -63,6 +63,23 @@ Follow current Next.js App Router conventions.
 
 Default to Node.js runtime unless there is a concrete reason to use another runtime.
 
+## Node version
+
+The project targets **Node.js 24.x**, matching the Vercel production
+runtime. It is pinned in two places that must stay in agreement:
+
+- `.nvmrc` (`24`) — used by `fnm`/`nvm` locally and by GitHub Actions
+  (`actions/setup-node` with `node-version-file: .nvmrc`).
+- `package.json` `engines.node` (`24.x`) — read by Vercel to select the
+  deployment runtime, and pinned to the 24 major so a future Node 25/26
+  is not silently picked up.
+
+Do not change the Node major version casually: it is the runtime that
+production actually runs on. If you bump it, update `.nvmrc`, `engines`,
+and the Vercel Project Settings → Node.js Version together, and re-run
+the full verification suite. Next.js 16 requires Node `>=20.9.0` and
+firebase-tools requires `>=20`, so 24.x satisfies both with headroom.
+
 ## Bundler: webpack, not Turbopack
 
 Next.js 16 defaults `next dev`/`next build` to Turbopack. This project's
@@ -792,6 +809,73 @@ Before making a significant architectural decision:
 3. Determine whether the decision is already specified.
 4. Prefer the simplest approach satisfying the documented requirement.
 5. If an important product decision remains ambiguous, flag it rather than inventing complicated behavior.
+
+---
+
+# Verification and CI
+
+## Canonical local check
+
+Run the full non-destructive verification suite with one command before
+opening a pull request:
+
+```bash
+npm run check
+```
+
+`check` runs, in order: `lint` (ESLint) → `typecheck` (`next typegen`
+then `tsc --noEmit`) → `test` (Vitest unit/domain suite) → `build`
+(`next build --webpack`, whose `postbuild` runs the PDFKit trace
+verifier). It requires no credentials, no live Firebase, and no network
+services.
+
+`typecheck` runs `next typegen` first on purpose: Next 16 generates the
+`LayoutProps`/`PageProps`/route types into `.next/types/`, and a bare
+`tsc --noEmit` fails on a clean checkout (no `.next/`) with
+`Cannot find name 'LayoutProps'`. Do not reduce it back to plain `tsc`.
+
+The Firestore/Storage security-rules tests are run separately because
+they need the Firebase emulators (and a JVM):
+
+```bash
+npm run test:rules
+```
+
+`check` deliberately excludes `test:rules` (heavier, emulator-backed) so
+the everyday loop stays fast; CI runs both.
+
+## Formatting (Prettier)
+
+Prettier is configured (`.prettierrc.json`, `.prettierignore`) with
+`format` / `format:check` scripts and `eslint-config-prettier` wired into
+the ESLint flat config so ESLint and Prettier do not fight. The one-time
+repo-wide reformat is intentionally deferred (see issue #37), so
+`format:check` is **not** part of `check` and is only an informational,
+non-blocking CI step for now. Do not run `npm run format` across the tree
+as part of an unrelated change.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` (workflow name **CI**, single job **verify**)
+runs on every pull request and every push to `main`. The job:
+
+1. checks out and sets up Node from `.nvmrc` with npm caching;
+2. sets up a Temurin JVM for the Firebase emulators;
+3. `npm ci`;
+4. `lint` → `typecheck` → `test` → `build` (with PDFKit trace
+   verification) → `test:rules`;
+5. runs `format:check` and `npm audit --audit-level=high` as
+   **informational, non-blocking** steps.
+
+What CI does **not** do: it uses no production secrets, never touches
+production Firebase (rules tests run against local emulators only), and
+does not deploy — Vercel's Git integration owns Preview and production
+deploys. The build runs with no Firebase configuration and still
+succeeds (the app renders its "not configured" state).
+
+The required status check for branch protection is **`CI / verify`**.
+See `docs/DEPLOYMENT.md` for the recommended ruleset and the release
+flow, and `docs/TESTING.md` for the full command reference.
 
 ---
 
