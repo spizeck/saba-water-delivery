@@ -129,6 +129,12 @@ Vitest covers the pure domain logic extensively, including:
   `getMissingLoadNumbers`, historical meter snapshot integrity, default fill
   station, and statistics computation (`src/lib/domain/__tests__/loadCollection.test.ts`,
   17 tests).
+- Operational logging (`src/lib/logging/__tests__/`): redaction of
+  email/phone/tokens/secrets and nested objects, safe error serialization
+  (provider error objects are never spread), request/correlation ID
+  generation and validation, that the logger never throws and always emits
+  JSON, and that representative critical-path logs do not leak request
+  notes, delivery directions, or raw WhatsApp message content.
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently

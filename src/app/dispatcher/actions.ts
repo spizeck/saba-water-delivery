@@ -45,7 +45,10 @@ import {
 } from "@/lib/domain/waterRequests";
 import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm";
 import { sendContinuityReportEmail } from "@/lib/email/continuityReportEmail";
+import { getLogger, serializeError } from "@/lib/logging";
 import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
+
+const log = getLogger("dispatcher.actions");
 
 /** Shared, user-facing messages for water-situation validation errors. */
 const WATER_SITUATION_ERROR_MESSAGES: Record<string, string> = {
@@ -872,7 +875,11 @@ export async function sendContinuityReportNow(
   const result = await sendContinuityReportEmail(pdfBuffer, data);
 
   if (!result.ok) {
-    console.error("[continuity-report] manual send failed:", result.error);
+    log.error("report.continuity.manual_send_failed", {
+      unassigned: data.unassigned.length,
+      assigned: data.assigned.length,
+      providerError: result.error,
+    });
     return {
       status: "error",
       message: result.error ?? "Failed to send the continuity report email.",
@@ -1321,17 +1328,18 @@ export async function recordCollectionByStaff(
             message: "A note is required when recording on behalf of a driver.",
           };
         default:
-          console.error(
-            "[recordCollectionByStaff] unexpected error:",
-            err.message,
-          );
+          log.error("dispatch.record_collection.failed", {
+            error: serializeError(err),
+          });
           return {
             status: "error",
             message: "Failed to record collection. Please try again.",
           };
       }
     }
-    console.error("[recordCollectionByStaff] unexpected error:", err);
+    log.error("dispatch.record_collection.failed", {
+      error: serializeError(err),
+    });
     return {
       status: "error",
       message: "Failed to record collection. Please try again.",

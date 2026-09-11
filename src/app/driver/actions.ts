@@ -13,8 +13,11 @@ import {
   recordWaterCollection,
 } from "@/lib/domain/waterRequests";
 import type { DriverAvailabilityStatus } from "@/lib/domain/types";
+import { getLogger, serializeError } from "@/lib/logging";
 import { getDeclineResultMessage } from "@/lib/utils/declineResult";
 import { formatSabaTime } from "@/lib/utils/datetime";
+
+const log = getLogger("driver.actions");
 
 // ---------------------------------------------------------------------------
 // Availability toggle
@@ -360,14 +363,18 @@ export async function recordCollection(
             message: "Driver profile not found. Contact the water office.",
           };
         default:
-          console.error("[recordCollection] unexpected error:", err.message);
+          log.error("driver.record_collection.failed", {
+            error: serializeError(err),
+          });
           return {
             status: "error",
             message: "Failed to record collection. Please try again.",
           };
       }
     }
-    console.error("[recordCollection] unexpected error:", err);
+    log.error("driver.record_collection.failed", {
+      error: serializeError(err),
+    });
     return {
       status: "error",
       message: "Failed to record collection. Please try again.",

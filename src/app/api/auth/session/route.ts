@@ -10,6 +10,9 @@ import {
 } from "@/lib/auth/session";
 import type { UserRole } from "@/lib/domain/types";
 import { hasRole, isUserRole } from "@/lib/auth/roles";
+import { getLogger, serializeError, withRequestLogging } from "@/lib/logging";
+
+const log = getLogger("api.auth.session");
 
 /**
  * Exchanges a Firebase client ID token for an httpOnly session cookie.
@@ -24,7 +27,14 @@ import { hasRole, isUserRole } from "@/lib/auth/roles";
  * list and the user's actual roles to avoid open redirects. The driver portal
  * additionally requires a linked Driver Registry entry.
  */
-export async function POST(request: NextRequest) {
+export const POST = withRequestLogging(
+  "auth.session",
+  async (request: NextRequest) => {
+    return handleSessionPost(request);
+  },
+);
+
+async function handleSessionPost(request: NextRequest) {
   if (!isFirebaseAdminConfigured) {
     return NextResponse.json(
       { error: "Authentication is not configured on this server yet." },
@@ -134,7 +144,9 @@ export async function POST(request: NextRequest) {
     });
     return response;
   } catch (error) {
-    console.error("Failed to establish session", error);
+    // The thrown value is typically a Firebase Auth error; serializeError
+    // keeps its name/code (e.g. "auth/id-token-expired") but never the token.
+    log.warn("auth.session.verify_failed", { error: serializeError(error) });
     return NextResponse.json(
       { error: "Sign-in failed. Please try again." },
       { status: 401 },

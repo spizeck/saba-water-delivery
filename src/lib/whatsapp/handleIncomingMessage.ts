@@ -17,6 +17,7 @@ import "server-only";
  */
 
 import { getEligibleDriverOptions } from "@/lib/domain/driverRegistry";
+import { getLogger, serializeError } from "@/lib/logging";
 import { getUserProfile, updateUserProfile } from "@/lib/domain/users";
 import {
   confirmWaterDelivery,
@@ -32,6 +33,8 @@ import * as m from "./messages";
 import { matchResidentByPhone } from "./residentMatch";
 import { getOrCreateSession, saveSession } from "./session";
 import type { WhatsAppConversationContext, WhatsAppSession } from "./types";
+
+const log = getLogger("whatsapp.handler");
 
 /** Resident-friendly translations of canonical domain error codes — never expose raw codes/stack traces (see PRODUCT.md "Error Handling"). */
 const ERROR_MESSAGES: Record<string, string> = {
@@ -103,9 +106,7 @@ export async function handleIncomingWhatsAppMessage(
 ): Promise<void> {
   const config = getWhatsAppClientConfig();
   if (!config) {
-    console.error(
-      "[whatsapp] received a message but WhatsApp is not configured; dropping.",
-    );
+    log.warn("whatsapp.not_configured");
     return;
   }
 
@@ -178,11 +179,12 @@ export async function handleIncomingWhatsAppMessage(
           break;
       }
     } catch (err) {
-      console.error(
-        "[whatsapp] action failed:",
-        action.type,
-        err instanceof Error ? err.message : "unknown error",
-      );
+      // Log the action type and a safe error only — never the sender phone,
+      // the inbound text, or the customer details on the action.
+      log.error("whatsapp.action.failed", {
+        actionType: action.type,
+        error: serializeError(err),
+      });
       outbound.push(friendlyErrorMessage(err));
       // Stop processing further actions in this batch (e.g. don't
       // create a request if the profile update that was meant to
@@ -199,8 +201,9 @@ export async function handleIncomingWhatsAppMessage(
   for (const text of outbound) {
     const sendResult = await sendWhatsAppTextMessage(config, senderPhone, text);
     if (!sendResult.ok) {
-      // Never log the access token — only Meta's own error text.
-      console.error("[whatsapp] send failed:", sendResult.error);
+      // Never log the access token or recipient phone. Meta's error text is
+      // passed through redaction, which masks any embedded phone/URL.
+      log.error("whatsapp.send.failed", { providerError: sendResult.error });
     }
   }
 }

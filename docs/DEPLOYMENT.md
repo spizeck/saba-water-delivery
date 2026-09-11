@@ -115,6 +115,22 @@ continuity-report or WhatsApp variables set, those specific features
 degrade gracefully (see [`INTEGRATIONS.md`](./INTEGRATIONS.md)) rather
 than breaking the rest of the application.
 
+### Optional operational configuration
+
+| Variable | Purpose | Secret? | Default |
+| --- | --- | --- | --- |
+| `LOG_LEVEL` | Minimum level for structured operational logs (`debug`, `info`, `warn`, `error`). | No | `info` in production, `debug` otherwise |
+
+`LOG_LEVEL` is **optional** — the app runs without it. Leave it unset for
+normal operation (production logs at `info` and above, so it is not noisy).
+Set it to `debug` in Vercel Project Settings → Environment Variables and
+redeploy when you need verbose diagnostics while investigating an issue, then
+remove it. Operational logs are captured by Vercel from the application's
+output and are privacy-preserving by design; see `TECHNICAL.md`
+("Operational logging and observability") and
+[`OPERATIONS.md`](./OPERATIONS.md) for what they contain and how to use
+request IDs to diagnose a failure.
+
 ## Firebase
 
 Deploy Firestore rules and indexes (and storage rules, if changed)
