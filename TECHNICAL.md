@@ -2226,6 +2226,107 @@ telemetry, distinct from the durable Firestore audit trail.
 
 ---
 
+# Browser security headers / CSP
+
+Every route is served with a hardened set of browser security headers. This is
+defense in depth against injected/cross-site scripts, clickjacking, MIME
+sniffing, and resource exfiltration to unapproved origins — it does **not** make
+the app immune to XSS.
+
+## Where they are defined
+
+`src/lib/security/headers.ts` (`buildSecurityHeaders()`) is the **single source
+of truth**. `next.config.ts` applies it for `source: "/:path*"` via
+`async headers()`. Do not set security headers anywhere else (API routes, other
+config layers). A static header set is used deliberately — a nonce-based CSP
+would require per-request middleware that forces every page to render
+dynamically, degrading this app's static rendering, caching, and PWA behavior.
+
+## Content-Security-Policy
+
+The policy is derived from what the browser actually loads (audited for #31),
+not a generic template. Production directives:
+
+- `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
+  `frame-ancestors 'none'`, `form-action 'self'`, `worker-src 'self'`,
+  `manifest-src 'self'`, `upgrade-insecure-requests`.
+- `script-src 'self' 'unsafe-inline' https://apis.google.com`.
+  `'unsafe-inline'` is required because Next.js App Router injects per-render
+  inline bootstrap/streaming scripts that cannot be hashed; a nonce is out of
+  scope (see above). **No `'unsafe-eval'` in production** (dev only, for React
+  Fast Refresh). `https://apis.google.com` is loaded by the Firebase Google
+  sign-in popup.
+- `style-src 'self' 'unsafe-inline'` — inline `style={{…}}` attributes and
+  Next.js require it.
+- `img-src 'self' data:` — `data:` covers `next/image` blur placeholders. (QR
+  codes are inline SVG markup, not images; no `blob:` is used.)
+- `font-src 'self'` — `next/font` self-hosts the Geist font.
+- `connect-src 'self' https://<authDomain> https://identitytoolkit.googleapis.com https://securetoken.googleapis.com`
+  — the exact Firebase **Auth** endpoints. There is **no client-side
+  Firestore** in this app, so `firestore.googleapis.com` is intentionally
+  absent.
+- `frame-src 'self' https://<authDomain> https://apis.google.com` — the
+  Firebase auth helper iframe.
+
+`<authDomain>` is `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`; when it is unset (e.g. a
+CI build), that origin is omitted and the CSP stays valid.
+
+**Deliberately absent from the browser CSP:** Meta/WhatsApp (`graph.facebook.com`)
+and Resend are **server-side** integrations — the browser never contacts them,
+so adding them would only widen the attack surface. GA4 is not loaded in the
+browser today. Facebook Login is a disabled "Coming Soon" button that loads no
+browser resources.
+
+Environment differences (all scoped, none leak into production):
+
+- **Development** (`next dev`): adds `'unsafe-eval'` (Fast Refresh) and
+  `ws://localhost:*` (HMR); omits `upgrade-insecure-requests`.
+- **Preview** (Vercel): adds `https://vercel.live` (script/frame/connect) and a
+  Pusher websocket for the Vercel preview toolbar.
+- **Production**: none of the above.
+
+## COOP / COEP
+
+`Cross-Origin-Opener-Policy: same-origin-allow-popups`. The Firebase Google
+sign-in uses `signInWithPopup`, which needs the opener→popup relationship;
+plain `same-origin` **breaks** it (a COOP popup failure has bitten a prior
+Firebase app). **COEP is deliberately not set** — `require-corp` would block
+cross-origin resources (e.g. `apis.google.com`) and is not needed. Because the
+popup is auth-critical and cannot be fully verified in CI, the Vercel preview
+smoke test (below) must confirm Google sign-in completes.
+
+## Other headers
+
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` (production
+  only; HSTS is ignored over local http). **No `preload`** — it is effectively
+  irreversible and `vercel.app` is not ours to submit; revisit when a custom
+  government domain is configured.
+- `X-Frame-Options: DENY` — defense in depth alongside `frame-ancestors 'none'`
+  for legacy clients.
+- `Referrer-Policy: strict-origin-when-cross-origin`,
+  `X-Content-Type-Options: nosniff`.
+- `Permissions-Policy` disables every browser capability the app does not use
+  (camera, microphone, geolocation, payment, usb, sensors, clipboard, …). When
+  a future feature needs one (e.g. `camera` for photo capture), remove that
+  entry with an explicit review.
+
+## Enforcement vs. Report-Only
+
+The CSP is **enforced** by default. The optional `CSP_REPORT_ONLY` env var (read
+at build time) switches the header to `Content-Security-Policy-Report-Only` for
+a cautious rollout — violations are then reported to the browser console
+without blocking anything, and no external reporting vendor is involved. See
+`docs/DEPLOYMENT.md`. Diagnosing a violation: see `docs/OPERATIONS.md`.
+
+## Future Facebook Login
+
+When Facebook Login is enabled, add its browser origins (typically
+`https://connect.facebook.net` to `script-src` and `https://www.facebook.com`
+to `frame-src`) and re-run the preview auth smoke test. They are omitted today
+because no Facebook browser resource is loaded.
+
+---
+
 # Saba Operational Timezone
 
 The application's operational timezone is `America/Puerto_Rico`

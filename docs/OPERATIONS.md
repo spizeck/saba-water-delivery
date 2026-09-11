@@ -227,6 +227,29 @@ look. These carry only safe identifiers (an opaque user ID, role names),
 never personal data or secrets. Routine "not signed in" redirects are
 deliberately NOT flagged as security events.
 
+### Diagnosing a blocked resource (CSP violation)
+
+The app sends a strict Content-Security-Policy. If a page feature stops
+working after a browser resource is blocked, the browser's **devtools
+Console** shows a `Content Security Policy` violation naming the blocked
+URL and the directive that blocked it (e.g. "Refused to connect to
+'https://…' because it violates … connect-src"). To resolve one:
+
+1. Read the violation: note the blocked origin and the directive.
+2. Decide whether it is legitimate (a real dependency the app added) or
+   unwanted (an injected/third-party resource the policy correctly
+   blocked). If unwanted, leave the policy as-is.
+3. If legitimate, add the exact origin to that directive in
+   `src/lib/security/headers.ts` (never a wildcard) and redeploy. The CSP
+   rationale is in [`../TECHNICAL.md`](../TECHNICAL.md) "Browser security
+   headers / CSP".
+4. For a cautious change, an admin can set `CSP_REPORT_ONLY=1` in Vercel
+   and redeploy so violations are reported to the console without blocking
+   anything, then remove it to re-enforce once the policy is confirmed.
+
+Never disable or broaden the CSP just to silence a violation — determine
+which browser resource actually needs the allowance.
+
 By default only `info` and above are logged in production. A maintainer
 can temporarily raise verbosity by setting the `LOG_LEVEL` environment
 variable to `debug` in Vercel and redeploying (see
