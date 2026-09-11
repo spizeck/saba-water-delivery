@@ -70,8 +70,9 @@ runtime. It is pinned in two places that must stay in agreement:
 
 - `.nvmrc` (`24`) — used by `fnm`/`nvm` locally and by GitHub Actions
   (`actions/setup-node` with `node-version-file: .nvmrc`).
-- `package.json` `engines.node` (`>=24.0.0`) — read by Vercel to select
-  the deployment runtime.
+- `package.json` `engines.node` (`24.x`) — read by Vercel to select the
+  deployment runtime, and pinned to the 24 major so a future Node 25/26
+  is not silently picked up.
 
 Do not change the Node major version casually: it is the runtime that
 production actually runs on. If you bump it, update `.nvmrc`, `engines`,
@@ -855,8 +856,8 @@ as part of an unrelated change.
 
 ## Continuous integration
 
-`.github/workflows/CI` (workflow name **CI**, single job **verify**) runs
-on every pull request and every push to `main`. The job:
+`.github/workflows/ci.yml` (workflow name **CI**, single job **verify**)
+runs on every pull request and every push to `main`. The job:
 
 1. checks out and sets up Node from `.nvmrc` with npm caching;
 2. sets up a Temurin JVM for the Firebase emulators;

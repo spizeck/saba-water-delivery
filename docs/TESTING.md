@@ -59,7 +59,7 @@ run entirely locally against a throwaway test project id.
 
 ## Continuous integration
 
-`.github/workflows/CI` runs on every pull request and every push to
+`.github/workflows/ci.yml` runs on every pull request and every push to
 `main`. It has a single job, **verify** (so the required status check is
 **`CI / verify`**), which:
 

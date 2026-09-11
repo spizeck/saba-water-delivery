@@ -154,8 +154,9 @@ Production runs on **Node.js 24.x**. This is pinned so local development,
 CI, and production all agree:
 
 - `.nvmrc` (`24`) drives local `fnm`/`nvm` and GitHub Actions.
-- `package.json` `engines.node` (`>=24.0.0`) is what Vercel reads to
-  select the runtime.
+- `package.json` `engines.node` (`24.x`) is what Vercel reads to select
+  the runtime; the `24.x` pin keeps it on the Node 24 major (a future
+  Node 25/26 will not be picked up automatically).
 
 Keep Vercel Project Settings → Node.js Version consistent with these
 (24.x). If you ever change the Node major version, change `.nvmrc`,
