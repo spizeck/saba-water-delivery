@@ -16,6 +16,16 @@ import { serializeError } from "./serializeError";
  * the response header, but it does NOT reshape responses or convert errors into
  * client payloads — each route keeps its own status codes and error handling.
  * (A broader error-normalization layer is out of scope here; see issue #30.)
+ *
+ * Request-ID header coverage: the `x-request-id` header is attached to every
+ * response the wrapped handler *returns* — successes and the handled error
+ * responses each route builds itself (401/500/etc.). If a handler instead
+ * *throws* (an unexpected bug), the platform generates the 500 response and
+ * there is no response object here to attach the header to; the request ID is
+ * still emitted on the `unhandled_error` log line, so it remains discoverable
+ * in the server logs. Attaching the ID to platform-generated error responses
+ * would require response reshaping (or edge middleware) that changes error
+ * semantics, which belongs to the #30 error-normalization work, not here.
  */
 
 export const REQUEST_ID_HEADER = "x-request-id";
@@ -88,13 +98,17 @@ export function withRequestLogging(
         });
         return response;
       } catch (error) {
+        // The request ID is recorded here (and shares the ambient context of
+        // any logs the handler already emitted). We cannot set the response
+        // header on a platform-generated 500 without reshaping the error
+        // response, so we preserve existing semantics and re-throw; operators
+        // recover the ID from this log line. See the module comment and #30.
         logger.error(`api.${name}.unhandled_error`, {
           method,
           pathname,
           durationMs: Date.now() - startedAt,
           error: serializeError(error),
         });
-        // Preserve existing behavior — the platform still turns this into a 500.
         throw error;
       }
     });

@@ -56,7 +56,8 @@ const SENSITIVE_KEY_PATTERNS: RegExp[] = [
   // Personal data (PII).
   /email/i,
   /phone/i, // phone, senderPhone, recipientPhone, phoneNumber
-  /\bmobile\b/i,
+  /mobile/i, // mobile, mobile_number, mobile-number, mobilePhone
+  /\bmsisdn\b/i,
   /^name$/i,
   /display[_-]?name/i,
   /displayname/i,
@@ -130,33 +131,47 @@ function redactUrlCredentials(value: string): string {
     const port = url.port ? `:${url.port}` : "";
     const host = `${url.hostname}${port}`;
 
-    if (!url.username && !url.password) {
-      return `${url.protocol}//${host}${pathname}${search}`;
-    }
+    // Redact BOTH username and password. A username can itself be personal
+    // data (e.g. an email address used as a login), so it must never survive.
+    const credentials = url.username || url.password ? `${REDACTED}@` : "";
 
-    const hasPassword = url.password.length > 0;
-    const hasUsername = url.username.length > 0;
-    const credentials = hasPassword
-      ? `${hasUsername ? `${url.username}:` : ""}${REDACTED}@`
-      : `${url.username}@`;
-
-    return `${url.protocol}//${credentials}${host}${pathname}${search}`;
+    // Scrub the rebuilt URL for any email/phone left in the path or query.
+    return scrubPii(
+      `${url.protocol}//${credentials}${host}${pathname}${search}`,
+    );
   } catch {
     return REDACTED_URL;
   }
 }
 
+// Matches an Authorization Bearer/Basic credential wherever it appears in a
+// string, so an embedded token in prose (e.g. a provider error message) is
+// scrubbed while the surrounding text is preserved.
+const EMBEDDED_AUTH_TOKEN_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+
+function redactAuthTokensInText(text: string): string {
+  return text.replace(
+    EMBEDDED_AUTH_TOKEN_PATTERN,
+    (_match, scheme: string) => `${scheme} ${REDACTED}`,
+  );
+}
+
 function redactString(value: string): string {
-  if (
-    URL_SCHEMES_REQUIRING_CREDENTIAL_REDACTION.test(value) &&
-    value.includes("://")
-  ) {
-    return redactUrlCredentials(value);
-  }
+  // A value that is entirely a secret (a PEM private key, or a bare
+  // "Bearer <token>" / "Basic <token>") is dropped wholesale.
   if (looksLikeSecretValue(value)) {
     return REDACTED;
   }
-  return scrubPii(value);
+
+  // Otherwise sanitize credentials that appear ANYWHERE in the string — not
+  // only when the whole value is the URL or begins with the credential —
+  // preserving the surrounding non-sensitive prose:
+  //   1. credential-bearing URLs (username/password and secret query params),
+  //   2. embedded Authorization Bearer/Basic tokens,
+  //   3. email addresses and international phone numbers.
+  const withoutUrlSecrets = redactUrlsInText(value);
+  const withoutAuthTokens = redactAuthTokensInText(withoutUrlSecrets);
+  return scrubPii(withoutAuthTokens);
 }
 
 function redactValueAtDepth(value: unknown, depth: number): unknown {

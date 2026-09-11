@@ -190,14 +190,18 @@ diagnostic logs (visible in the Vercel dashboard under the project's
 separate from, and never a substitute for, the durable request history
 Firestore keeps.
 
-Every server request is tagged with a random **request ID**, returned to
-the browser in the `x-request-id` response header and included on every
-log line for that request. To diagnose a specific user-reported failure:
+Every server request is tagged with a random **request ID**, included on
+every log line for that request and returned to the browser in the
+`x-request-id` response header (present on the responses the app returns,
+including handled errors). To diagnose a specific user-reported failure:
 
 1. Ask the reporter (or read from their browser's network tab) for the
-   `x-request-id` value on the failed request, if available.
-2. In Vercel → Logs, search for that ID to see every log line for that
-   request, including the safe error name/code.
+   `x-request-id` value on the failed request, if available. (An
+   unexpected server crash produces a generic 500 without this header —
+   in that case skip to step 2 and locate the request in the logs by its
+   route and the time it happened; the request ID is still logged there.)
+2. In Vercel → Logs, search for that ID (or the route/time) to see every
+   log line for that request, including the safe error name/code.
 3. Each log line names a stable **event** (for example
    `whatsapp.message.processing_failed`,
    `report.continuity.email_failed`, `auth.session.verify_failed`) and

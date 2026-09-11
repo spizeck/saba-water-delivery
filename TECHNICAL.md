@@ -2072,11 +2072,20 @@ HTTP routes are wrapped with `withRequestLogging(name, handler)`
 - adopts a safe inbound `x-request-id` header or generates a random UUID;
 - makes that ID ambient (via `AsyncLocalStorage`) so every log line for the
   request — including downstream domain logs — shares it;
-- echoes the ID back in the `x-request-id` **response header** so an operator
-  can tie a user-reported failure to the logs;
-- logs completion/first-throw, then re-throws unchanged (it does **not**
-  reshape responses or convert errors — routes keep their own status codes; a
-  broader error-normalization layer is deliberately out of scope, see #30).
+- echoes the ID back in the `x-request-id` **response header** on every
+  response the route *returns* — successes and the handled error responses
+  routes build themselves (401/500/etc.);
+- logs completion/failure, then re-throws unchanged (it does **not** reshape
+  responses or convert errors — routes keep their own status codes).
+
+**Header coverage limitation.** If a handler *throws* instead of returning
+(an unexpected bug), the platform generates the 500 and there is no response
+object for the wrapper to set the header on. The request ID is still emitted
+on the `unhandled_error` log line, so it stays discoverable in the server
+logs (find it by matching the failing request's route and time). Attaching
+the ID to platform-generated error responses would require response reshaping
+or edge middleware that changes error semantics — that belongs to the #30
+error-normalization work, not this observability layer.
 
 IDs are always random and non-identifying — never a phone, email, or uid.
 
