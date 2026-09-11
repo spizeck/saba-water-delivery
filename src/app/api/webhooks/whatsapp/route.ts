@@ -63,7 +63,14 @@ function extractMessages(
   return messages;
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiRoute(
+  "webhooks.whatsapp",
+  async (request: NextRequest) => {
+    return handleWhatsAppVerification(request);
+  },
+);
+
+async function handleWhatsAppVerification(request: NextRequest) {
   const config = getWhatsAppClientConfig();
   if (!config) {
     return NextResponse.json(

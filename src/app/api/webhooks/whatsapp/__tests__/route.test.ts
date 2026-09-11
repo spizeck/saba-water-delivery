@@ -31,6 +31,8 @@ vi.mock("@/lib/whatsapp/client", async () => {
   };
 });
 
+import * as whatsappClient from "@/lib/whatsapp/client";
+
 import { GET, POST } from "@/app/api/webhooks/whatsapp/route";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -105,6 +107,59 @@ describe("GET /api/webhooks/whatsapp", () => {
       "https://saba-water-delivery.vercel.app/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=1234";
     const response = await GET(new NextRequest(url));
     expect(response.status).toBe(403);
+  });
+
+  it("returns the x-request-id header on a successful verification", async () => {
+    const url =
+      "https://saba-water-delivery.vercel.app/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=echo-42";
+    const response = await GET(
+      new NextRequest(url, { headers: { "x-request-id": "get-ok-1" } }),
+    );
+    // Meta verification semantics unchanged: same status and exact challenge
+    // body, now with the boundary's correlation header added.
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("echo-42");
+    expect(response.headers.get("x-request-id")).toBe("get-ok-1");
+  });
+
+  it("normalizes an unexpected GET failure safely with the request id in header and body", async () => {
+    const spy = vi
+      .spyOn(whatsappClient, "verifyWhatsAppWebhookChallenge")
+      .mockImplementation(() => {
+        // A genuine unexpected fault whose message carries a secret-shaped
+        // value, to prove nothing sensitive leaks to the client or logs.
+        throw new Error("upstream failure with Bearer super-secret-token");
+      });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const url =
+      "https://saba-water-delivery.vercel.app/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=1234";
+    const response = await GET(
+      new NextRequest(url, { headers: { "x-request-id": "get-err-1" } }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("x-request-id")).toBe("get-err-1");
+
+    const body = await response.json();
+    expect(body.code).toBe("INTERNAL_ERROR");
+    expect(body.requestId).toBe("get-err-1");
+    expect(body.error).toBe(
+      "An unexpected error occurred. Please try again later.",
+    );
+
+    // No secret/token value leaks in the response...
+    const bodyStr = JSON.stringify(body);
+    expect(bodyStr).not.toContain("super-secret-token");
+    expect(bodyStr).not.toContain("verify-me");
+
+    // ...nor in the boundary's redacted log output.
+    const logged = errorSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(logged).toContain("api.webhooks.whatsapp.unhandled_error");
+    expect(logged).not.toContain("super-secret-token");
+
+    spy.mockRestore();
+    errorSpy.mockRestore();
   });
 });
 
