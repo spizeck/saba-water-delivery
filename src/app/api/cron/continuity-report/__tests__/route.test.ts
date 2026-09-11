@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { generateContinuityReportDataMock, renderContinuityReportPdfMock, sendContinuityReportEmailMock } =
-  vi.hoisted(() => ({
-    generateContinuityReportDataMock: vi.fn(),
-    renderContinuityReportPdfMock: vi.fn(),
-    sendContinuityReportEmailMock: vi.fn(),
-  }));
+const {
+  generateContinuityReportDataMock,
+  renderContinuityReportPdfMock,
+  sendContinuityReportEmailMock,
+} = vi.hoisted(() => ({
+  generateContinuityReportDataMock: vi.fn(),
+  renderContinuityReportPdfMock: vi.fn(),
+  sendContinuityReportEmailMock: vi.fn(),
+}));
 
 vi.mock("@/lib/domain/continuityReport", () => ({
   generateContinuityReportData: generateContinuityReportDataMock,
@@ -23,9 +26,12 @@ import { GET } from "@/app/api/cron/continuity-report/route";
 const ORIGINAL_ENV = { ...process.env };
 
 function makeRequest(headers: Record<string, string> = {}): NextRequest {
-  return new NextRequest("https://saba-water-delivery.vercel.app/api/cron/continuity-report", {
-    headers,
-  });
+  return new NextRequest(
+    "https://saba-water-delivery.vercel.app/api/cron/continuity-report",
+    {
+      headers,
+    },
+  );
 }
 
 describe("GET /api/cron/continuity-report", () => {
@@ -46,7 +52,9 @@ describe("GET /api/cron/continuity-report", () => {
   });
 
   it("rejects a request with an invalid secret", async () => {
-    const response = await GET(makeRequest({ authorization: "Bearer wrong-secret" }));
+    const response = await GET(
+      makeRequest({ authorization: "Bearer wrong-secret" }),
+    );
     expect(response.status).toBe(401);
     expect(generateContinuityReportDataMock).not.toHaveBeenCalled();
   });
@@ -60,7 +68,9 @@ describe("GET /api/cron/continuity-report", () => {
     renderContinuityReportPdfMock.mockResolvedValue(Buffer.from("pdf"));
     sendContinuityReportEmailMock.mockResolvedValue({ ok: true });
 
-    const response = await GET(makeRequest({ authorization: "Bearer test-secret" }));
+    const response = await GET(
+      makeRequest({ authorization: "Bearer test-secret" }),
+    );
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -77,9 +87,14 @@ describe("GET /api/cron/continuity-report", () => {
       assigned: [],
     });
     renderContinuityReportPdfMock.mockResolvedValue(Buffer.from("pdf"));
-    sendContinuityReportEmailMock.mockResolvedValue({ ok: false, error: "Resend down" });
+    sendContinuityReportEmailMock.mockResolvedValue({
+      ok: false,
+      error: "Resend down",
+    });
 
-    const response = await GET(makeRequest({ authorization: "Bearer test-secret" }));
+    const response = await GET(
+      makeRequest({ authorization: "Bearer test-secret" }),
+    );
     const body = await response.json();
 
     expect(response.status).toBe(502);

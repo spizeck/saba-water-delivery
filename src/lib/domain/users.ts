@@ -22,7 +22,9 @@ function toUserProfile(uid: string, data: DocumentData): UserProfile {
   // Historical documents predate accountOrigin/authStatus — treat as
   // self-registered + claimed (all prelaunch accounts came from Firebase Auth).
   const accountOrigin: AccountOrigin =
-    data.accountOrigin === "staff_registered" ? "staff_registered" : "self_registered";
+    data.accountOrigin === "staff_registered"
+      ? "staff_registered"
+      : "self_registered";
   const authStatus: AuthStatus =
     data.authStatus === "unclaimed" ? "unclaimed" : "claimed";
 
@@ -37,16 +39,22 @@ function toUserProfile(uid: string, data: DocumentData): UserProfile {
     // Missing on historical documents that predate this field — treated
     // as "never confirmed" (null), never backfilled (see PRODUCT.md
     // "Delivery Profile Confirmation Reminder").
-    deliveryProfileConfirmedAt: data.deliveryProfileConfirmedAt?.toDate?.().toISOString() ?? null,
+    deliveryProfileConfirmedAt:
+      data.deliveryProfileConfirmedAt?.toDate?.().toISOString() ?? null,
     accountOrigin,
     authStatus,
-    createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
-    updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    createdAt:
+      data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    updatedAt:
+      data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
   };
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const snapshot = await getAdminDb().collection(USERS_COLLECTION).doc(uid).get();
+  const snapshot = await getAdminDb()
+    .collection(USERS_COLLECTION)
+    .doc(uid)
+    .get();
   if (!snapshot.exists) return null;
   return toUserProfile(uid, snapshot.data()!);
 }
@@ -77,7 +85,9 @@ export interface ResidentDirectoryEntry {
  * (matching the existing admin `UserList` pattern) is simpler than
  * building a search index.
  */
-export async function getResidentDirectory(): Promise<ResidentDirectoryEntry[]> {
+export async function getResidentDirectory(): Promise<
+  ResidentDirectoryEntry[]
+> {
   const db = getAdminDb();
   const snapshot = await db.collection(USERS_COLLECTION).get();
 
@@ -134,7 +144,10 @@ export async function ensureUserProfile(
 
   const existing = await ref.get();
   if (existing.exists) {
-    return { profile: toUserProfile(input.uid, existing.data()!), created: false };
+    return {
+      profile: toUserProfile(input.uid, existing.data()!),
+      created: false,
+    };
   }
 
   const defaultRoles: UserRole[] = ["resident"];
@@ -190,7 +203,9 @@ export interface UpdateUserProfileInput {
  * Reminder"). Editing only unrelated fields (e.g. display name) does
  * not refresh it.
  */
-export async function updateUserProfile(input: UpdateUserProfileInput): Promise<UserProfile> {
+export async function updateUserProfile(
+  input: UpdateUserProfileInput,
+): Promise<UserProfile> {
   if (input.village !== null && !isValidSabaVillage(input.village)) {
     throw new Error("INVALID_VILLAGE");
   }
@@ -235,7 +250,9 @@ export async function updateUserProfile(input: UpdateUserProfileInput): Promise<
  * must not be the only place that rule is enforced (see DEVIN.md
  * "Never rely on UI visibility for access control").
  */
-export async function confirmDeliveryProfile(uid: string): Promise<UserProfile> {
+export async function confirmDeliveryProfile(
+  uid: string,
+): Promise<UserProfile> {
   const ref = getAdminDb().collection(USERS_COLLECTION).doc(uid);
   const snapshot = await ref.get();
   if (!snapshot.exists) {
@@ -254,7 +271,9 @@ export async function confirmDeliveryProfile(uid: string): Promise<UserProfile> 
     throw new Error("DELIVERY_PROFILE_INCOMPLETE");
   }
 
-  await ref.update({ deliveryProfileConfirmedAt: FieldValue.serverTimestamp() });
+  await ref.update({
+    deliveryProfileConfirmedAt: FieldValue.serverTimestamp(),
+  });
   const updated = await ref.get();
   return toUserProfile(uid, updated.data()!);
 }

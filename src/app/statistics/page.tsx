@@ -21,7 +21,9 @@ export default async function StatisticsPage({ searchParams }: PageProps) {
   const { profile } = await requireRole(["dispatcher", "admin"]);
   const params = await searchParams;
 
-  const period: StatsPeriod = VALID_PERIODS.includes(params.period as StatsPeriod)
+  const period: StatsPeriod = VALID_PERIODS.includes(
+    params.period as StatsPeriod,
+  )
     ? (params.period as StatsPeriod)
     : "30d";
 

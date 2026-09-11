@@ -24,10 +24,15 @@ export function RecordBatchDeliveryButton({
   batchId: string;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [state, formAction, pending] = useActionState(recordBatchDelivery, initialState);
+  const [state, formAction, pending] = useActionState(
+    recordBatchDelivery,
+    initialState,
+  );
 
   if (state.status === "success") {
-    return <p className="text-sm font-medium text-green-700">Delivery recorded.</p>;
+    return (
+      <p className="text-sm font-medium text-green-700">Delivery recorded.</p>
+    );
   }
 
   if (!confirming) {
@@ -45,7 +50,10 @@ export function RecordBatchDeliveryButton({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+    <form
+      action={formAction}
+      className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3"
+    >
       <input type="hidden" name="requestId" value={requestId} />
       <input type="hidden" name="batchId" value={batchId} />
       <p className="text-sm text-amber-900">
@@ -59,9 +67,16 @@ export function RecordBatchDeliveryButton({
         placeholder="How the delivery was verified (e.g. driver radioed completion)"
         className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
       />
-      {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+      {state.status === "error" && (
+        <p className="text-sm text-red-700">{state.message}</p>
+      )}
       <div className="flex gap-2">
-        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+        <Button
+          type="submit"
+          size="md"
+          disabled={pending}
+          className="text-sm !h-9 !px-3"
+        >
           {pending ? "Recording\u2026" : "Yes, this was delivered"}
         </Button>
         <Button

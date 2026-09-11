@@ -39,7 +39,9 @@ export async function updateResidentProfile(
   const displayName = String(formData.get("displayName") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
   const village = String(formData.get("village") ?? "").trim();
-  const deliveryDirections = String(formData.get("deliveryDirections") ?? "").trim();
+  const deliveryDirections = String(
+    formData.get("deliveryDirections") ?? "",
+  ).trim();
 
   if (!displayName) {
     return { status: "error", message: "Display name is required." };
@@ -61,7 +63,10 @@ export async function updateResidentProfile(
     });
   } catch (err: unknown) {
     if (err instanceof Error && err.message === "INVALID_VILLAGE") {
-      return { status: "error", message: "Please select a valid village from the list." };
+      return {
+        status: "error",
+        message: "Please select a valid village from the list.",
+      };
     }
     throw err;
   }
@@ -90,14 +95,18 @@ export async function confirmDeliveryProfileInfo(
     if (err instanceof Error && err.message === "DELIVERY_PROFILE_INCOMPLETE") {
       return {
         status: "error",
-        message: "Please complete your phone, village, and delivery directions first.",
+        message:
+          "Please complete your phone, village, and delivery directions first.",
       };
     }
     throw err;
   }
 
   revalidatePath("/resident");
-  return { status: "success", message: "Thanks for confirming your delivery information." };
+  return {
+    status: "success",
+    message: "Thanks for confirming your delivery information.",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -125,12 +134,17 @@ export async function requestWater(
   }
 
   // Extract preferred driver choice. Empty string or "none" means no preference.
-  const preferredDriverId = String(formData.get("preferredDriverId") ?? "").trim();
+  const preferredDriverId = String(
+    formData.get("preferredDriverId") ?? "",
+  ).trim();
   const hasPreferred = preferredDriverId && preferredDriverId !== "none";
 
   const loads = parseRequestedLoads(formData.get("loads"));
   if (loads === null) {
-    return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+    return {
+      status: "error",
+      message: "Please select a valid quantity (1 or 2 loads).",
+    };
   }
 
   const attestationAccepted = formData.get("attestationAccepted") === "true";
@@ -151,10 +165,16 @@ export async function requestWater(
   } catch (err: unknown) {
     if (err instanceof Error) {
       if (err.message === "INVALID_LOADS") {
-        return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+        return {
+          status: "error",
+          message: "Please select a valid quantity (1 or 2 loads).",
+        };
       }
       if (err.message === "INVALID_VILLAGE") {
-        return { status: "error", message: "Please select a valid village from the list." };
+        return {
+          status: "error",
+          message: "Please select a valid village from the list.",
+        };
       }
       if (err.message === "DUPLICATE_ACTIVE_REQUEST") {
         return {
@@ -163,12 +183,16 @@ export async function requestWater(
         };
       }
       if (err.message === "REQUEST_NOTES_TOO_LONG") {
-        return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
+        return {
+          status: "error",
+          message: "Notes / Comments must be 1,000 characters or fewer.",
+        };
       }
       if (err.message === "ATTESTATION_REQUIRED") {
         return {
           status: "error",
-          message: "You must confirm the attestation before submitting the request.",
+          message:
+            "You must confirm the attestation before submitting the request.",
         };
       }
       const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
@@ -214,7 +238,10 @@ export async function confirmDelivery(
         case "NOT_REQUEST_OWNER":
           return { status: "error", message: "This is not your request." };
         case "INVALID_STATUS_FOR_CONFIRM":
-          return { status: "error", message: "This delivery cannot be confirmed right now." };
+          return {
+            status: "error",
+            message: "This delivery cannot be confirmed right now.",
+          };
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         default:
@@ -256,7 +283,10 @@ export async function disputeDelivery(
         case "NOT_REQUEST_OWNER":
           return { status: "error", message: "This is not your request." };
         case "INVALID_STATUS_FOR_DISPUTE":
-          return { status: "error", message: "This delivery cannot be disputed right now." };
+          return {
+            status: "error",
+            message: "This delivery cannot be disputed right now.",
+          };
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         default:
@@ -267,5 +297,8 @@ export async function disputeDelivery(
   }
 
   revalidatePath("/resident");
-  return { status: "success", message: "Issue reported. The water office will review." };
+  return {
+    status: "success",
+    message: "Issue reported. The water office will review.",
+  };
 }

@@ -7,7 +7,9 @@
  * is not a validation library.
  */
 
-export function formatPhoneForDisplay(phone: string | null | undefined): string | null {
+export function formatPhoneForDisplay(
+  phone: string | null | undefined,
+): string | null {
   if (!phone) return null;
   const trimmed = phone.trim();
   if (!trimmed) return null;

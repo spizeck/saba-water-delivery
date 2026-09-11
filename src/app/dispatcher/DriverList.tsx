@@ -73,10 +73,16 @@ function DriverRow({
 
   const isEligible = driver.eligibilityStatus === "eligible";
   const now = new Date();
-  const cooldownUntil = driver.cooldownUntil ? new Date(driver.cooldownUntil) : null;
-  const inCooldown = cooldownUntil !== null && cooldownUntil.getTime() > now.getTime();
-  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
-  const dailyCooldown = inCooldown && cooldownUntil.getTime() >= endOfToday.getTime();
+  const cooldownUntil = driver.cooldownUntil
+    ? new Date(driver.cooldownUntil)
+    : null;
+  const inCooldown =
+    cooldownUntil !== null && cooldownUntil.getTime() > now.getTime();
+  const endOfToday = startOfSabaDay(
+    new Date(now.getTime() + 24 * 60 * 60 * 1000),
+  );
+  const dailyCooldown =
+    inCooldown && cooldownUntil.getTime() >= endOfToday.getTime();
 
   const state: DriverOperationalState = workload?.state ?? "offline";
   const hasWork = workload ? workload.openRequests > 0 : false;
@@ -85,9 +91,7 @@ function DriverRow({
     <div className="rounded-lg border border-slate-200 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-slate-900">
-            {driver.displayName}
-          </div>
+          <div className="font-medium text-slate-900">{driver.displayName}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
             <span
               className={`rounded-full px-2 py-0.5 font-medium ${
@@ -100,11 +104,17 @@ function DriverRow({
             >
               {STATE_LABEL[state]}
             </span>
-            <span className={isEligible ? "text-green-700" : "text-red-700 font-medium"}>
+            <span
+              className={
+                isEligible ? "text-green-700" : "text-red-700 font-medium"
+              }
+            >
               {isEligible ? "Eligible" : "Ineligible"}
             </span>
             {dailyCooldown && (
-              <span className="text-amber-700 font-medium">Daily limit reached</span>
+              <span className="text-amber-700 font-medium">
+                Daily limit reached
+              </span>
             )}
             {!dailyCooldown && inCooldown && (
               <span className="text-amber-700 font-medium">
@@ -136,7 +146,9 @@ function DriverRow({
             <Button
               size="md"
               variant="outline"
-              onClick={() => setAction(action === "restrict" ? null : "restrict")}
+              onClick={() =>
+                setAction(action === "restrict" ? null : "restrict")
+              }
               className="text-xs !px-3 !h-8"
             >
               Restrict
@@ -170,9 +182,11 @@ function ActiveRun({ run }: { run: DriverRunSummary }) {
       <div>
         <span className="font-medium text-slate-800">Delivery Run</span>
         <span className="ml-2 text-slate-600">
-          {run.remainingStops} delivery{run.remainingStops !== 1 ? "ies" : "y"} remaining
+          {run.remainingStops} delivery{run.remainingStops !== 1 ? "ies" : "y"}{" "}
+          remaining
           {" · "}
-          {run.remainingLoads} load{run.remainingLoads !== 1 ? "s" : ""} remaining
+          {run.remainingLoads} load{run.remainingLoads !== 1 ? "s" : ""}{" "}
+          remaining
         </span>
       </div>
       <Link
@@ -185,11 +199,22 @@ function ActiveRun({ run }: { run: DriverRunSummary }) {
   );
 }
 
-function ActiveRequest({ request }: { request: { requestId: string; customerName: string; village: string; loads: number } }) {
+function ActiveRequest({
+  request,
+}: {
+  request: {
+    requestId: string;
+    customerName: string;
+    village: string;
+    loads: number;
+  };
+}) {
   return (
     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-md bg-slate-50 p-2 text-xs">
       <div>
-        <span className="font-medium text-slate-800">{request.customerName}</span>
+        <span className="font-medium text-slate-800">
+          {request.customerName}
+        </span>
         <span className="ml-2 text-slate-600">
           {request.village} · {formatWaterQuantity(request.loads as 1 | 2)}
         </span>
@@ -204,20 +229,29 @@ function ActiveRequest({ request }: { request: { requestId: string; customerName
   );
 }
 
-function RestrictForm({ driverId, onDone }: { driverId: string; onDone: () => void }) {
-  const [state, formAction, pending] = useActionState(restrictDriver, initialState);
+function RestrictForm({
+  driverId,
+  onDone,
+}: {
+  driverId: string;
+  onDone: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(
+    restrictDriver,
+    initialState,
+  );
 
   if (state.status === "success") {
-    return (
-      <p className="mt-2 text-sm text-green-700">{state.message}</p>
-    );
+    return <p className="mt-2 text-sm text-green-700">{state.message}</p>;
   }
 
   return (
     <form action={formAction} className="mt-3 flex flex-col gap-2">
       <input type="hidden" name="driverId" value={driverId} />
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-slate-700">Reason for restriction</span>
+        <span className="font-medium text-slate-700">
+          Reason for restriction
+        </span>
         <input
           name="reason"
           required
@@ -229,10 +263,21 @@ function RestrictForm({ driverId, onDone }: { driverId: string; onDone: () => vo
         <p className="text-sm text-red-700">{state.message}</p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" size="md" disabled={pending} className="text-xs !px-3 !h-8">
+        <Button
+          type="submit"
+          size="md"
+          disabled={pending}
+          className="text-xs !px-3 !h-8"
+        >
           {pending ? "Restricting\u2026" : "Restrict Delivery Access"}
         </Button>
-        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-xs !px-3 !h-8">
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
+          onClick={onDone}
+          className="text-xs !px-3 !h-8"
+        >
           Cancel
         </Button>
       </div>
@@ -240,13 +285,20 @@ function RestrictForm({ driverId, onDone }: { driverId: string; onDone: () => vo
   );
 }
 
-function RestoreForm({ driverId, onDone }: { driverId: string; onDone: () => void }) {
-  const [state, formAction, pending] = useActionState(restoreDriver, initialState);
+function RestoreForm({
+  driverId,
+  onDone,
+}: {
+  driverId: string;
+  onDone: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(
+    restoreDriver,
+    initialState,
+  );
 
   if (state.status === "success") {
-    return (
-      <p className="mt-2 text-sm text-green-700">{state.message}</p>
-    );
+    return <p className="mt-2 text-sm text-green-700">{state.message}</p>;
   }
 
   return (
@@ -256,10 +308,21 @@ function RestoreForm({ driverId, onDone }: { driverId: string; onDone: () => voi
         <p className="text-sm text-red-700 mb-2">{state.message}</p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" size="md" disabled={pending} className="text-xs !px-3 !h-8">
+        <Button
+          type="submit"
+          size="md"
+          disabled={pending}
+          className="text-xs !px-3 !h-8"
+        >
           {pending ? "Restoring\u2026" : "Restore Delivery Access"}
         </Button>
-        <Button type="button" variant="outline" size="md" onClick={onDone} className="text-xs !px-3 !h-8">
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
+          onClick={onDone}
+          className="text-xs !px-3 !h-8"
+        >
           Cancel
         </Button>
       </div>

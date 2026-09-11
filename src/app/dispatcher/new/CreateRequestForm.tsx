@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/Button";
@@ -12,8 +18,14 @@ import {
   WaterSituationHiddenFields,
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
-import { findIdentityMatches, findStrongEmailMatch } from "@/lib/domain/identityMatching";
-import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
+import {
+  findIdentityMatches,
+  findStrongEmailMatch,
+} from "@/lib/domain/identityMatching";
+import {
+  formatWaterQuantity,
+  type RequestedLoads,
+} from "@/lib/domain/quantity";
 import { REQUEST_NOTES_MAX_LENGTH } from "@/lib/domain/requestNotes";
 import { SABA_VILLAGES, isValidSabaVillage } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
@@ -50,9 +62,12 @@ export function CreateRequestForm({
   );
 
   const [step, setStep] = useState<"form" | "review">("form");
-  const [customerType, setCustomerType] = useState<"existing" | "new">("existing");
+  const [customerType, setCustomerType] = useState<"existing" | "new">(
+    "existing",
+  );
   const [search, setSearch] = useState("");
-  const [selectedResident, setSelectedResident] = useState<ResidentDirectoryEntry | null>(null);
+  const [selectedResident, setSelectedResident] =
+    useState<ResidentDirectoryEntry | null>(null);
 
   const [loads, setLoads] = useState<RequestedLoads>(1);
   const [village, setVillage] = useState("");
@@ -68,9 +83,13 @@ export function CreateRequestForm({
   const [frequentCount, setFrequentCount] = useState<number | null>(null);
   const [, startFrequentTransition] = useTransition();
 
-  const [emailStatus, setEmailStatus] = useState<EmailAccountStatus | null>(null);
+  const [emailStatus, setEmailStatus] = useState<EmailAccountStatus | null>(
+    null,
+  );
   const [emailStatusLoading, setEmailStatusLoading] = useState(false);
-  const [useExistingResidentUid, setUseExistingResidentUid] = useState<string | null>(null);
+  const [useExistingResidentUid, setUseExistingResidentUid] = useState<
+    string | null
+  >(null);
   const [sendInvitation, setSendInvitation] = useState(true);
 
   const possibleMatches = useMemo(() => {
@@ -99,7 +118,10 @@ export function CreateRequestForm({
     [residents, useExistingResidentUid],
   );
 
-  const [state, formAction, pending] = useActionState(createManualRequest, initialState);
+  const [state, formAction, pending] = useActionState(
+    createManualRequest,
+    initialState,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -151,7 +173,13 @@ export function CreateRequestForm({
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [customerType, selectedResident, customerPhone, useExistingResidentUid, residents]);
+  }, [
+    customerType,
+    selectedResident,
+    customerPhone,
+    useExistingResidentUid,
+    residents,
+  ]);
 
   // Check email against Firebase Auth when it changes (debounced).
   useEffect(() => {
@@ -212,7 +240,9 @@ export function CreateRequestForm({
       .slice(0, 20);
   }, [residents, search]);
 
-  const selectedDriver = eligibleDrivers.find((d) => d.uid === preferredDriverId);
+  const selectedDriver = eligibleDrivers.find(
+    (d) => d.uid === preferredDriverId,
+  );
   const selectedHasActiveRequest = selectedResident
     ? activeSet.has(selectedResident.uid)
     : false;
@@ -260,7 +290,8 @@ export function CreateRequestForm({
     elderly: "Elderly person",
     infant_or_young_child: "Infant or young child",
     medical_need: "Medical need",
-    essential_services_commercial_business: "Essential services (Commercial/business)",
+    essential_services_commercial_business:
+      "Essential services (Commercial/business)",
     hotel_or_restaurant: "Hotel or Restaurant",
   };
 
@@ -289,9 +320,12 @@ export function CreateRequestForm({
         >
           {state.message}
         </p>
-        {state.status === "invitation_warning" && state.invitation?.emailError && (
-          <p className="mt-1 text-xs text-amber-700">{state.invitation.emailError}</p>
-        )}
+        {state.status === "invitation_warning" &&
+          state.invitation?.emailError && (
+            <p className="mt-1 text-xs text-amber-700">
+              {state.invitation.emailError}
+            </p>
+          )}
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <Button size="md" onClick={() => router.push("/dispatcher")}>
             Back to dashboard
@@ -342,7 +376,9 @@ export function CreateRequestForm({
                 />
                 <div className="flex max-h-56 flex-col divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
                   {filteredResidents.length === 0 && (
-                    <p className="p-3 text-sm text-slate-500">No matching residents.</p>
+                    <p className="p-3 text-sm text-slate-500">
+                      No matching residents.
+                    </p>
                   )}
                   {filteredResidents.map((r) => {
                     const hasActive = activeSet.has(r.uid);
@@ -384,12 +420,15 @@ export function CreateRequestForm({
                         {selectedResident.displayName || "Unnamed"}
                       </p>
                       <p className="truncate text-sm text-slate-700">
-                        {formatPhoneForDisplay(selectedResident.phone) ?? "No phone"}
+                        {formatPhoneForDisplay(selectedResident.phone) ??
+                          "No phone"}
                       </p>
                       {selectedResident.village ? (
                         <p
                           className={`truncate text-sm ${
-                            selectedSavedAreaInvalid ? "font-medium text-red-700" : "text-slate-600"
+                            selectedSavedAreaInvalid
+                              ? "font-medium text-red-700"
+                              : "text-slate-600"
                           }`}
                         >
                           Saved area: {selectedResident.village}
@@ -413,8 +452,9 @@ export function CreateRequestForm({
 
                 {selectedHasActiveRequest && (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    {selectedResident.displayName} already has an unresolved water request. Resolve
-                    it from the dashboard before creating a new one.
+                    {selectedResident.displayName} already has an unresolved
+                    water request. Resolve it from the dashboard before creating
+                    a new one.
                   </p>
                 )}
               </>
@@ -459,7 +499,9 @@ export function CreateRequestForm({
 
             {/* Optional account section */}
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <h3 className="text-sm font-semibold text-slate-900">Online account</h3>
+              <h3 className="text-sm font-semibold text-slate-900">
+                Online account
+              </h3>
 
               {emailStatusLoading && (
                 <p className="mt-2 text-xs text-slate-500">Checking email...</p>
@@ -467,74 +509,91 @@ export function CreateRequestForm({
 
               {!emailStatusLoading && !customerEmail.trim() && (
                 <p className="mt-2 text-xs text-slate-600">
-                  No email provided. This requestor can continue without an online account.
+                  No email provided. This requestor can continue without an
+                  online account.
                 </p>
               )}
 
               {!emailStatusLoading && customerEmail.trim() && !emailStatus && (
                 <p className="mt-2 text-xs text-slate-500">
-                  This is optional. The request can be created without an online account.
+                  This is optional. The request can be created without an online
+                  account.
                 </p>
               )}
 
-              {!emailStatusLoading && emailStatus?.exists && emailStatus.uid && (
-                <div className="mt-2 space-y-2">
-                  <p className="text-xs font-medium text-blue-800">
-                    Existing account found for this email
-                  </p>
-                  <div className="rounded-md border border-blue-200 bg-blue-50 p-2">
-                    <p className="text-sm font-medium text-slate-900">
-                      {emailStatus.displayName || "Unnamed resident"}
+              {!emailStatusLoading &&
+                emailStatus?.exists &&
+                emailStatus.uid && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs font-medium text-blue-800">
+                      Existing account found for this email
                     </p>
-                    <p className="text-xs text-slate-600">{emailStatus.email}</p>
+                    <div className="rounded-md border border-blue-200 bg-blue-50 p-2">
+                      <p className="text-sm font-medium text-slate-900">
+                        {emailStatus.displayName || "Unnamed resident"}
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {emailStatus.email}
+                      </p>
+                    </div>
+                    <label className="flex items-start gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={useExistingResidentUid === emailStatus.uid}
+                        onChange={(e) =>
+                          setUseExistingResidentUid(
+                            e.target.checked ? emailStatus.uid : null,
+                          )
+                        }
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                      />
+                      <span>Use this resident account for the request</span>
+                    </label>
                   </div>
-                  <label className="flex items-start gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={useExistingResidentUid === emailStatus.uid}
-                      onChange={(e) =>
-                        setUseExistingResidentUid(e.target.checked ? emailStatus.uid : null)
-                      }
-                      className="mt-0.5 h-4 w-4 shrink-0"
-                    />
-                    <span>Use this resident account for the request</span>
-                  </label>
-                </div>
-              )}
+                )}
 
-              {!emailStatusLoading && emailStatus && !emailStatus.exists && customerEmail.trim() && (
-                <div className="mt-2 space-y-2">
-                  <p className="text-xs text-slate-600">
-                    No existing account uses this email. You can invite the requestor to
-                    set one up, or leave it blank and create the request without an account.
-                  </p>
-                  <label className="flex items-start gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={sendInvitation}
-                      onChange={(e) => setSendInvitation(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 shrink-0"
-                    />
-                    <span>Send account setup instructions</span>
-                  </label>
-                </div>
-              )}
+              {!emailStatusLoading &&
+                emailStatus &&
+                !emailStatus.exists &&
+                customerEmail.trim() && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs text-slate-600">
+                      No existing account uses this email. You can invite the
+                      requestor to set one up, or leave it blank and create the
+                      request without an account.
+                    </p>
+                    <label className="flex items-start gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={sendInvitation}
+                        onChange={(e) => setSendInvitation(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                      />
+                      <span>Send account setup instructions</span>
+                    </label>
+                  </div>
+                )}
 
               {possibleMatches.length > 0 && !useExistingResidentUid && (
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <p className="text-xs font-medium text-amber-800">
-                    Possible existing resident{possibleMatches.length > 1 ? "s" : ""} found
+                    Possible existing resident
+                    {possibleMatches.length > 1 ? "s" : ""} found
                   </p>
                   <ul className="mt-2 space-y-2">
                     {possibleMatches.map((m) => (
-                      <li key={m.resident.uid} className="rounded-md border border-amber-200 bg-amber-50 p-2">
+                      <li
+                        key={m.resident.uid}
+                        className="rounded-md border border-amber-200 bg-amber-50 p-2"
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-sm font-medium text-slate-900">
                               {m.resident.displayName || "Unnamed resident"}
                             </p>
                             <p className="text-xs text-slate-600">
-                              {formatPhoneForDisplay(m.resident.phone) ?? "No phone"}
+                              {formatPhoneForDisplay(m.resident.phone) ??
+                                "No phone"}
                               {m.resident.email ? ` · ${m.resident.email}` : ""}
                             </p>
                             <p className="text-xs text-amber-700">
@@ -552,7 +611,9 @@ export function CreateRequestForm({
                           </div>
                           <button
                             type="button"
-                            onClick={() => setUseExistingResidentUid(m.resident.uid)}
+                            onClick={() =>
+                              setUseExistingResidentUid(m.resident.uid)
+                            }
                             className="shrink-0 text-xs font-medium text-blue-700 hover:underline"
                           >
                             Use this account
@@ -562,45 +623,54 @@ export function CreateRequestForm({
                     ))}
                   </ul>
                   <p className="mt-2 text-xs text-slate-500">
-                    Phone matches are not proof of identity — only select a match if you are
-                    confident it is the same person.
+                    Phone matches are not proof of identity — only select a
+                    match if you are confident it is the same person.
                   </p>
                 </div>
               )}
 
-              {useExistingResidentUid && emailStatus?.exists && emailStatus.uid !== useExistingResidentUid && (
-                <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 p-2">
-                  <p className="text-xs text-blue-800">
-                    Using existing account from email match.
-                  </p>
-                </div>
-              )}
+              {useExistingResidentUid &&
+                emailStatus?.exists &&
+                emailStatus.uid !== useExistingResidentUid && (
+                  <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 p-2">
+                    <p className="text-xs text-blue-800">
+                      Using existing account from email match.
+                    </p>
+                  </div>
+                )}
 
-              {useExistingResidentUid && (!emailStatus?.exists || emailStatus.uid !== useExistingResidentUid) && (
-                <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-2">
-                  <p className="text-xs text-amber-800">
-                    An existing resident account will be used for this request.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setUseExistingResidentUid(null)}
-                    className="text-xs font-medium text-blue-700 hover:underline"
-                  >
-                    Undo
-                  </button>
-                </div>
-              )}
+              {useExistingResidentUid &&
+                (!emailStatus?.exists ||
+                  emailStatus.uid !== useExistingResidentUid) && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-2">
+                    <p className="text-xs text-amber-800">
+                      An existing resident account will be used for this
+                      request.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setUseExistingResidentUid(null)}
+                      className="text-xs font-medium text-blue-700 hover:underline"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         )}
 
         {/* Delivery location — shown for unregistered requestors and for selected
             existing residents who do not already have an active request. */}
-        {(customerType === "new" || (selectedResident && !selectedHasActiveRequest)) && (
+        {(customerType === "new" ||
+          (selectedResident && !selectedHasActiveRequest)) && (
           <div className="mt-6 flex flex-col gap-3">
-            <h3 className="text-base font-semibold text-slate-900">Delivery location</h3>
+            <h3 className="text-base font-semibold text-slate-900">
+              Delivery location
+            </h3>
             <p className="text-xs text-slate-500">
-              Applies to this request only — does not change the requestor&apos;s saved profile.
+              Applies to this request only — does not change the
+              requestor&apos;s saved profile.
             </p>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Village/area
@@ -628,14 +698,18 @@ export function CreateRequestForm({
               />
             </label>
 
-            {customerType === "existing" && frequentCount !== null && frequentCount >= 3 && (
-              <FrequentRequestWarning count={frequentCount} />
-            )}
+            {customerType === "existing" &&
+              frequentCount !== null &&
+              frequentCount >= 3 && (
+                <FrequentRequestWarning count={frequentCount} />
+              )}
           </div>
         )}
 
         <div className="mt-6">
-          <h3 className="text-base font-semibold text-slate-900">Water requested</h3>
+          <h3 className="text-base font-semibold text-slate-900">
+            Water requested
+          </h3>
           <fieldset className="mt-3 flex flex-col gap-2">
             <label className="flex items-center gap-2 text-sm text-slate-900">
               <input
@@ -663,7 +737,10 @@ export function CreateRequestForm({
         </div>
 
         <div className="mt-6">
-          <WaterSituationFields value={waterSituation} onChange={setWaterSituation} />
+          <WaterSituationFields
+            value={waterSituation}
+            onChange={setWaterSituation}
+          />
         </div>
 
         <label className="mt-6 flex flex-col gap-1 text-sm font-medium text-slate-700">
@@ -695,7 +772,8 @@ export function CreateRequestForm({
             ))}
           </select>
           <span className="text-xs font-normal text-slate-500">
-            This is the requestor&apos;s preference, not a dispatcher assignment.
+            This is the requestor&apos;s preference, not a dispatcher
+            assignment.
           </span>
         </label>
 
@@ -723,13 +801,15 @@ export function CreateRequestForm({
       : selectedPossibleMatch?.displayName || customerName;
   const requestorPhone =
     customerType === "existing"
-      ? selectedResident?.phone ?? null
+      ? (selectedResident?.phone ?? null)
       : (selectedPossibleMatch?.phone ?? customerPhone.trim()) || null;
   const requestorEmail =
     customerType === "existing"
-      ? selectedResident?.email ?? null
+      ? (selectedResident?.email ?? null)
       : (selectedPossibleMatch?.email ?? customerEmail.trim()) || null;
-  const selectedCircumstances = waterSituation.vulnerableCircumstances.filter((c) => c !== "none");
+  const selectedCircumstances = waterSituation.vulnerableCircumstances.filter(
+    (c) => c !== "none",
+  );
 
   return (
     <Card>
@@ -746,43 +826,65 @@ export function CreateRequestForm({
             <p className="text-sm text-slate-600">{requestorEmail}</p>
           )}
           {customerType === "new" && useExistingResidentUid && (
-            <p className="text-xs text-blue-600">Registered account selected.</p>
+            <p className="text-xs text-blue-600">
+              Registered account selected.
+            </p>
           )}
           {customerType === "new" && !useExistingResidentUid && (
-            <p className="text-xs text-slate-500">Unregistered requestor — no account.</p>
+            <p className="text-xs text-slate-500">
+              Unregistered requestor — no account.
+            </p>
           )}
-          {customerType === "new" && sendInvitation && !useExistingResidentUid && (
-            <p className="text-xs text-slate-500">Account setup invitation will be sent.</p>
-          )}
+          {customerType === "new" &&
+            sendInvitation &&
+            !useExistingResidentUid && (
+              <p className="text-xs text-slate-500">
+                Account setup invitation will be sent.
+              </p>
+            )}
         </section>
 
         <section className="rounded-lg border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-900">Delivery location</h3>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Delivery location
+          </h3>
           <p className="mt-1 text-sm text-slate-900">{village || "—"}</p>
           <p className="text-sm text-slate-600">{deliveryDirections || "—"}</p>
         </section>
 
         <section className="rounded-lg border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-900">Water requested</h3>
-          <p className="mt-1 text-sm text-slate-900">{formatWaterQuantity(loads)}</p>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Water requested
+          </h3>
+          <p className="mt-1 text-sm text-slate-900">
+            {formatWaterQuantity(loads)}
+          </p>
         </section>
 
         {requestNotes.trim() && (
           <section className="rounded-lg border border-slate-200 p-3">
-            <h3 className="text-sm font-semibold text-slate-900">Notes / Comments</h3>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{requestNotes.trim()}</p>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Notes / Comments
+            </h3>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+              {requestNotes.trim()}
+            </p>
           </section>
         )}
 
         <section className="rounded-lg border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-900">Preferred driver</h3>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Preferred driver
+          </h3>
           <p className="mt-1 text-sm text-slate-900">
             {selectedDriver ? selectedDriver.displayName : "No preference"}
           </p>
         </section>
 
         <section className="rounded-lg border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-900">Water situation</h3>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Water situation
+          </h3>
           <dl className="mt-1 space-y-1 text-sm">
             <div>
               <dt className="inline text-slate-500">Urgency:</dt>{" "}
@@ -794,26 +896,34 @@ export function CreateRequestForm({
               <div>
                 <dt className="inline text-slate-500">Circumstances:</dt>{" "}
                 <dd className="inline text-slate-900">
-                  {selectedCircumstances.map((c) => VULNERABLE_LABEL[c] ?? c).join(", ")}
+                  {selectedCircumstances
+                    .map((c) => VULNERABLE_LABEL[c] ?? c)
+                    .join(", ")}
                 </dd>
               </div>
             )}
             {waterSituation.personsAffected && (
               <div>
                 <dt className="inline text-slate-500">People affected:</dt>{" "}
-                <dd className="inline text-slate-900">{waterSituation.personsAffected}</dd>
+                <dd className="inline text-slate-900">
+                  {waterSituation.personsAffected}
+                </dd>
               </div>
             )}
             {waterSituation.availableStorageCapacity && (
               <div>
                 <dt className="inline text-slate-500">Available storage:</dt>{" "}
-                <dd className="inline text-slate-900">{waterSituation.availableStorageCapacity}</dd>
+                <dd className="inline text-slate-900">
+                  {waterSituation.availableStorageCapacity}
+                </dd>
               </div>
             )}
             {waterSituation.reportedUrgency === "critical" && (
               <div>
                 <dt className="inline text-slate-500">Critical explanation:</dt>{" "}
-                <dd className="inline text-slate-900">{waterSituation.criticalExplanation}</dd>
+                <dd className="inline text-slate-900">
+                  {waterSituation.criticalExplanation}
+                </dd>
               </div>
             )}
           </dl>
@@ -835,8 +945,8 @@ export function CreateRequestForm({
             ))}
           </ul>
           <p className="mt-2 text-xs text-amber-700">
-            Phone matching is not identity verification. Only proceed if you have confirmed this is
-            a different request.
+            Phone matching is not identity verification. Only proceed if you
+            have confirmed this is a different request.
           </p>
           <Button
             type="button"
@@ -860,11 +970,23 @@ export function CreateRequestForm({
         <input type="hidden" name="customerType" value={customerType} />
         <input type="hidden" name="loads" value={loads} />
         <input type="hidden" name="village" value={village} />
-        <input type="hidden" name="deliveryDirections" value={deliveryDirections} />
+        <input
+          type="hidden"
+          name="deliveryDirections"
+          value={deliveryDirections}
+        />
         <input type="hidden" name="requestNotes" value={requestNotes} />
-        <input type="hidden" name="preferredDriverId" value={preferredDriverId} />
+        <input
+          type="hidden"
+          name="preferredDriverId"
+          value={preferredDriverId}
+        />
         {customerType === "existing" ? (
-          <input type="hidden" name="residentUid" value={selectedResident?.uid ?? ""} />
+          <input
+            type="hidden"
+            name="residentUid"
+            value={selectedResident?.uid ?? ""}
+          />
         ) : (
           <>
             <input type="hidden" name="customerName" value={customerName} />
@@ -900,8 +1022,8 @@ export function CreateRequestForm({
             className="mt-0.5 h-4 w-4 shrink-0"
           />
           <span>
-            I have accurately recorded the information provided by the caller and confirmed it is
-            intended for this delivery location.
+            I have accurately recorded the information provided by the caller
+            and confirmed it is intended for this delivery location.
           </span>
         </label>
 
@@ -939,7 +1061,9 @@ export function CreateRequestForm({
 function FrequentRequestWarning({ count }: { count: number }) {
   return (
     <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-      <p className="text-sm font-medium text-amber-900">Frequent delivery activity</p>
+      <p className="text-sm font-medium text-amber-900">
+        Frequent delivery activity
+      </p>
       <p className="text-xs text-amber-800">
         This requestor has had {count} water requests within the last 7 days.
       </p>

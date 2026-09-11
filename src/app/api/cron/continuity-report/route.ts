@@ -28,11 +28,17 @@ export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     console.error("[continuity-report] CRON_SECRET is not configured");
-    return NextResponse.json({ ok: false, error: "Service unavailable" }, { status: 503 });
+    return NextResponse.json(
+      { ok: false, error: "Service unavailable" },
+      { status: 503 },
+    );
   }
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   try {
@@ -61,6 +67,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     console.error("[continuity-report] generation failed:", err);
-    return NextResponse.json({ ok: false, error: "Report generation failed." }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Report generation failed." },
+      { status: 500 },
+    );
   }
 }

@@ -74,8 +74,18 @@ describe("preferred-driver hold policy", () => {
   it("keeps the hold exclusive before expiry and releases it at the exact boundary", () => {
     const expiresAt = new Date("2026-09-02T12:45:00.000Z");
 
-    expect(isPreferredDriverHoldExpired(expiresAt, new Date("2026-09-02T12:44:59.999Z"))).toBe(false);
-    expect(isPreferredDriverHoldExpired(expiresAt, new Date("2026-09-02T12:45:00.000Z"))).toBe(true);
+    expect(
+      isPreferredDriverHoldExpired(
+        expiresAt,
+        new Date("2026-09-02T12:44:59.999Z"),
+      ),
+    ).toBe(false);
+    expect(
+      isPreferredDriverHoldExpired(
+        expiresAt,
+        new Date("2026-09-02T12:45:00.000Z"),
+      ),
+    ).toBe(true);
   });
 
   it("uses elapsed time across Saba midnight rather than a calendar-day rollover", () => {
@@ -92,10 +102,16 @@ describe("preferred-driver hold policy", () => {
 
     expect(decision.expiresAt?.toISOString()).toBe("2026-09-03T03:30:00.000Z");
     expect(
-      isPreferredDriverHoldExpired(decision.expiresAt, new Date("2026-09-02T12:00:00.000Z")),
+      isPreferredDriverHoldExpired(
+        decision.expiresAt,
+        new Date("2026-09-02T12:00:00.000Z"),
+      ),
     ).toBe(false);
     expect(
-      isPreferredDriverHoldExpired(decision.expiresAt, new Date("2026-09-03T03:30:00.000Z")),
+      isPreferredDriverHoldExpired(
+        decision.expiresAt,
+        new Date("2026-09-03T03:30:00.000Z"),
+      ),
     ).toBe(true);
   });
 });

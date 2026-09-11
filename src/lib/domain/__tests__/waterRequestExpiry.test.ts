@@ -25,9 +25,11 @@ describe("preferred-driver hold expiration", () => {
     };
     const db = {
       collection: vi.fn(() => ({ doc: vi.fn(() => requestRef) })),
-      runTransaction: vi.fn(async (callback: (txn: typeof transaction) => Promise<void>) => {
-        await callback(transaction);
-      }),
+      runTransaction: vi.fn(
+        async (callback: (txn: typeof transaction) => Promise<void>) => {
+          await callback(transaction);
+        },
+      ),
     };
     getAdminDbMock.mockReturnValue(db);
 
@@ -41,4 +43,3 @@ describe("preferred-driver hold expiration", () => {
     expect(transaction.set).not.toHaveBeenCalled();
   });
 });
-

@@ -36,17 +36,25 @@ export function CloseRunButton({ batchId }: { batchId: string }) {
   }
 
   return (
-    <form action={formAction} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+    <form
+      action={formAction}
+      className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+    >
       <input type="hidden" name="batchId" value={batchId} />
       <p className="text-sm text-amber-900">
-        This will mark the delivery run as completed. Only use this when
-        all assigned requests have already been resolved or removed.
+        This will mark the delivery run as completed. Only use this when all
+        assigned requests have already been resolved or removed.
       </p>
       {state.status === "error" && (
         <p className="mt-1 text-sm text-red-700">{state.message}</p>
       )}
       <div className="mt-2 flex gap-2">
-        <Button type="submit" size="md" disabled={pending} className="text-sm !h-9 !px-3">
+        <Button
+          type="submit"
+          size="md"
+          disabled={pending}
+          className="text-sm !h-9 !px-3"
+        >
           {pending ? "Closing\u2026" : "Yes, close this run"}
         </Button>
         <Button

@@ -8,8 +8,13 @@ export interface DeclineResultSummary {
 }
 
 /** Whether a cooldown extends to or past the end of the current Saba day. */
-export function isDailyCooldown(cooldownUntil: Date, now = new Date()): boolean {
-  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+export function isDailyCooldown(
+  cooldownUntil: Date,
+  now = new Date(),
+): boolean {
+  const endOfToday = startOfSabaDay(
+    new Date(now.getTime() + 24 * 60 * 60 * 1000),
+  );
   return cooldownUntil.getTime() >= endOfToday.getTime();
 }
 

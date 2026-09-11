@@ -1,8 +1,7 @@
 "use client";
 
 export type EstablishSessionResult =
-  | { roles: string[]; portal: string; created: boolean }
-  | { error: string };
+  { roles: string[]; portal: string; created: boolean } | { error: string };
 
 /**
  * Exchanges a Firebase client ID token for an httpOnly session cookie.
@@ -29,7 +28,9 @@ export async function establishSession(
     }
     return { roles: data.roles, portal: data.portal, created: data.created };
   } catch {
-    return { error: "Could not reach the server. Check your connection and try again." };
+    return {
+      error: "Could not reach the server. Check your connection and try again.",
+    };
   }
 }
 

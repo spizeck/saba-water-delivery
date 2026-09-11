@@ -6,22 +6,28 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SABA_VILLAGES } from "@/lib/domain/villages";
 
-import { registerPersonAction, type RegisterPersonActionState } from "../actions";
+import {
+  registerPersonAction,
+  type RegisterPersonActionState,
+} from "../actions";
 
 const initialState: RegisterPersonActionState = { status: "idle" };
 
 export function RegisterPersonForm() {
-  const [state, formAction, pending] = useActionState(registerPersonAction, initialState);
+  const [state, formAction, pending] = useActionState(
+    registerPersonAction,
+    initialState,
+  );
   const [includeDriver, setIncludeDriver] = useState(false);
 
   return (
     <Card>
       <h1 className="text-xl font-bold text-slate-900">Register Person</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Create an operational record for a resident or driver. The person
-        will be immediately available in the system for water requests and
-        dispatch. They will not have portal login access until a future
-        authentication method is linked.
+        Create an operational record for a resident or driver. The person will
+        be immediately available in the system for water requests and dispatch.
+        They will not have portal login access until a future authentication
+        method is linked.
       </p>
 
       <form action={formAction} className="mt-5 flex flex-col gap-4">
@@ -61,7 +67,10 @@ export function RegisterPersonForm() {
         {/* Email (optional) */}
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium text-slate-700">
-            Email <span className="text-xs font-normal text-slate-400">(optional)</span>
+            Email{" "}
+            <span className="text-xs font-normal text-slate-400">
+              (optional)
+            </span>
           </span>
           <input
             type="email"
@@ -80,7 +89,9 @@ export function RegisterPersonForm() {
           >
             <option value="">Not set</option>
             {SABA_VILLAGES.map((v) => (
-              <option key={v} value={v}>{v}</option>
+              <option key={v} value={v}>
+                {v}
+              </option>
             ))}
           </select>
         </label>
@@ -121,9 +132,9 @@ export function RegisterPersonForm() {
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
             <p className="text-xs text-amber-800">
               Adding the driver role here creates the user record with that
-              role. You will still need to create a Driver Registry entry
-              and link it from <strong>Admin &rarr; Driver Registry</strong> for
-              the driver to be eligible for dispatch.
+              role. You will still need to create a Driver Registry entry and
+              link it from <strong>Admin &rarr; Driver Registry</strong> for the
+              driver to be eligible for dispatch.
             </p>
           </div>
         )}
@@ -131,7 +142,9 @@ export function RegisterPersonForm() {
         {/* Duplicate warning */}
         {state.status === "duplicate_warning" && state.duplicates && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <p className="text-sm font-medium text-amber-900">{state.message}</p>
+            <p className="text-sm font-medium text-amber-900">
+              {state.message}
+            </p>
             <ul className="mt-2 flex flex-col gap-1">
               {state.duplicates.map((d) => (
                 <li key={d.uid} className="text-xs text-amber-800">

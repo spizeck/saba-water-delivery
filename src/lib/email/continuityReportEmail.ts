@@ -81,7 +81,8 @@ export async function sendContinuityReportEmail(
   } catch (err) {
     // Never log the API key or full request payload — only a generic,
     // non-secret diagnostic message.
-    const message = err instanceof Error ? err.message : "Unknown email send error";
+    const message =
+      err instanceof Error ? err.message : "Unknown email send error";
     return { ok: false, error: message };
   }
 }

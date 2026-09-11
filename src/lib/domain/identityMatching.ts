@@ -31,7 +31,9 @@ export interface ResidentIdentityMatch {
  * (`src/lib/whatsapp/phoneMatching.ts`) so dispatcher, admin, and WhatsApp
  * identity checks behave consistently.
  */
-export function normalizePhoneForMatching(phone: string | null | undefined): string | null {
+export function normalizePhoneForMatching(
+  phone: string | null | undefined,
+): string | null {
   if (!phone) return null;
   const digits = phone.replace(/\D/g, "");
   return digits.length > 0 ? digits : null;
@@ -42,7 +44,9 @@ export function normalizePhoneForMatching(phone: string | null | undefined): str
  * Email is the only strong identity signal because it is unique within
  * Firebase Authentication for this project.
  */
-export function normalizeEmailForMatching(email: string | null | undefined): string | null {
+export function normalizeEmailForMatching(
+  email: string | null | undefined,
+): string | null {
   if (!email) return null;
   const trimmed = email.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
@@ -105,10 +109,16 @@ export function findIdentityMatches(
     const residentEmail = normalizeEmailForMatching(resident.email);
     const residentPhone = normalizePhoneForMatching(resident.phone);
 
-    const emailMatch = Boolean(inputEmail && residentEmail && inputEmail === residentEmail);
-    const phoneMatch = Boolean(inputPhone && residentPhone && inputPhone === residentPhone);
+    const emailMatch = Boolean(
+      inputEmail && residentEmail && inputEmail === residentEmail,
+    );
+    const phoneMatch = Boolean(
+      inputPhone && residentPhone && inputPhone === residentPhone,
+    );
     const nameMatch = Boolean(
-      inputName && resident.displayName && namesLookSimilar(inputName, resident.displayName),
+      inputName &&
+      resident.displayName &&
+      namesLookSimilar(inputName, resident.displayName),
     );
 
     if (emailMatch) {
@@ -144,8 +154,9 @@ export function findStrongEmailMatch(
   directory: ResidentDirectoryEntry[],
 ): ResidentIdentityMatch | null {
   return (
-    findIdentityMatches(input, directory).find((m) => m.strength === "strong" && m.matchedOn.includes("email")) ??
-    null
+    findIdentityMatches(input, directory).find(
+      (m) => m.strength === "strong" && m.matchedOn.includes("email"),
+    ) ?? null
   );
 }
 

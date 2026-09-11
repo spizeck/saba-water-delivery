@@ -68,7 +68,8 @@ export async function getAllUsers(): Promise<AdminUserListItem[]> {
       roles,
       driverStatus: null,
       authStatus: data.authStatus === "unclaimed" ? "unclaimed" : "claimed",
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+      createdAt:
+        data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     });
   }
 
@@ -285,7 +286,8 @@ export async function getRoleEvents(uid: string): Promise<RoleEvent[]> {
       type: data.type,
       role: data.role,
       actorId: data.actorId,
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+      createdAt:
+        data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     };
   });
 }
@@ -294,7 +296,10 @@ export async function getRoleEvents(uid: string): Promise<RoleEvent[]> {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function toUserProfileFromDoc(uid: string, data: Record<string, unknown>): UserProfile {
+function toUserProfileFromDoc(
+  uid: string,
+  data: Record<string, unknown>,
+): UserProfile {
   const roles = toUserRoles(data.roles);
 
   return {
@@ -306,10 +311,13 @@ function toUserProfileFromDoc(uid: string, data: Record<string, unknown>): UserP
     village: (data.village as string) ?? null,
     deliveryDirections: (data.deliveryDirections as string) ?? null,
     deliveryProfileConfirmedAt:
-      (data.deliveryProfileConfirmedAt as { toDate?: () => Date })?.toDate?.().toISOString() ??
-      null,
+      (data.deliveryProfileConfirmedAt as { toDate?: () => Date })
+        ?.toDate?.()
+        .toISOString() ?? null,
     accountOrigin:
-      data.accountOrigin === "staff_registered" ? "staff_registered" : "self_registered",
+      data.accountOrigin === "staff_registered"
+        ? "staff_registered"
+        : "self_registered",
     authStatus: data.authStatus === "unclaimed" ? "unclaimed" : "claimed",
     createdAt:
       (data.createdAt as { toDate?: () => Date })?.toDate?.().toISOString() ??

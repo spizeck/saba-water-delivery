@@ -43,7 +43,10 @@ export default async function DriverDetailPage({ params }: PageProps) {
           <Container>
             <Card>
               <p className="text-slate-600">Driver not found.</p>
-              <Link href="/admin/drivers" className="mt-2 inline-block text-sm text-blue-700 hover:underline">
+              <Link
+                href="/admin/drivers"
+                className="mt-2 inline-block text-sm text-blue-700 hover:underline"
+              >
                 Back to Driver Registry
               </Link>
             </Card>
@@ -53,19 +56,22 @@ export default async function DriverDetailPage({ params }: PageProps) {
     );
   }
 
-  const [stations, meters, events, residents, linkedUser, eligibility] = await Promise.all([
-    getFillStations(),
-    getMeterAssignments(driverId),
-    getDriverEvents(driverId),
-    driver.linkedUserId ? Promise.resolve([]) : getResidentDirectory(),
-    driver.linkedUserId ? getUserProfile(driver.linkedUserId) : Promise.resolve(null),
-    getDeleteDriverEligibility(driverId),
-  ]);
+  const [stations, meters, events, residents, linkedUser, eligibility] =
+    await Promise.all([
+      getFillStations(),
+      getMeterAssignments(driverId),
+      getDriverEvents(driverId),
+      driver.linkedUserId ? Promise.resolve([]) : getResidentDirectory(),
+      driver.linkedUserId
+        ? getUserProfile(driver.linkedUserId)
+        : Promise.resolve(null),
+      getDeleteDriverEligibility(driverId),
+    ]);
 
   // Resolve actor names for event history
-  const eventActorIds = [...new Set(
-    events.map((e) => e.actorId).filter(Boolean),
-  )] as string[];
+  const eventActorIds = [
+    ...new Set(events.map((e) => e.actorId).filter(Boolean)),
+  ] as string[];
   const nameMap: Record<string, string> = {};
   if (linkedUser) nameMap[linkedUser.uid] = linkedUser.displayName;
   await Promise.all(
@@ -83,20 +89,33 @@ export default async function DriverDetailPage({ params }: PageProps) {
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6 max-w-3xl">
           <div>
-            <Link href="/admin/drivers" className="text-sm text-blue-700 hover:underline">
+            <Link
+              href="/admin/drivers"
+              className="text-sm text-blue-700 hover:underline"
+            >
               &larr; Back to Driver Registry
             </Link>
           </div>
 
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">{driver.displayName}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {driver.displayName}
+            </h1>
           </div>
 
           <EditDriverForm driver={driver} />
-          <AccountLinkPanel driver={driver} residents={residents} linkedUser={linkedUser} />
+          <AccountLinkPanel
+            driver={driver}
+            residents={residents}
+            linkedUser={linkedUser}
+          />
           <EligibilityPanel driver={driver} />
           <LifecyclePanel driver={driver} eligibility={eligibility} />
-          <MeterAssignmentsPanel driverId={driverId} stations={stations} meters={meters} />
+          <MeterAssignmentsPanel
+            driverId={driverId}
+            stations={stations}
+            meters={meters}
+          />
           <DriverEventHistory events={events} nameMap={nameMap} />
         </Container>
       </main>

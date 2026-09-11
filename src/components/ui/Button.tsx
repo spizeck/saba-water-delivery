@@ -39,7 +39,12 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={cn(baseClasses, variantClasses[variant], sizeClasses[size], className)}
+      className={cn(
+        baseClasses,
+        variantClasses[variant],
+        sizeClasses[size],
+        className,
+      )}
       {...props}
     />
   );
@@ -61,7 +66,12 @@ export function LinkButton({
   return (
     <Link
       href={href}
-      className={cn(baseClasses, variantClasses[variant], sizeClasses[size], className)}
+      className={cn(
+        baseClasses,
+        variantClasses[variant],
+        sizeClasses[size],
+        className,
+      )}
     >
       {children}
     </Link>

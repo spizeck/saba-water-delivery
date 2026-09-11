@@ -4,7 +4,11 @@ import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import type { FillStation, MeterAssignment, WaterRequest } from "@/lib/domain/types";
+import type {
+  FillStation,
+  MeterAssignment,
+  WaterRequest,
+} from "@/lib/domain/types";
 import { areAllLoadsCollected } from "@/lib/domain/loadCollection";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
@@ -26,7 +30,12 @@ interface Props {
 
 const formatDate = formatSabaDateTime;
 
-export function ClaimedDeliveries({ deliveries, customerInfo, stations, meters }: Props) {
+export function ClaimedDeliveries({
+  deliveries,
+  customerInfo,
+  stations,
+  meters,
+}: Props) {
   if (deliveries.length === 0) return null;
 
   return (
@@ -41,7 +50,10 @@ export function ClaimedDeliveries({ deliveries, customerInfo, stations, meters }
             request={req}
             customer={
               req.customer
-                ? { displayName: req.customer.displayName, phone: req.customer.phone }
+                ? {
+                    displayName: req.customer.displayName,
+                    phone: req.customer.phone,
+                  }
                 : req.customerId
                   ? customerInfo[req.customerId]
                   : undefined
@@ -69,8 +81,14 @@ function DeliveryCard({
   meters: MeterAssignment[];
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [state, formAction, pending] = useActionState(markDelivered, initialState);
-  const allCollected = areAllLoadsCollected(request.loads, request.loadCollections);
+  const [state, formAction, pending] = useActionState(
+    markDelivered,
+    initialState,
+  );
+  const allCollected = areAllLoadsCollected(
+    request.loads,
+    request.loadCollections,
+  );
 
   if (state.status === "success") {
     return (
@@ -128,7 +146,9 @@ function DeliveryCard({
         {request.requestNotes && (
           <div className="flex gap-2">
             <dt className="font-medium text-slate-500">Notes:</dt>
-            <dd className="whitespace-pre-wrap text-slate-900">{request.requestNotes}</dd>
+            <dd className="whitespace-pre-wrap text-slate-900">
+              {request.requestNotes}
+            </dd>
           </div>
         )}
         <div className="flex gap-2">
@@ -178,7 +198,8 @@ function DeliveryCard({
       ) : (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm font-medium text-amber-800">
-            Confirm that you have delivered {formatWaterQuantity(request.loads).toLowerCase()} to this address?
+            Confirm that you have delivered{" "}
+            {formatWaterQuantity(request.loads).toLowerCase()} to this address?
           </p>
           <form action={formAction} className="mt-2 flex gap-2">
             <input type="hidden" name="requestId" value={request.id} />

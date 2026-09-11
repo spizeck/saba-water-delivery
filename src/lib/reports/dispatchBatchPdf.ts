@@ -14,7 +14,10 @@ import "server-only";
 
 import PDFDocument from "pdfkit";
 
-import type { DispatchBatchPdfData, DispatchBatchPdfRow } from "@/lib/domain/dispatchBatchPdfData";
+import type {
+  DispatchBatchPdfData,
+  DispatchBatchPdfRow,
+} from "@/lib/domain/dispatchBatchPdfData";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
@@ -79,7 +82,8 @@ function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
         .join("   |   "),
     );
   doc.text(`Directions: ${row.deliveryDirections}`);
-  if (row.requestNotes) doc.text(`Request notes: ${compactNotes(row.requestNotes)}`);
+  if (row.requestNotes)
+    doc.text(`Request notes: ${compactNotes(row.requestNotes)}`);
   doc.text(
     [
       `Requested: ${formatSabaDateTime(row.requestedAt)}`,
@@ -102,14 +106,18 @@ function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
         .font("Helvetica")
         .fontSize(9)
         .fillColor("#0f172a")
-        .text(`Load ${i}:  Fill station: ________________  Meter: ________________  [ ] Water collected  Time: __________`);
+        .text(
+          `Load ${i}:  Fill station: ________________  Meter: ________________  [ ] Water collected  Time: __________`,
+        );
     }
     doc.moveDown(0.2);
     doc
       .font("Helvetica")
       .fontSize(9)
       .fillColor("#0f172a")
-      .text("[ ] Delivered      Driver initials: __________      Time: __________");
+      .text(
+        "[ ] Delivered      Driver initials: __________      Time: __________",
+      );
     doc.text("Notes: ______________________________________________");
   } else {
     doc
@@ -130,7 +138,9 @@ function drawRow(doc: PDFKit.PDFDocument, row: DispatchBatchPdfRow) {
  * Firestore access, no side effects) — used identically for the
  * initial download after creating a batch and for every later reprint.
  */
-export function renderDispatchBatchPdf(data: DispatchBatchPdfData): Promise<Buffer> {
+export function renderDispatchBatchPdf(
+  data: DispatchBatchPdfData,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "LETTER", margin: 48 });
     const chunks: Buffer[] = [];
@@ -138,7 +148,11 @@ export function renderDispatchBatchPdf(data: DispatchBatchPdfData): Promise<Buff
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#0f172a").text("Saba Water Delivery");
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(18)
+      .fillColor("#0f172a")
+      .text("Saba Water Delivery");
     doc.font("Helvetica-Bold").fontSize(14).text("Delivery Run Sheet");
     doc.moveDown(0.5);
     doc
@@ -165,7 +179,11 @@ export function renderDispatchBatchPdf(data: DispatchBatchPdfData): Promise<Buff
     doc.moveDown(0.25);
 
     if (data.rows.length === 0) {
-      doc.font("Helvetica").fontSize(9).fillColor("#64748b").text("No requests in this delivery run.");
+      doc
+        .font("Helvetica")
+        .fontSize(9)
+        .fillColor("#64748b")
+        .text("No requests in this delivery run.");
     } else {
       for (const row of data.rows) drawRow(doc, row);
     }

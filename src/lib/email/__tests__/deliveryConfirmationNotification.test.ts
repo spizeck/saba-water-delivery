@@ -34,7 +34,12 @@ import { notifyDeliveryConfirmation } from "../deliveryConfirmationNotification"
 const request = {
   id: "request-123",
   customerId: "resident-1",
-  customer: { displayName: "Jane", phone: null, email: "old@example.com", isRegistered: true },
+  customer: {
+    displayName: "Jane",
+    phone: null,
+    email: "old@example.com",
+    isRegistered: true,
+  },
   loads: 2,
   gallons: 2000,
   village: "Windwardside",
@@ -86,15 +91,25 @@ describe("delivery confirmation notification", () => {
   });
 
   it("records failure without throwing", async () => {
-    mocks.send.mockResolvedValueOnce({ ok: false, error: "Resend unavailable" });
+    mocks.send.mockResolvedValueOnce({
+      ok: false,
+      error: "Resend unavailable",
+    });
     await expect(notifyDeliveryConfirmation(request)).resolves.toBeUndefined();
     expect(mocks.update).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "failed", error: "Resend unavailable" }),
+      expect.objectContaining({
+        status: "failed",
+        error: "Resend unavailable",
+      }),
     );
   });
 
   it("safely skips a registered resident without an email", async () => {
-    mocks.getUserProfile.mockResolvedValueOnce({ displayName: "Jane", email: null, authStatus: "claimed" });
+    mocks.getUserProfile.mockResolvedValueOnce({
+      displayName: "Jane",
+      email: null,
+      authStatus: "claimed",
+    });
     await notifyDeliveryConfirmation(request);
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.update).toHaveBeenCalledWith(

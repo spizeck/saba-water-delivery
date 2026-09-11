@@ -5,7 +5,11 @@
  * `dispatchSelection.ts` for `dispatch.ts`.
  */
 
-import type { ReportedUrgency, VulnerableCircumstance, WaterSituationSnapshot } from "./types";
+import type {
+  ReportedUrgency,
+  VulnerableCircumstance,
+  WaterSituationSnapshot,
+} from "./types";
 
 /**
  * Caller-supplied water-situation answers. See PRODUCT.md "Additional
@@ -39,12 +43,16 @@ export function buildWaterSituationSnapshot(
     : (["none"] as VulnerableCircumstance[]);
 
   if (input.personsAffected != null) {
-    if (!Number.isInteger(input.personsAffected) || input.personsAffected <= 0) {
+    if (
+      !Number.isInteger(input.personsAffected) ||
+      input.personsAffected <= 0
+    ) {
       throw new Error("INVALID_PERSONS_AFFECTED");
     }
   }
 
-  const availableStorageCapacity = input.availableStorageCapacity?.trim() || null;
+  const availableStorageCapacity =
+    input.availableStorageCapacity?.trim() || null;
 
   // Critical requires a required, non-blank written explanation (see
   // PRODUCT.md "Critical Explanation") — trim whitespace before

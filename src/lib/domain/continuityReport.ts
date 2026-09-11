@@ -13,10 +13,17 @@ import "server-only";
  */
 
 import { getAllDriverRegistryEntries } from "./driverRegistry";
-import { buildContinuityReportData, type ContinuityReportData } from "./continuityReportData";
+import {
+  buildContinuityReportData,
+  type ContinuityReportData,
+} from "./continuityReportData";
 import { getOutstandingRequestsForContinuityReport } from "./waterRequests";
 
-export type { ContinuityReportData, UnassignedReportRow, AssignedReportRow } from "./continuityReportData";
+export type {
+  ContinuityReportData,
+  UnassignedReportRow,
+  AssignedReportRow,
+} from "./continuityReportData";
 
 /**
  * Generates the current continuity snapshot data. Read-only — see

@@ -29,7 +29,8 @@ function toDriverOffer(id: string, data: DocumentData): DriverOffer {
     id,
     requestId: data.requestId,
     driverId: data.driverId,
-    offeredAt: data.offeredAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    offeredAt:
+      data.offeredAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     response: (data.response ?? null) as DriverOfferResponse,
     respondedAt: data.respondedAt?.toDate?.().toISOString() ?? null,
   };
@@ -167,7 +168,10 @@ export async function countDeclinesToday(driverId: string): Promise<number> {
 
   return snapshot.docs.filter((doc) => {
     const respondedAt = doc.data().respondedAt?.toDate?.();
-    return respondedAt instanceof Date && sabaCalendarDateKey(respondedAt) === todayKey;
+    return (
+      respondedAt instanceof Date &&
+      sabaCalendarDateKey(respondedAt) === todayKey
+    );
   }).length;
 }
 
@@ -183,15 +187,24 @@ export interface OfferAggregate {
   expired: number;
 }
 
-export async function getOfferAggregate(periodStart: Date | null): Promise<OfferAggregate> {
+export async function getOfferAggregate(
+  periodStart: Date | null,
+): Promise<OfferAggregate> {
   const db = getAdminDb();
-  let query = db.collection(DRIVER_OFFERS_COLLECTION) as FirebaseFirestore.Query;
+  let query = db.collection(
+    DRIVER_OFFERS_COLLECTION,
+  ) as FirebaseFirestore.Query;
   if (periodStart) {
     query = query.where("offeredAt", ">=", periodStart);
   }
   const snapshot = await query.get();
 
-  const aggregate: OfferAggregate = { offered: 0, accepted: 0, declined: 0, expired: 0 };
+  const aggregate: OfferAggregate = {
+    offered: 0,
+    accepted: 0,
+    declined: 0,
+    expired: 0,
+  };
   for (const doc of snapshot.docs) {
     aggregate.offered++;
     const response = doc.data().response as DriverOfferResponse;

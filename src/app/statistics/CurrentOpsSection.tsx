@@ -10,7 +10,11 @@ export function CurrentOpsSection({ current }: CurrentOpsSectionProps) {
   const hasAgingIssue = current.openOver24h > 0;
 
   return (
-    <Card className={hasAgingIssue ? "!border-amber-200 !bg-amber-50/50" : undefined}>
+    <Card
+      className={
+        hasAgingIssue ? "!border-amber-200 !bg-amber-50/50" : undefined
+      }
+    >
       <h2 className="text-lg font-bold text-slate-900">Current Operations</h2>
       <p className="text-xs text-slate-500">
         Real-time system state (not filtered by period)
@@ -24,20 +28,28 @@ export function CurrentOpsSection({ current }: CurrentOpsSectionProps) {
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium text-slate-500">Critical outstanding</p>
+          <p className="text-xs font-medium text-slate-500">
+            Critical outstanding
+          </p>
           <p
             className={`mt-0.5 text-xl font-bold ${
-              current.criticalOutstanding > 0 ? "text-red-700" : "text-slate-900"
+              current.criticalOutstanding > 0
+                ? "text-red-700"
+                : "text-slate-900"
             }`}
           >
             {current.criticalOutstanding}
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium text-slate-500">Urgent outstanding</p>
+          <p className="text-xs font-medium text-slate-500">
+            Urgent outstanding
+          </p>
           <p
             className={`mt-0.5 text-xl font-bold ${
-              current.urgentOutstanding > 0 ? "text-amber-700" : "text-slate-900"
+              current.urgentOutstanding > 0
+                ? "text-amber-700"
+                : "text-slate-900"
             }`}
           >
             {current.urgentOutstanding}
@@ -80,7 +92,9 @@ export function CurrentOpsSection({ current }: CurrentOpsSectionProps) {
       {current.oldestRequestDate && (
         <p className="mt-3 text-xs text-slate-600">
           Oldest open request:{" "}
-          <span className="font-medium">{formatSabaDateTime(current.oldestRequestDate)}</span>
+          <span className="font-medium">
+            {formatSabaDateTime(current.oldestRequestDate)}
+          </span>
         </p>
       )}
     </Card>

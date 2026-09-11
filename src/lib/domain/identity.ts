@@ -45,7 +45,9 @@ export interface EmailAccountStatus {
  * account. Used by the dispatcher request form to suggest using an
  * existing resident account instead of creating another identity.
  */
-export async function getEmailAccountStatus(email: string): Promise<EmailAccountStatus> {
+export async function getEmailAccountStatus(
+  email: string,
+): Promise<EmailAccountStatus> {
   const normalized = normalizeEmailForMatching(email);
   if (!normalized) {
     return { exists: false, uid: null, displayName: null, email: null };
@@ -74,7 +76,11 @@ export async function getEmailAccountStatus(email: string): Promise<EmailAccount
 // ---------------------------------------------------------------------------
 
 export type { IdentityMatchInput };
-export { findIdentityMatches, normalizeEmailForMatching, normalizePhoneForMatching };
+export {
+  findIdentityMatches,
+  normalizeEmailForMatching,
+  normalizePhoneForMatching,
+};
 
 // ---------------------------------------------------------------------------
 // Possible request-history matches for an authenticated user
@@ -109,7 +115,10 @@ export async function findPossibleRequestHistoryMatchesForUser(
   // Unregistered requests only. We compare the stored snapshot contact
   // info (not current profile values) because a historical request's
   // identity is whatever was recorded at creation time.
-  const snapshot = await db.collection(REQUESTS_COLLECTION).where("customerId", "==", null).get();
+  const snapshot = await db
+    .collection(REQUESTS_COLLECTION)
+    .where("customerId", "==", null)
+    .get();
 
   const matches: PossibleHistoryMatch[] = [];
   for (const doc of snapshot.docs) {
@@ -138,7 +147,8 @@ export async function findPossibleRequestHistoryMatchesForUser(
   // Most recent first.
   matches.sort(
     (a, b) =>
-      new Date(b.request.requestedAt).getTime() - new Date(a.request.requestedAt).getTime(),
+      new Date(b.request.requestedAt).getTime() -
+      new Date(a.request.requestedAt).getTime(),
   );
   return matches;
 }
@@ -186,7 +196,9 @@ export async function linkRequestHistoryToUser(
   const uniqueIds = [...new Set(requestIds)];
 
   await db.runTransaction(async (txn) => {
-    const refs = uniqueIds.map((id) => db.collection(REQUESTS_COLLECTION).doc(id));
+    const refs = uniqueIds.map((id) =>
+      db.collection(REQUESTS_COLLECTION).doc(id),
+    );
     const snaps = await txn.getAll(...refs);
 
     for (const snap of snaps) {
@@ -285,7 +297,11 @@ export async function getAccountMergePreview(
   let blocked = false;
   let blockedReason: string | null = null;
 
-  if (canonicalDriverId && duplicateDriverId && canonicalDriverId !== duplicateDriverId) {
+  if (
+    canonicalDriverId &&
+    duplicateDriverId &&
+    canonicalDriverId !== duplicateDriverId
+  ) {
     blocked = true;
     blockedReason =
       "Both accounts are linked to different Driver Registry entries. Unlink one of them first.";
@@ -298,7 +314,10 @@ export async function getAccountMergePreview(
     duplicateDriverId,
     canonicalRoles: canonicalUser.roles,
     duplicateRoles: duplicateUser.roles,
-    defaultUnionRoles: buildDefaultUnionRoles(canonicalUser.roles, duplicateUser.roles),
+    defaultUnionRoles: buildDefaultUnionRoles(
+      canonicalUser.roles,
+      duplicateUser.roles,
+    ),
     requestCountForDuplicate,
     blocked,
     blockedReason,
@@ -360,15 +379,26 @@ export interface MergeUserAccountsResult {
 export async function mergeUserAccounts(
   input: MergeUserAccountsInput,
 ): Promise<MergeUserAccountsResult> {
-  const { canonicalUid, duplicateUid, actorId, reason, roleMergePolicy, explicitRoles } = input;
+  const {
+    canonicalUid,
+    duplicateUid,
+    actorId,
+    reason,
+    roleMergePolicy,
+    explicitRoles,
+  } = input;
 
   if (canonicalUid === duplicateUid) throw new Error("SAME_USER");
-  if (roleMergePolicy === "explicit" && (!explicitRoles || explicitRoles.length === 0)) {
+  if (
+    roleMergePolicy === "explicit" &&
+    (!explicitRoles || explicitRoles.length === 0)
+  ) {
     throw new Error("EXPLICIT_ROLES_REQUIRED");
   }
 
   const preview = await getAccountMergePreview(canonicalUid, duplicateUid);
-  if (preview.blocked) throw new Error(preview.blockedReason ?? "MERGE_BLOCKED");
+  if (preview.blocked)
+    throw new Error(preview.blockedReason ?? "MERGE_BLOCKED");
 
   const db = getAdminDb();
   const auth = getAdminAuth();
@@ -391,7 +421,9 @@ export async function mergeUserAccounts(
   // Relink driver registry if applicable.
   let driverRegistryRelinked: 0 | 1 = 0;
   if (preview.duplicateDriverId && !preview.canonicalDriverId) {
-    const regRef = db.collection(DRIVER_REGISTRY_COLLECTION).doc(preview.duplicateDriverId);
+    const regRef = db
+      .collection(DRIVER_REGISTRY_COLLECTION)
+      .doc(preview.duplicateDriverId);
     await regRef.update({
       linkedUserId: canonicalUid,
       updatedAt: now,
@@ -433,7 +465,10 @@ export async function mergeUserAccounts(
     await auth.deleteUser(duplicateUid);
     duplicateAuthDeleted = true;
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to delete duplicate auth user";
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Failed to delete duplicate auth user";
     deleteError = message;
   }
 
@@ -473,7 +508,9 @@ export async function mergeUserAccounts(
 // Recent merge events (for admin review)
 // ---------------------------------------------------------------------------
 
-export async function getRecentAccountMergeEvents(limit = 20): Promise<AccountMergeEvent[]> {
+export async function getRecentAccountMergeEvents(
+  limit = 20,
+): Promise<AccountMergeEvent[]> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(MERGE_EVENTS_COLLECTION)
@@ -489,7 +526,9 @@ export async function getRecentAccountMergeEvents(limit = 20): Promise<AccountMe
       duplicateUserId: data.duplicateUserId,
       actorId: data.actorId,
       createdAt:
-        data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? new Date(0).toISOString(),
+        data.createdAt?.toDate?.()?.toISOString?.() ??
+        data.createdAt ??
+        new Date(0).toISOString(),
       reason: data.reason,
       roleMergePolicy: data.roleMergePolicy,
       mergedRoles: data.mergedRoles,
@@ -518,7 +557,10 @@ export interface AccountInvitationResult {
 function getAppUrl(): string {
   // Allow override for local development / custom domains; fall back to
   // the known production deployment.
-  return process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://saba-water-delivery.vercel.app";
+  return (
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    "https://saba-water-delivery.vercel.app"
+  );
 }
 
 /**

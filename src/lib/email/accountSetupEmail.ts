@@ -54,7 +54,8 @@ export async function sendAccountSetupEmail(
 
     return { ok: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown email send error";
+    const message =
+      err instanceof Error ? err.message : "Unknown email send error";
     return { ok: false, error: message };
   }
 }

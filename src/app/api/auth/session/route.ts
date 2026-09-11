@@ -39,15 +39,24 @@ export async function POST(request: NextRequest) {
     idToken = body.idToken;
     intendedPortal = body.intendedPortal;
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
   }
 
   if (typeof idToken !== "string" || !idToken) {
     return NextResponse.json({ error: "Missing idToken." }, { status: 400 });
   }
 
-  if (intendedPortal != null && (typeof intendedPortal !== "string" || !isUserRole(intendedPortal))) {
-    return NextResponse.json({ error: "Invalid intended portal." }, { status: 400 });
+  if (
+    intendedPortal != null &&
+    (typeof intendedPortal !== "string" || !isUserRole(intendedPortal))
+  ) {
+    return NextResponse.json(
+      { error: "Invalid intended portal." },
+      { status: 400 },
+    );
   }
 
   try {
@@ -57,7 +66,8 @@ export async function POST(request: NextRequest) {
 
     const { profile, created } = await ensureUserProfile({
       uid: decoded.uid,
-      displayName: userRecord.displayName ?? userRecord.email?.split("@")[0] ?? "Resident",
+      displayName:
+        userRecord.displayName ?? userRecord.email?.split("@")[0] ?? "Resident",
       email: userRecord.email ?? null,
       phone: userRecord.phoneNumber ?? null,
     });
@@ -80,7 +90,10 @@ export async function POST(request: NextRequest) {
         }
       }
       portal = requestedPortal;
-    } else if (requestedPortal === "driver" && !hasRole(profile.roles, "driver")) {
+    } else if (
+      requestedPortal === "driver" &&
+      !hasRole(profile.roles, "driver")
+    ) {
       return NextResponse.json(
         { error: "DRIVER_ACCESS_DENIED" },
         { status: 403 },
@@ -88,7 +101,8 @@ export async function POST(request: NextRequest) {
     } else {
       // No valid explicit intent: fall back to remembered portal cookie, then
       // to the default resident portal.
-      const rememberedPortal = request.cookies.get(PORTAL_COOKIE_NAME)?.value as UserRole | undefined;
+      const rememberedPortal = request.cookies.get(PORTAL_COOKIE_NAME)
+        ?.value as UserRole | undefined;
       if (rememberedPortal && hasRole(profile.roles, rememberedPortal)) {
         portal = rememberedPortal;
       } else if (profile.roles.includes("resident")) {
@@ -98,7 +112,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const response = NextResponse.json({ roles: profile.roles, portal, created });
+    const response = NextResponse.json({
+      roles: profile.roles,
+      portal,
+      created,
+    });
     response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -117,7 +135,10 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error("Failed to establish session", error);
-    return NextResponse.json({ error: "Sign-in failed. Please try again." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Sign-in failed. Please try again." },
+      { status: 401 },
+    );
   }
 }
 

@@ -1,4 +1,6 @@
-export function safeResidentReturnTo(value: string | null | undefined): string | null {
+export function safeResidentReturnTo(
+  value: string | null | undefined,
+): string | null {
   if (!value) return null;
   try {
     const url = new URL(value, "https://saba-water-delivery.invalid");
@@ -11,7 +13,8 @@ export function safeResidentReturnTo(value: string | null | undefined): string |
 
     const requestId = url.searchParams.get("requestId");
     if (requestId && !/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) return null;
-    if ([...url.searchParams.keys()].some((key) => key !== "requestId")) return null;
+    if ([...url.searchParams.keys()].some((key) => key !== "requestId"))
+      return null;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return null;

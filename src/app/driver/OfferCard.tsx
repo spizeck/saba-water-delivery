@@ -17,7 +17,10 @@ function formatAge(isoDate: string): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   const remainingMins = mins % 60;
-  if (hours < 24) return remainingMins > 0 ? `${hours}h ${remainingMins}m ago` : `${hours}h ago`;
+  if (hours < 24)
+    return remainingMins > 0
+      ? `${hours}h ${remainingMins}m ago`
+      : `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
@@ -35,8 +38,14 @@ interface Props {
 }
 
 export function OfferCard({ offer, request, customer }: Props) {
-  const [acceptState, acceptAction, acceptPending] = useActionState(acceptOffer, initialState);
-  const [declineState, declineAction, declinePending] = useActionState(declineOffer, initialState);
+  const [acceptState, acceptAction, acceptPending] = useActionState(
+    acceptOffer,
+    initialState,
+  );
+  const [declineState, declineAction, declinePending] = useActionState(
+    declineOffer,
+    initialState,
+  );
 
   const isPreferredHold = request.status === "preferred_driver_hold";
   const pending = acceptPending || declinePending;
@@ -92,13 +101,17 @@ export function OfferCard({ offer, request, customer }: Props) {
           {customer?.displayName ?? "Customer"}
         </p>
         {customer?.phone && (
-          <a href={`tel:${customer.phone}`} className="text-sm font-medium text-blue-700 underline">
+          <a
+            href={`tel:${customer.phone}`}
+            className="text-sm font-medium text-blue-700 underline"
+          >
             {customer.phone}
           </a>
         )}
         <p className="text-sm text-slate-600">{request.village}</p>
         <p className="text-sm text-slate-600">
-          {formatWaterQuantity(request.loads)} &middot; Requested {formatAge(request.requestedAt)}
+          {formatWaterQuantity(request.loads)} &middot; Requested{" "}
+          {formatAge(request.requestedAt)}
         </p>
       </div>
 
@@ -109,7 +122,9 @@ export function OfferCard({ offer, request, customer }: Props) {
       {request.requestNotes && (
         <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
           <p className="text-xs font-medium text-slate-500">Notes / Comments</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{request.requestNotes}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+            {request.requestNotes}
+          </p>
         </div>
       )}
 
@@ -122,7 +137,12 @@ export function OfferCard({ offer, request, customer }: Props) {
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:gap-4">
         <form action={acceptAction} className="sm:flex-1">
           <input type="hidden" name="offerId" value={offer.id} />
-          <Button type="submit" size="lg" disabled={pending} className="w-full sm:!w-full">
+          <Button
+            type="submit"
+            size="lg"
+            disabled={pending}
+            className="w-full sm:!w-full"
+          >
             {acceptPending ? "Accepting\u2026" : "Accept Delivery"}
           </Button>
         </form>

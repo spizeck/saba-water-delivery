@@ -1,9 +1,15 @@
 import { requireRole } from "@/lib/auth/session";
-import { getDispatchBatch, recordBatchGenerated } from "@/lib/domain/dispatchBatches";
+import {
+  getDispatchBatch,
+  recordBatchGenerated,
+} from "@/lib/domain/dispatchBatches";
 import { buildDispatchBatchPdfData } from "@/lib/domain/dispatchBatchPdfData";
 import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { getRequestsForDispatchBatch } from "@/lib/domain/waterRequests";
-import { dispatchBatchPdfFilename, renderDispatchBatchPdf } from "@/lib/reports/dispatchBatchPdf";
+import {
+  dispatchBatchPdfFilename,
+  renderDispatchBatchPdf,
+} from "@/lib/reports/dispatchBatchPdf";
 
 /**
  * Staff-only Batch Dispatch driver run sheet — see PRODUCT.md /
@@ -40,7 +46,10 @@ export async function GET(_request: Request, { params }: RouteParams) {
   for (const d of allDrivers) {
     if (d.linkedUserId) driverNamesByUserId.set(d.linkedUserId, d.displayName);
   }
-  const driverName = batch.driverDisplayName || driverNamesByUserId.get(batch.driverId) || "Unknown driver";
+  const driverName =
+    batch.driverDisplayName ||
+    driverNamesByUserId.get(batch.driverId) ||
+    "Unknown driver";
 
   const data = buildDispatchBatchPdfData(
     batch.id,
@@ -50,7 +59,11 @@ export async function GET(_request: Request, { params }: RouteParams) {
     driverNamesByUserId,
   );
   const pdfBuffer = await renderDispatchBatchPdf(data);
-  const filename = dispatchBatchPdfFilename(batch.id, driverName, data.generatedAt);
+  const filename = dispatchBatchPdfFilename(
+    batch.id,
+    driverName,
+    data.generatedAt,
+  );
 
   await recordBatchGenerated(batch.id, session.uid);
 

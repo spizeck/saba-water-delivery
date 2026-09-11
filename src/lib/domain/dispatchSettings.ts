@@ -32,7 +32,10 @@ function defaults(): DispatchSettings {
 
 export async function getDispatchSettings(): Promise<DispatchSettings> {
   const db = getAdminDb();
-  const doc = await db.collection(CONFIG_COLLECTION).doc(DISPATCH_SETTINGS_DOC).get();
+  const doc = await db
+    .collection(CONFIG_COLLECTION)
+    .doc(DISPATCH_SETTINGS_DOC)
+    .get();
 
   if (!doc.exists) return defaults();
 

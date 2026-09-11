@@ -38,7 +38,10 @@ describe("delivery confirmation email content", () => {
   });
 
   it("creates a direct authenticated delivery-review URL", () => {
-    const url = buildDeliveryConfirmationReviewUrl("https://example.test", "request-123");
+    const url = buildDeliveryConfirmationReviewUrl(
+      "https://example.test",
+      "request-123",
+    );
     expect(url).toBe("https://example.test/resident/review/request-123");
   });
 

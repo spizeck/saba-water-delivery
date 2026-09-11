@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getAppOrigin, getPwaInstallUrl, PWA_INSTALL_PATHS, PWA_PORTAL_PATHS } from "../constants";
+import {
+  getAppOrigin,
+  getPwaInstallUrl,
+  PWA_INSTALL_PATHS,
+  PWA_PORTAL_PATHS,
+} from "../constants";
 
 describe("PWA constants", () => {
   it("returns the configured app origin when NEXT_PUBLIC_APP_URL is set", () => {
@@ -17,8 +22,12 @@ describe("PWA constants", () => {
 
   it("produces deterministic driver and resident install URLs", () => {
     vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://waterdelivery.saba.gov");
-    expect(getPwaInstallUrl("driver")).toBe("https://waterdelivery.saba.gov/driver/install");
-    expect(getPwaInstallUrl("resident")).toBe("https://waterdelivery.saba.gov/resident/install");
+    expect(getPwaInstallUrl("driver")).toBe(
+      "https://waterdelivery.saba.gov/driver/install",
+    );
+    expect(getPwaInstallUrl("resident")).toBe(
+      "https://waterdelivery.saba.gov/resident/install",
+    );
     vi.unstubAllEnvs();
   });
 

@@ -117,7 +117,9 @@ describe("buildContinuityReportData", () => {
           dispatchBatchId: "batch-123",
           batchSequence: 1,
         }),
-        makeRequest("normal-claim", "claimed", { assignedDriverId: "driver-2" }),
+        makeRequest("normal-claim", "claimed", {
+          assignedDriverId: "driver-2",
+        }),
       ],
       driverNames,
       generatedAt,
@@ -194,7 +196,10 @@ describe("buildContinuityReportData", () => {
 
   it("never includes sensitive circumstance details (waterSituation) in report rows", () => {
     const data = buildContinuityReportData(
-      [makeRequest("r9", "available"), makeRequest("r10", "claimed", { assignedDriverId: "driver-1" })],
+      [
+        makeRequest("r9", "available"),
+        makeRequest("r10", "claimed", { assignedDriverId: "driver-1" }),
+      ],
       driverNames,
       generatedAt,
     );
@@ -208,8 +213,16 @@ describe("buildContinuityReportData", () => {
 
   it("preserves the requested quantity on report rows", () => {
     const data = buildContinuityReportData(
-      [makeRequest("two-load", "available", { loads: 2, gallons: 2000 as StandardLoadGallons }),
-        makeRequest("one-load", "available", { loads: 1, gallons: 1000 as StandardLoadGallons })],
+      [
+        makeRequest("two-load", "available", {
+          loads: 2,
+          gallons: 2000 as StandardLoadGallons,
+        }),
+        makeRequest("one-load", "available", {
+          loads: 1,
+          gallons: 1000 as StandardLoadGallons,
+        }),
+      ],
       driverNames,
       generatedAt,
     );
@@ -224,7 +237,9 @@ describe("buildContinuityReportData", () => {
   it("includes request notes needed for outage operations", () => {
     const data = buildContinuityReportData(
       [
-        makeRequest("unassigned-notes", "available", { requestNotes: "Call before arrival." }),
+        makeRequest("unassigned-notes", "available", {
+          requestNotes: "Call before arrival.",
+        }),
         makeRequest("assigned-notes", "claimed", {
           assignedDriverId: "driver-1",
           requestNotes: "Use the lower gate.",
@@ -286,7 +301,9 @@ describe("buildContinuityReportData", () => {
     const none = data.assigned.find((r) => r.requestId === "none-collected");
     expect(partial?.loadsCollected).toBe(1);
     expect(partial?.collectionDetails).toHaveLength(1);
-    expect(partial?.collectionDetails[0].fillStationName).toBe("Bottom Fill Station");
+    expect(partial?.collectionDetails[0].fillStationName).toBe(
+      "Bottom Fill Station",
+    );
     expect(partial?.collectionDetails[0].meterCode).toBe("BTM1");
     expect(none?.loadsCollected).toBe(0);
     expect(none?.collectionDetails).toHaveLength(0);

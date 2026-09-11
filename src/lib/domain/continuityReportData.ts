@@ -15,7 +15,13 @@
  */
 
 import { priorityRankFor } from "./priority";
-import type { DispatchPriority, RequestedLoads, WaterLoadCollection, WaterRequest, WaterRequestStatus } from "./types";
+import type {
+  DispatchPriority,
+  RequestedLoads,
+  WaterLoadCollection,
+  WaterRequest,
+  WaterRequestStatus,
+} from "./types";
 
 /** Statuses that represent a load still waiting for a driver to claim it. */
 const UNASSIGNED_STATUSES: WaterRequestStatus[] = [
@@ -84,7 +90,8 @@ export interface ContinuityReportData {
 }
 
 function sortByPriorityThenAge(a: WaterRequest, b: WaterRequest): number {
-  const rankDiff = priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
+  const rankDiff =
+    priorityRankFor(a.dispatchPriority) - priorityRankFor(b.dispatchPriority);
   if (rankDiff !== 0) return rankDiff;
   return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
 }
@@ -126,7 +133,9 @@ export function buildContinuityReportData(
     requestedAt: r.requestedAt,
     ageMinutes: Math.max(
       0,
-      Math.round((generatedAt.getTime() - new Date(r.requestedAt).getTime()) / 60_000),
+      Math.round(
+        (generatedAt.getTime() - new Date(r.requestedAt).getTime()) / 60_000,
+      ),
     ),
     preferredDriverName: r.preferredDriverId
       ? (driverNamesByUserId.get(r.preferredDriverId) ?? "Unknown driver")

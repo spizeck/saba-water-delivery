@@ -1,23 +1,30 @@
 import "server-only";
 
-import { type DocumentData, FieldValue, Timestamp } from "firebase-admin/firestore";
+import {
+  type DocumentData,
+  FieldValue,
+  Timestamp,
+} from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import { notifyDeliveryConfirmation } from "@/lib/email/deliveryConfirmationNotification";
 import { processInBatches } from "@/lib/utils/processInBatches";
 
 import { appConfig } from "./config";
-import { BATCH_ELIGIBLE_STATUSES, computeDispatchBatchStatus } from "./dispatchBatchSelection";
-import { isValidSabaVillage } from "./villages";
 import {
-  gallonsForLoads,
-  isValidRequestedLoads,
-} from "./quantity";
+  BATCH_ELIGIBLE_STATUSES,
+  computeDispatchBatchStatus,
+} from "./dispatchBatchSelection";
+import { isValidSabaVillage } from "./villages";
+import { gallonsForLoads, isValidRequestedLoads } from "./quantity";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { getFillStations } from "./fillStations";
 import { assertQuantityEditable } from "./loadCollection";
 import { isPhysicallyActiveDriverWork } from "./activeRequestValidation";
-import { isDriverImmediatelyAvailable, getMeterAssignments } from "./driverRegistry";
+import {
+  isDriverImmediatelyAvailable,
+  getMeterAssignments,
+} from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import { normalizeRequestNotes } from "./requestNotes";
 import {
@@ -87,9 +94,14 @@ async function readBatchMemberStatusesForSync(
    * batch (reassigned to a different driver, or cancelled) and should
    * be excluded from the computed member set entirely. */
   mutatingRequestNewStatus: WaterRequestStatus | null,
-): Promise<{ batchRef: FirebaseFirestore.DocumentReference; status: DispatchBatchStatus }> {
+): Promise<{
+  batchRef: FirebaseFirestore.DocumentReference;
+  status: DispatchBatchStatus;
+}> {
   const membersSnap = await txn.get(
-    db.collection(REQUESTS_COLLECTION).where("dispatchBatchId", "==", dispatchBatchId),
+    db
+      .collection(REQUESTS_COLLECTION)
+      .where("dispatchBatchId", "==", dispatchBatchId),
   );
   const statuses: WaterRequestStatus[] = [];
   for (const doc of membersSnap.docs) {
@@ -138,7 +150,9 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     village: data.village,
     deliveryDirections: data.deliveryDirections,
     requestNotes:
-      typeof data.requestNotes === "string" ? data.requestNotes.trim() || null : null,
+      typeof data.requestNotes === "string"
+        ? data.requestNotes.trim() || null
+        : null,
     preferredDriverId: data.preferredDriverId ?? null,
     preferredDriverExpiresAt:
       data.preferredDriverExpiresAt?.toDate?.().toISOString() ?? null,
@@ -151,37 +165,52 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
       ? {
           personsAffected: data.waterSituation.personsAffected ?? null,
           vulnerableCircumstances:
-            (data.waterSituation.vulnerableCircumstances as VulnerableCircumstance[]) ?? [],
+            (data.waterSituation
+              .vulnerableCircumstances as VulnerableCircumstance[]) ?? [],
           availableStorageCapacity:
-            (data.waterSituation.availableStorageCapacity as string | undefined) ?? null,
-          reportedUrgency: (data.waterSituation.reportedUrgency as ReportedUrgency) ?? "normal",
+            (data.waterSituation.availableStorageCapacity as
+              string | undefined) ?? null,
+          reportedUrgency:
+            (data.waterSituation.reportedUrgency as ReportedUrgency) ??
+            "normal",
           criticalExplanation:
-            (data.waterSituation.criticalExplanation as string | undefined) ?? null,
+            (data.waterSituation.criticalExplanation as string | undefined) ??
+            null,
         }
       : null,
     attestationAccepted: data.attestationAccepted ?? null,
-    attestationAcceptedAt: data.attestationAcceptedAt?.toDate?.().toISOString() ?? null,
+    attestationAcceptedAt:
+      data.attestationAcceptedAt?.toDate?.().toISOString() ?? null,
     dispatchPriority: (data.dispatchPriority as DispatchPriority) ?? "normal",
-    prioritySource: data.prioritySource === "dispatcher" ? "dispatcher" : "system",
+    prioritySource:
+      data.prioritySource === "dispatcher" ? "dispatcher" : "system",
     priorityReason: data.priorityReason ?? null,
     priorityUpdatedBy: data.priorityUpdatedBy ?? null,
     priorityUpdatedAt: data.priorityUpdatedAt?.toDate?.().toISOString() ?? null,
-    requestedAt: data.requestedAt?.toDate?.().toISOString() ?? new Date().toISOString(),
+    requestedAt:
+      data.requestedAt?.toDate?.().toISOString() ?? new Date().toISOString(),
     availableAt: data.availableAt?.toDate?.().toISOString() ?? null,
     claimedAt: data.claimedAt?.toDate?.().toISOString() ?? null,
     deliveredAt: data.deliveredAt?.toDate?.().toISOString() ?? null,
     confirmedAt: data.confirmedAt?.toDate?.().toISOString() ?? null,
-    createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
-    updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    createdAt:
+      data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    updatedAt:
+      data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     dispatchBatchId: data.dispatchBatchId ?? null,
-    batchSequence: typeof data.batchSequence === "number" ? data.batchSequence : null,
+    batchSequence:
+      typeof data.batchSequence === "number" ? data.batchSequence : null,
     dispatchOverrideRank:
-      typeof data.dispatchOverrideRank === "number" ? data.dispatchOverrideRank : null,
+      typeof data.dispatchOverrideRank === "number"
+        ? data.dispatchOverrideRank
+        : null,
     loadCollections: Array.isArray(data.loadCollections)
       ? data.loadCollections.map((lc: Record<string, unknown>) => ({
           loadNumber: lc.loadNumber as 1 | 2,
-          collectedAt: (lc.collectedAt as { toDate?: () => Date })?.toDate?.().toISOString()
-            ?? (lc.collectedAt as string),
+          collectedAt:
+            (lc.collectedAt as { toDate?: () => Date })
+              ?.toDate?.()
+              .toISOString() ?? (lc.collectedAt as string),
           fillStationId: lc.fillStationId as string,
           fillStationName: lc.fillStationName as string,
           meterCode: lc.meterCode as string,
@@ -307,7 +336,9 @@ export async function getActiveCustomerIds(): Promise<Set<string>> {
  * warning for staff judgment, never a silent block. See PRODUCT.md
  * "Duplicate Requests".
  */
-export async function findActiveRequestsByPhone(phone: string): Promise<WaterRequest[]> {
+export async function findActiveRequestsByPhone(
+  phone: string,
+): Promise<WaterRequest[]> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(REQUESTS_COLLECTION)
@@ -332,7 +363,9 @@ export async function findActiveRequestsByPhone(phone: string): Promise<WaterReq
 /**
  * Fetches a single water request by ID, or null if it does not exist.
  */
-export async function getWaterRequestById(requestId: string): Promise<WaterRequest | null> {
+export async function getWaterRequestById(
+  requestId: string,
+): Promise<WaterRequest | null> {
   const db = getAdminDb();
   const doc = await db.collection(REQUESTS_COLLECTION).doc(requestId).get();
   if (!doc.exists) return null;
@@ -390,7 +423,9 @@ export async function getBatchEligibleRequests(): Promise<WaterRequest[]> {
  * (reassigned to a different driver, or cancelled) without that
  * historical array being rewritten. See TECHNICAL.md "Batch Dispatch".
  */
-export async function getRequestsForDispatchBatch(batchId: string): Promise<WaterRequest[]> {
+export async function getRequestsForDispatchBatch(
+  batchId: string,
+): Promise<WaterRequest[]> {
   const db = getAdminDb();
   // Do not orderBy "batchSequence" here — the equality on "dispatchBatchId"
   // needs a single-field index (already present), while adding orderBy would
@@ -435,7 +470,10 @@ export interface CreateWaterRequestInput {
    * `customerId` is set — if omitted, it is built automatically from the
    * resident's saved profile so every request gets a consistent snapshot.
    */
-  customer?: Pick<WaterRequestCustomerSnapshot, "displayName" | "phone" | "email"> | null;
+  customer?: Pick<
+    WaterRequestCustomerSnapshot,
+    "displayName" | "phone" | "email"
+  > | null;
   /**
    * Request IDs of a possible-duplicate match the caller deliberately
    * chose to proceed past (see `findActiveRequestsByPhone`). Recorded on
@@ -567,7 +605,11 @@ export async function createWaterRequest(
     now: new Date(),
     windowHours: appConfig.preferredDriverWindowHours,
   });
-  const { willHold, expiresAt: preferredDriverExpiresAt, status: initialStatus } = holdDecision;
+  const {
+    willHold,
+    expiresAt: preferredDriverExpiresAt,
+    status: initialStatus,
+  } = holdDecision;
 
   const now = FieldValue.serverTimestamp();
 
@@ -654,7 +696,10 @@ export async function createWaterRequest(
     // Audit event: request_created / request_created_by_dispatcher
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
-      type: source === "dispatcher" ? "request_created_by_dispatcher" : "request_created",
+      type:
+        source === "dispatcher"
+          ? "request_created_by_dispatcher"
+          : "request_created",
       actorId: creationActorId,
       actorRole: source === "dispatcher" ? "dispatcher" : "resident",
       createdAt: now,
@@ -831,7 +876,9 @@ export async function claimWaterRequest(
       if (lockedReqSnap.exists) {
         const lockedData = lockedReqSnap.data()!;
         if (
-          isPhysicallyActiveDriverWork(lockedData.status as WaterRequestStatus) &&
+          isPhysicallyActiveDriverWork(
+            lockedData.status as WaterRequestStatus,
+          ) &&
           lockedData.assignedDriverId === driverId
         ) {
           throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
@@ -924,7 +971,8 @@ export async function expirePreferredDriverHold(
       createdAt: now,
       metadata: {
         preferredDriverId: data.preferredDriverId,
-        expiredAt: data.preferredDriverExpiresAt?.toDate?.().toISOString() ?? null,
+        expiredAt:
+          data.preferredDriverExpiresAt?.toDate?.().toISOString() ?? null,
       },
     });
   });
@@ -940,7 +988,9 @@ export async function expirePreferredDriverHold(
  * dispatcher operational read so stored status cannot remain visibly stale
  * just because no driver requested another offer after the expiry instant.
  */
-export async function expirePreferredDriverHolds(now = new Date()): Promise<number> {
+export async function expirePreferredDriverHolds(
+  now = new Date(),
+): Promise<number> {
   const db = getAdminDb();
   const expired = await db
     .collection(REQUESTS_COLLECTION)
@@ -996,7 +1046,8 @@ export async function changeRequestPriority(
     const snap = await txn.get(requestRef);
     if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
     const data = snap.data()!;
-    const previousPriority = (data.dispatchPriority as DispatchPriority) ?? "normal";
+    const previousPriority =
+      (data.dispatchPriority as DispatchPriority) ?? "normal";
 
     // Determine whether an active preferred-driver hold must be released.
     let releaseHold = false;
@@ -1141,11 +1192,13 @@ export async function editWaterRequest(
     }
 
     const customerId = (data.customerId as string | null) ?? null;
-    const userRef = input.updateCustomerProfile && customerId
-      ? db.collection("users").doc(customerId)
-      : null;
+    const userRef =
+      input.updateCustomerProfile && customerId
+        ? db.collection("users").doc(customerId)
+        : null;
     const userSnap = userRef ? await txn.get(userRef) : null;
-    if (userRef && !userSnap?.exists) throw new Error("CUSTOMER_PROFILE_NOT_FOUND");
+    if (userRef && !userSnap?.exists)
+      throw new Error("CUSTOMER_PROFILE_NOT_FOUND");
 
     const changes: Record<string, { from: unknown; to: unknown }> = {};
     const updates: Record<string, unknown> = { updatedAt: now };
@@ -1162,22 +1215,30 @@ export async function editWaterRequest(
     // Village
     if (input.village != null && input.village !== data.village) {
       const trimmed = input.village.trim();
-      if (!trimmed || !isValidSabaVillage(trimmed)) throw new Error("INVALID_VILLAGE");
+      if (!trimmed || !isValidSabaVillage(trimmed))
+        throw new Error("INVALID_VILLAGE");
       changes.village = { from: data.village, to: trimmed };
       updates.village = trimmed;
     }
 
     // Delivery directions
-    if (input.deliveryDirections != null && input.deliveryDirections !== data.deliveryDirections) {
+    if (
+      input.deliveryDirections != null &&
+      input.deliveryDirections !== data.deliveryDirections
+    ) {
       const trimmed = input.deliveryDirections.trim();
       if (!trimmed) throw new Error("DIRECTIONS_REQUIRED");
-      changes.deliveryDirections = { from: data.deliveryDirections, to: trimmed };
+      changes.deliveryDirections = {
+        from: data.deliveryDirections,
+        to: trimmed,
+      };
       updates.deliveryDirections = trimmed;
     }
 
     if (input.requestNotes !== undefined) {
       const requestNotes = normalizeRequestNotes(input.requestNotes);
-      const currentNotes = (data.requestNotes as string | null | undefined) ?? null;
+      const currentNotes =
+        (data.requestNotes as string | null | undefined) ?? null;
       if (requestNotes !== currentNotes) {
         changes.requestNotes = { from: currentNotes, to: requestNotes };
         updates.requestNotes = requestNotes;
@@ -1189,31 +1250,41 @@ export async function editWaterRequest(
     const snapshotValue = (key: "displayName" | "phone" | "email") =>
       Object.prototype.hasOwnProperty.call(existingCustomer, key)
         ? existingCustomer[key]
-        : profileData[key] ?? null;
+        : (profileData[key] ?? null);
     const nextCustomer = {
-      displayName: input.customerDisplayName?.trim() || String(snapshotValue("displayName") ?? ""),
-      phone: input.customerPhone?.trim() || String(snapshotValue("phone") ?? ""),
-      email: input.customerEmail === undefined
-        ? snapshotValue("email")
-        : input.customerEmail?.trim() || null,
+      displayName:
+        input.customerDisplayName?.trim() ||
+        String(snapshotValue("displayName") ?? ""),
+      phone:
+        input.customerPhone?.trim() || String(snapshotValue("phone") ?? ""),
+      email:
+        input.customerEmail === undefined
+          ? snapshotValue("email")
+          : input.customerEmail?.trim() || null,
       isRegistered: Boolean(customerId),
     };
     if (!nextCustomer.displayName) throw new Error("CUSTOMER_NAME_REQUIRED");
     if (!nextCustomer.phone) throw new Error("CUSTOMER_PHONE_REQUIRED");
 
-    const requestContactChanges: Record<string, { from: unknown; to: unknown }> = {};
+    const requestContactChanges: Record<
+      string,
+      { from: unknown; to: unknown }
+    > = {};
     for (const [key, value] of Object.entries({
       customerDisplayName: nextCustomer.displayName,
       customerPhone: nextCustomer.phone,
       customerEmail: nextCustomer.email,
     })) {
       const sourceKey = key.replace("customer", "");
-      const currentKey = (sourceKey.charAt(0).toLowerCase() + sourceKey.slice(1)) as "displayName" | "phone" | "email";
+      const currentKey = (sourceKey.charAt(0).toLowerCase() +
+        sourceKey.slice(1)) as "displayName" | "phone" | "email";
       const current = snapshotValue(currentKey);
-      if (value !== current) requestContactChanges[key] = { from: current, to: value };
+      if (value !== current)
+        requestContactChanges[key] = { from: current, to: value };
     }
     Object.assign(changes, requestContactChanges);
-    if (Object.keys(requestContactChanges).length > 0) updates.customer = nextCustomer;
+    if (Object.keys(requestContactChanges).length > 0)
+      updates.customer = nextCustomer;
 
     if (userRef) {
       const profileChanges: Record<string, { from: unknown; to: unknown }> = {};
@@ -1223,9 +1294,11 @@ export async function editWaterRequest(
         savedProfileEmail: nextCustomer.email,
       })) {
         const profileKey = key.replace("savedProfile", "");
-        const currentKey = profileKey.charAt(0).toLowerCase() + profileKey.slice(1);
+        const currentKey =
+          profileKey.charAt(0).toLowerCase() + profileKey.slice(1);
         const current = profileData[currentKey] ?? null;
-        if (value !== current) profileChanges[key] = { from: current, to: value };
+        if (value !== current)
+          profileChanges[key] = { from: current, to: value };
       }
       if (Object.keys(profileChanges).length > 0) {
         Object.assign(changes, profileChanges);
@@ -1311,7 +1384,8 @@ export async function markWaterDelivered(
 
     // Delivery guard: all physical loads must be collected before marking delivered
     const loads = data.loads ?? 1;
-    const collections: Array<Record<string, unknown>> = data.loadCollections ?? [];
+    const collections: Array<Record<string, unknown>> =
+      data.loadCollections ?? [];
     if (collections.length < loads) {
       throw new Error("LOADS_NOT_COLLECTED");
     }
@@ -1323,7 +1397,13 @@ export async function markWaterDelivered(
     // Dispatch" "Interaction with activeRequestId".
     const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
     const batchSync = dispatchBatchId
-      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, "delivered")
+      ? await readBatchMemberStatusesForSync(
+          txn,
+          db,
+          dispatchBatchId,
+          requestId,
+          "delivered",
+        )
       : null;
 
     txn.update(requestRef, {
@@ -1335,7 +1415,10 @@ export async function markWaterDelivered(
     // Clear the driver's active delivery lock ONLY if it currently
     // points at this request, so an unrelated genuinely-active delivery
     // (self-claimed, or a different batch load) is never released.
-    if (!driverQuerySnap.empty && driverQuerySnap.docs[0].data().activeRequestId === requestId) {
+    if (
+      !driverQuerySnap.empty &&
+      driverQuerySnap.docs[0].data().activeRequestId === requestId
+    ) {
       const registryRef = driverQuerySnap.docs[0].ref;
       txn.update(registryRef, {
         activeRequestId: null,
@@ -1345,7 +1428,10 @@ export async function markWaterDelivered(
     }
 
     if (batchSync) {
-      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+      txn.update(batchSync.batchRef, {
+        status: batchSync.status,
+        updatedAt: now,
+      });
     }
 
     const eventRef = requestRef.collection("events").doc();
@@ -1365,7 +1451,10 @@ export async function markWaterDelivered(
   try {
     await notifyDeliveryConfirmation(request);
   } catch (notificationError) {
-    console.error("[markWaterDelivered] delivery confirmation notification failed", notificationError);
+    console.error(
+      "[markWaterDelivered] delivery confirmation notification failed",
+      notificationError,
+    );
   }
   return request;
 }
@@ -1413,7 +1502,8 @@ export async function markWaterDeliveredByStaff(
 
     // Delivery guard: all physical loads must be collected before marking delivered
     const loads = data.loads ?? 1;
-    const collections: Array<Record<string, unknown>> = data.loadCollections ?? [];
+    const collections: Array<Record<string, unknown>> =
+      data.loadCollections ?? [];
     if (collections.length < loads) {
       throw new Error("LOADS_NOT_COLLECTED");
     }
@@ -1428,13 +1518,22 @@ export async function markWaterDeliveredByStaff(
         .where("linkedUserId", "==", assignedDriverId)
         .limit(1);
       const driverSnap = await txn.get(driverQuery);
-      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
+      if (
+        !driverSnap.empty &&
+        driverSnap.docs[0].data().activeRequestId === requestId
+      ) {
         registryRef = driverSnap.docs[0].ref;
       }
     }
 
     const batchSync = dispatchBatchId
-      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, "delivered")
+      ? await readBatchMemberStatusesForSync(
+          txn,
+          db,
+          dispatchBatchId,
+          requestId,
+          "delivered",
+        )
       : null;
 
     txn.update(requestRef, {
@@ -1444,11 +1543,18 @@ export async function markWaterDeliveredByStaff(
     });
 
     if (registryRef) {
-      txn.update(registryRef, { activeRequestId: null, updatedAt: now, updatedBy: actorId });
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
     }
 
     if (batchSync) {
-      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+      txn.update(batchSync.batchRef, {
+        status: batchSync.status,
+        updatedAt: now,
+      });
     }
 
     const eventRef = requestRef.collection("events").doc();
@@ -1460,7 +1566,9 @@ export async function markWaterDeliveredByStaff(
       metadata.dispatchBatchId = dispatchBatchId;
     }
     txn.set(eventRef, {
-      type: dispatchBatchId ? "marked_delivered_by_dispatcher_batch" : "marked_delivered_by_dispatcher",
+      type: dispatchBatchId
+        ? "marked_delivered_by_dispatcher_batch"
+        : "marked_delivered_by_dispatcher",
       actorId,
       actorRole: "dispatcher",
       createdAt: now,
@@ -1475,7 +1583,10 @@ export async function markWaterDeliveredByStaff(
   try {
     await notifyDeliveryConfirmation(request);
   } catch (notificationError) {
-    console.error("[markWaterDeliveredByStaff] delivery confirmation notification failed", notificationError);
+    console.error(
+      "[markWaterDeliveredByStaff] delivery confirmation notification failed",
+      notificationError,
+    );
   }
   return request;
 }
@@ -1528,7 +1639,9 @@ export async function escalateDispatchRequest(
     const data = snap.data()!;
     const status = data.status as WaterRequestStatus;
     const previousOverrideRank =
-      typeof data.dispatchOverrideRank === "number" ? data.dispatchOverrideRank : null;
+      typeof data.dispatchOverrideRank === "number"
+        ? data.dispatchOverrideRank
+        : null;
 
     if (status !== "available" && status !== "preferred_driver_hold") {
       throw new Error("REQUEST_NOT_ESCALATABLE");
@@ -1897,7 +2010,9 @@ const OUTSTANDING_REQUEST_STATUSES: WaterRequestStatus[] = [
  * `src/lib/domain/continuityReport.ts`. Never mutates any request or
  * driver state.
  */
-export async function getOutstandingRequestsForContinuityReport(): Promise<WaterRequest[]> {
+export async function getOutstandingRequestsForContinuityReport(): Promise<
+  WaterRequest[]
+> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(REQUESTS_COLLECTION)
@@ -1911,9 +2026,16 @@ export async function getOutstandingRequestsForContinuityReport(): Promise<Water
 /**
  * Returns the event history for a specific request, ordered chronologically.
  */
-export async function getRequestEvents(
-  requestId: string,
-): Promise<Array<{ id: string; type: string; actorId: string | null; actorRole: string | null; createdAt: string; metadata: Record<string, unknown> | null }>> {
+export async function getRequestEvents(requestId: string): Promise<
+  Array<{
+    id: string;
+    type: string;
+    actorId: string | null;
+    actorRole: string | null;
+    createdAt: string;
+    metadata: Record<string, unknown> | null;
+  }>
+> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(REQUESTS_COLLECTION)
@@ -1929,7 +2051,8 @@ export async function getRequestEvents(
       type: data.type,
       actorId: data.actorId ?? null,
       actorRole: data.actorRole ?? null,
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+      createdAt:
+        data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
       metadata: data.metadata ?? null,
     };
   });
@@ -1961,7 +2084,12 @@ export async function cancelWaterRequest(
     if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
 
     const data = snap.data()!;
-    const cancellable: WaterRequestStatus[] = ["requested", "preferred_driver_hold", "available", "claimed"];
+    const cancellable: WaterRequestStatus[] = [
+      "requested",
+      "preferred_driver_hold",
+      "available",
+      "claimed",
+    ];
     if (!cancellable.includes(data.status)) {
       throw new Error("REQUEST_ALREADY_RESOLVED");
     }
@@ -1987,13 +2115,21 @@ export async function cancelWaterRequest(
     // read the other members' statuses now, before any writes.
     const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
     const batchSync = dispatchBatchId
-      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, null)
+      ? await readBatchMemberStatusesForSync(
+          txn,
+          db,
+          dispatchBatchId,
+          requestId,
+          null,
+        )
       : null;
 
     txn.update(requestRef, {
       status: "cancelled",
       updatedAt: now,
-      ...(dispatchBatchId ? { dispatchBatchId: null, batchSequence: null } : {}),
+      ...(dispatchBatchId
+        ? { dispatchBatchId: null, batchSequence: null }
+        : {}),
     });
 
     if (registryRef) {
@@ -2005,7 +2141,10 @@ export async function cancelWaterRequest(
     }
 
     if (batchSync) {
-      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+      txn.update(batchSync.batchRef, {
+        status: batchSync.status,
+        updatedAt: now,
+      });
     }
 
     const eventRef = requestRef.collection("events").doc();
@@ -2014,7 +2153,11 @@ export async function cancelWaterRequest(
       actorId,
       actorRole: "dispatcher",
       createdAt: now,
-      metadata: { reason, previousStatus: data.status, ...(dispatchBatchId ? { leftDispatchBatchId: dispatchBatchId } : {}) },
+      metadata: {
+        reason,
+        previousStatus: data.status,
+        ...(dispatchBatchId ? { leftDispatchBatchId: dispatchBatchId } : {}),
+      },
     });
 
     if (dispatchBatchId) {
@@ -2072,7 +2215,10 @@ export async function resolveDisputeCompleted(
         .where("linkedUserId", "==", assignedDriverId)
         .limit(1);
       const driverSnap = await txn.get(driverQuery);
-      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
+      if (
+        !driverSnap.empty &&
+        driverSnap.docs[0].data().activeRequestId === requestId
+      ) {
         registryRef = driverSnap.docs[0].ref;
       }
     }
@@ -2141,7 +2287,10 @@ export async function resolveDisputeReopened(
         .where("linkedUserId", "==", assignedDriverId)
         .limit(1);
       const driverSnap = await txn.get(driverQuery);
-      if (!driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId) {
+      if (
+        !driverSnap.empty &&
+        driverSnap.docs[0].data().activeRequestId === requestId
+      ) {
         registryRef = driverSnap.docs[0].ref;
       }
     }
@@ -2161,7 +2310,9 @@ export async function resolveDisputeReopened(
       confirmedAt: null,
       availableAt: now,
       updatedAt: now,
-      ...(dispatchBatchId ? { dispatchBatchId: null, batchSequence: null } : {}),
+      ...(dispatchBatchId
+        ? { dispatchBatchId: null, batchSequence: null }
+        : {}),
     });
 
     if (registryRef) {
@@ -2233,7 +2384,10 @@ export async function dispatcherAssign(
     const reqData = requestSnap.data()!;
 
     // Only assign requests that are in an assignable state.
-    const assignable: WaterRequestStatus[] = ["available", "preferred_driver_hold"];
+    const assignable: WaterRequestStatus[] = [
+      "available",
+      "preferred_driver_hold",
+    ];
     if (!assignable.includes(reqData.status)) {
       throw new Error("REQUEST_NOT_ASSIGNABLE");
     }
@@ -2270,7 +2424,9 @@ export async function dispatcherAssign(
       if (lockedReqSnap.exists) {
         const lockedData = lockedReqSnap.data()!;
         if (
-          isPhysicallyActiveDriverWork(lockedData.status as WaterRequestStatus) &&
+          isPhysicallyActiveDriverWork(
+            lockedData.status as WaterRequestStatus,
+          ) &&
           lockedData.assignedDriverId === driverId
         ) {
           throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
@@ -2381,7 +2537,9 @@ export async function dispatcherReassign(
       if (lockedReqSnap.exists) {
         const lockedData = lockedReqSnap.data()!;
         if (
-          isPhysicallyActiveDriverWork(lockedData.status as WaterRequestStatus) &&
+          isPhysicallyActiveDriverWork(
+            lockedData.status as WaterRequestStatus,
+          ) &&
           lockedData.assignedDriverId === newDriverId
         ) {
           throw new Error("DRIVER_HAS_ACTIVE_DELIVERY");
@@ -2404,7 +2562,10 @@ export async function dispatcherReassign(
         .where("linkedUserId", "==", previousDriverId)
         .limit(1);
       const previousDriverSnap = await txn.get(previousDriverQuery);
-      if (!previousDriverSnap.empty && previousDriverSnap.docs[0].data().activeRequestId === requestId) {
+      if (
+        !previousDriverSnap.empty &&
+        previousDriverSnap.docs[0].data().activeRequestId === requestId
+      ) {
         previousRegistryRef = previousDriverSnap.docs[0].ref;
       }
     }
@@ -2416,16 +2577,26 @@ export async function dispatcherReassign(
     // TECHNICAL.md "Batch Dispatch"). Reassigning "to" the SAME driver
     // it is already assigned to is a no-op here and does not detach it.
     const dispatchBatchId =
-      previousDriverId !== newDriverId ? ((reqData.dispatchBatchId as string | null) ?? null) : null;
+      previousDriverId !== newDriverId
+        ? ((reqData.dispatchBatchId as string | null) ?? null)
+        : null;
     const batchSync = dispatchBatchId
-      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, null)
+      ? await readBatchMemberStatusesForSync(
+          txn,
+          db,
+          dispatchBatchId,
+          requestId,
+          null,
+        )
       : null;
 
     txn.update(requestRef, {
       assignedDriverId: newDriverId,
       claimedAt: now,
       updatedAt: now,
-      ...(dispatchBatchId ? { dispatchBatchId: null, batchSequence: null } : {}),
+      ...(dispatchBatchId
+        ? { dispatchBatchId: null, batchSequence: null }
+        : {}),
     });
 
     txn.update(newRegistryRef, {
@@ -2443,7 +2614,10 @@ export async function dispatcherReassign(
     }
 
     if (batchSync) {
-      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+      txn.update(batchSync.batchRef, {
+        status: batchSync.status,
+        updatedAt: now,
+      });
     }
 
     const eventRef = requestRef.collection("events").doc();
@@ -2495,7 +2669,10 @@ export async function returnAssignedRequestToQueue(input: {
     if (data.status !== "claimed" || !data.assignedDriverId) {
       throw new Error("REQUEST_NOT_ASSIGNED");
     }
-    if (Array.isArray(data.loadCollections) && data.loadCollections.length > 0) {
+    if (
+      Array.isArray(data.loadCollections) &&
+      data.loadCollections.length > 0
+    ) {
       throw new Error("REQUEST_HAS_COLLECTIONS");
     }
 
@@ -2505,12 +2682,20 @@ export async function returnAssignedRequestToQueue(input: {
       .where("linkedUserId", "==", previousDriverId)
       .limit(1);
     const driverSnap = await txn.get(driverQuery);
-    const registryRef = !driverSnap.empty && driverSnap.docs[0].data().activeRequestId === requestId
-      ? driverSnap.docs[0].ref
-      : null;
+    const registryRef =
+      !driverSnap.empty &&
+      driverSnap.docs[0].data().activeRequestId === requestId
+        ? driverSnap.docs[0].ref
+        : null;
     const dispatchBatchId = (data.dispatchBatchId as string | null) ?? null;
     const batchSync = dispatchBatchId
-      ? await readBatchMemberStatusesForSync(txn, db, dispatchBatchId, requestId, null)
+      ? await readBatchMemberStatusesForSync(
+          txn,
+          db,
+          dispatchBatchId,
+          requestId,
+          null,
+        )
       : null;
 
     txn.update(requestRef, {
@@ -2533,7 +2718,10 @@ export async function returnAssignedRequestToQueue(input: {
       });
     }
     if (batchSync) {
-      txn.update(batchSync.batchRef, { status: batchSync.status, updatedAt: now });
+      txn.update(batchSync.batchRef, {
+        status: batchSync.status,
+        updatedAt: now,
+      });
     }
 
     txn.create(requestRef.collection("events").doc(), {
@@ -2544,7 +2732,9 @@ export async function returnAssignedRequestToQueue(input: {
       metadata: {
         previousDriverId,
         reason: reason.trim(),
-        ...(dispatchBatchId ? { previousDispatchBatchId: dispatchBatchId } : {}),
+        ...(dispatchBatchId
+          ? { previousDispatchBatchId: dispatchBatchId }
+          : {}),
       },
     });
     if (dispatchBatchId) {
@@ -2597,7 +2787,15 @@ export interface RecordWaterCollectionInput {
 export async function recordWaterCollection(
   input: RecordWaterCollectionInput,
 ): Promise<WaterRequest> {
-  const { requestId, loadNumber, fillStationId, driverId, actorId, actorRole, note } = input;
+  const {
+    requestId,
+    loadNumber,
+    fillStationId,
+    driverId,
+    actorId,
+    actorRole,
+    note,
+  } = input;
 
   // Staff must provide a note
   if (actorRole !== "driver" && !note?.trim()) {
@@ -2642,7 +2840,8 @@ export async function recordWaterCollection(
     if (loadNumber > loads) throw new Error("INVALID_LOAD_NUMBER");
 
     // Check for existing collection at this load number
-    const existingCollections: Array<Record<string, unknown>> = data.loadCollections ?? [];
+    const existingCollections: Array<Record<string, unknown>> =
+      data.loadCollections ?? [];
     const alreadyCollected = existingCollections.some(
       (lc) => lc.loadNumber === loadNumber,
     );
@@ -2676,7 +2875,8 @@ export async function recordWaterCollection(
     // document field, not inside an array).
     const eventRef = requestRef.collection("events").doc();
     txn.set(eventRef, {
-      type: actorRole === "driver" ? "water_collected" : "water_collected_by_staff",
+      type:
+        actorRole === "driver" ? "water_collected" : "water_collected_by_staff",
       actorId,
       actorRole,
       createdAt: FieldValue.serverTimestamp(),
@@ -2697,5 +2897,8 @@ export async function recordWaterCollection(
 }
 
 // Re-export pure load-collection helpers for server consumers.
-export { areAllLoadsCollected, assertQuantityEditable, getMissingLoadNumbers } from "./loadCollection";
-
+export {
+  areAllLoadsCollected,
+  assertQuantityEditable,
+  getMissingLoadNumbers,
+} from "./loadCollection";

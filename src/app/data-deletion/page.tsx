@@ -21,7 +21,9 @@ export default function DataDeletionPage() {
           <Card>
             <div className="flex flex-col gap-6">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">User Data Deletion</h1>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  User Data Deletion
+                </h1>
                 <p className="mt-2 text-slate-600">
                   Saba Water Delivery is the official government water delivery
                   service for Saba. This page explains how to request deletion
@@ -49,15 +51,15 @@ export default function DataDeletionPage() {
                 </p>
                 <p className="mt-2 text-slate-600">
                   Please include enough information for the Water Delivery
-                  Office to identify and verify the account associated with
-                  your request — for example, your name, phone number, and the
+                  Office to identify and verify the account associated with your
+                  request — for example, your name, phone number, and the
                   village or delivery address on file.
                 </p>
                 <p className="mt-2 font-medium text-slate-700">
-                  Do not send your password, Facebook access token, or any
-                  other authentication credentials. The Water Delivery Office
-                  will never ask you for these, and they are never needed to
-                  process a data deletion request.
+                  Do not send your password, Facebook access token, or any other
+                  authentication credentials. The Water Delivery Office will
+                  never ask you for these, and they are never needed to process
+                  a data deletion request.
                 </p>
               </section>
 
@@ -69,15 +71,17 @@ export default function DataDeletionPage() {
                   After your identity and request are verified, personal data
                   associated with your account will be deleted or anonymized
                   where appropriate, subject to any legal, regulatory,
-                  operational, or government record-retention requirements
-                  that apply. As a government operational service, some
-                  request, delivery, audit, or government records may need to
-                  be retained even after a deletion request is processed.
+                  operational, or government record-retention requirements that
+                  apply. As a government operational service, some request,
+                  delivery, audit, or government records may need to be retained
+                  even after a deletion request is processed.
                 </p>
               </section>
 
               <section>
-                <h2 className="text-lg font-semibold text-slate-900">Facebook Login</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Facebook Login
+                </h2>
                 <p className="mt-2 text-slate-600">
                   If you signed in to Saba Water Delivery using Facebook Login,
                   you can also remove Saba Water Delivery&apos;s access to your
@@ -88,10 +92,10 @@ export default function DataDeletionPage() {
                   <strong className="text-slate-900">
                     Removing Facebook authorization
                   </strong>{" "}
-                  only stops Saba Water Delivery from being able to use
-                  Facebook to sign you in. It does not, by itself, delete or
-                  change any water-request, delivery, or account records
-                  already held by Saba Water Delivery.
+                  only stops Saba Water Delivery from being able to use Facebook
+                  to sign you in. It does not, by itself, delete or change any
+                  water-request, delivery, or account records already held by
+                  Saba Water Delivery.
                 </p>
                 <p className="mt-2 text-slate-600">
                   <strong className="text-slate-900">

@@ -20,7 +20,9 @@ const outputDir = process.env.NEXT_OUTPUT_DIR || ".next";
 const serverDir = join(outputDir, "server");
 
 if (!existsSync(serverDir)) {
-  console.error(`[verify-pdfkit-trace] Server output directory not found: ${serverDir}`);
+  console.error(
+    `[verify-pdfkit-trace] Server output directory not found: ${serverDir}`,
+  );
   console.error("Run `npm run build` first.");
   process.exit(1);
 }
@@ -49,7 +51,10 @@ if (nftFiles.length === 0) {
 
 const requiredTrees = [
   { name: "data", pattern: /node_modules\/pdfkit\/js\/data\// },
-  { name: "standard-fonts", pattern: /node_modules\/pdfkit\/js\/standard-fonts\// },
+  {
+    name: "standard-fonts",
+    pattern: /node_modules\/pdfkit\/js\/standard-fonts\//,
+  },
 ];
 
 const pdfkitConsumers = [];
@@ -60,7 +65,9 @@ for (const nftPath of nftFiles) {
   if (!Array.isArray(nft.files)) continue;
 
   const files = nft.files.map((f) => normalized(String(f)));
-  const referencesPdfkit = files.some((f) => f.includes("node_modules/pdfkit/"));
+  const referencesPdfkit = files.some((f) =>
+    f.includes("node_modules/pdfkit/"),
+  );
   if (!referencesPdfkit) continue;
 
   const entry = nftPath.replace(/\.nft\.json$/, "");
@@ -74,7 +81,9 @@ for (const nftPath of nftFiles) {
 }
 
 if (pdfkitConsumers.length === 0) {
-  console.warn("[verify-pdfkit-trace] No server bundles reference pdfkit. If PDF routes exist, this may be a tracing regression.");
+  console.warn(
+    "[verify-pdfkit-trace] No server bundles reference pdfkit. If PDF routes exist, this may be a tracing regression.",
+  );
 }
 
 if (failures.length > 0) {
@@ -82,8 +91,12 @@ if (failures.length > 0) {
   for (const failure of failures) {
     console.error(`  - ${failure}`);
   }
-  console.error(`[verify-pdfkit-trace] Checked ${nftFiles.length} trace files, ${pdfkitConsumers.length} pdfkit consumers.`);
+  console.error(
+    `[verify-pdfkit-trace] Checked ${nftFiles.length} trace files, ${pdfkitConsumers.length} pdfkit consumers.`,
+  );
   process.exit(1);
 }
 
-console.log(`[verify-pdfkit-trace] OK. Checked ${nftFiles.length} trace files, ${pdfkitConsumers.length} pdfkit consumers all include data/ and standard-fonts/.`);
+console.log(
+  `[verify-pdfkit-trace] OK. Checked ${nftFiles.length} trace files, ${pdfkitConsumers.length} pdfkit consumers all include data/ and standard-fonts/.`,
+);

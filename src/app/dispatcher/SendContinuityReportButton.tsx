@@ -2,7 +2,10 @@
 
 import { useActionState } from "react";
 
-import { sendContinuityReportNow, type SendContinuityReportState } from "./actions";
+import {
+  sendContinuityReportNow,
+  type SendContinuityReportState,
+} from "./actions";
 
 const initialState: SendContinuityReportState = { status: "idle" };
 
@@ -14,7 +17,10 @@ const initialState: SendContinuityReportState = { status: "idle" };
  * See PRODUCT.md / TECHNICAL.md "Operational Continuity Snapshot".
  */
 export function SendContinuityReportButton() {
-  const [state, formAction, pending] = useActionState(sendContinuityReportNow, initialState);
+  const [state, formAction, pending] = useActionState(
+    sendContinuityReportNow,
+    initialState,
+  );
 
   return (
     <div className="flex flex-col items-start gap-1 sm:items-end">

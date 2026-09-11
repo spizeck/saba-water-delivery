@@ -32,7 +32,9 @@ describe("roles", () => {
     });
 
     it("filters out invalid values", () => {
-      expect(toUserRoles(["resident", "superuser", 123, null])).toEqual(["resident"]);
+      expect(toUserRoles(["resident", "superuser", 123, null])).toEqual([
+        "resident",
+      ]);
     });
 
     it("defaults to resident when not an array", () => {

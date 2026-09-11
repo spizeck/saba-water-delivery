@@ -11,7 +11,10 @@ import {
   WaterSituationHiddenFields,
 } from "@/components/forms/WaterSituationFields";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
-import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
+import {
+  formatWaterQuantity,
+  type RequestedLoads,
+} from "@/lib/domain/quantity";
 import { REQUEST_NOTES_MAX_LENGTH } from "@/lib/domain/requestNotes";
 
 import { requestWater, type RequestWaterFormState } from "./actions";
@@ -33,7 +36,8 @@ const VULNERABLE_LABEL: Record<string, string> = {
   elderly: "Elderly person",
   infant_or_young_child: "Infant or young child",
   medical_need: "Medical need",
-  essential_services_commercial_business: "Essential services (Commercial/business)",
+  essential_services_commercial_business:
+    "Essential services (Commercial/business)",
   hotel_or_restaurant: "Hotel or Restaurant",
 };
 
@@ -48,9 +52,14 @@ export function WaterRequestForm({
   const [requestNotes, setRequestNotes] = useState("");
   const [waterSituation, setWaterSituation] = useState(EMPTY_WATER_SITUATION);
   const [attestationChecked, setAttestationChecked] = useState(false);
-  const [state, formAction, pending] = useActionState(requestWater, initialState);
+  const [state, formAction, pending] = useActionState(
+    requestWater,
+    initialState,
+  );
 
-  const selectedDriver = eligibleDrivers.find((d) => d.uid === preferredDriverId);
+  const selectedDriver = eligibleDrivers.find(
+    (d) => d.uid === preferredDriverId,
+  );
 
   // After successful submission, hide the form (the parent will show the active request).
   if (state.status === "success") {
@@ -66,7 +75,10 @@ export function WaterRequestForm({
         </p>
 
         <div className="mt-4 flex flex-col gap-4">
-          <WaterSituationFields value={waterSituation} onChange={setWaterSituation} />
+          <WaterSituationFields
+            value={waterSituation}
+            onChange={setWaterSituation}
+          />
 
           <fieldset className="flex flex-col gap-2">
             <legend className="text-sm font-medium text-slate-700">
@@ -161,7 +173,9 @@ export function WaterRequestForm({
         {requestNotes.trim() && (
           <div>
             <dt className="font-medium text-slate-500">Notes / Comments</dt>
-            <dd className="whitespace-pre-wrap text-slate-900">{requestNotes.trim()}</dd>
+            <dd className="whitespace-pre-wrap text-slate-900">
+              {requestNotes.trim()}
+            </dd>
           </div>
         )}
         <div>
@@ -173,12 +187,12 @@ export function WaterRequestForm({
         <div>
           <dt className="font-medium text-slate-500">Water situation</dt>
           <dd className="text-slate-900">
-            <span className="font-medium">Urgency:</span> {" "}
+            <span className="font-medium">Urgency:</span>{" "}
             {URGENCY_LABEL[waterSituation.reportedUrgency] || "—"}
           </dd>
           {waterSituation.vulnerableCircumstances.some((c) => c !== "none") && (
             <dd className="text-slate-900">
-              <span className="font-medium">Circumstances:</span> {" "}
+              <span className="font-medium">Circumstances:</span>{" "}
               {waterSituation.vulnerableCircumstances
                 .filter((c) => c !== "none")
                 .map((c) => VULNERABLE_LABEL[c] ?? c)
@@ -187,19 +201,19 @@ export function WaterRequestForm({
           )}
           {waterSituation.personsAffected && (
             <dd className="text-slate-900">
-              <span className="font-medium">People affected:</span> {" "}
+              <span className="font-medium">People affected:</span>{" "}
               {waterSituation.personsAffected}
             </dd>
           )}
           {waterSituation.availableStorageCapacity && (
             <dd className="text-slate-900">
-              <span className="font-medium">Available storage:</span> {" "}
+              <span className="font-medium">Available storage:</span>{" "}
               {waterSituation.availableStorageCapacity}
             </dd>
           )}
           {waterSituation.reportedUrgency === "critical" && (
             <dd className="text-slate-900">
-              <span className="font-medium">Critical explanation:</span> {" "}
+              <span className="font-medium">Critical explanation:</span>{" "}
               {waterSituation.criticalExplanation}
             </dd>
           )}
@@ -208,7 +222,11 @@ export function WaterRequestForm({
 
       <form action={formAction} className="mt-4 flex flex-col gap-3">
         <input type="hidden" name="loads" value={loads} />
-        <input type="hidden" name="preferredDriverId" value={preferredDriverId} />
+        <input
+          type="hidden"
+          name="preferredDriverId"
+          value={preferredDriverId}
+        />
         <input type="hidden" name="requestNotes" value={requestNotes} />
         <WaterSituationHiddenFields value={waterSituation} />
 
@@ -223,8 +241,8 @@ export function WaterRequestForm({
             className="mt-0.5"
           />
           <span>
-            I am authorized to request water at this location, and the statements made above are
-            true and factual.
+            I am authorized to request water at this location, and the
+            statements made above are true and factual.
           </span>
         </label>
 
@@ -235,7 +253,11 @@ export function WaterRequestForm({
         )}
 
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button type="submit" size="lg" disabled={pending || !attestationChecked}>
+          <Button
+            type="submit"
+            size="lg"
+            disabled={pending || !attestationChecked}
+          >
             {pending ? "Submitting\u2026" : "Request Water"}
           </Button>
           <Button

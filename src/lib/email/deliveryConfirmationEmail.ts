@@ -31,12 +31,14 @@ export async function sendDeliveryConfirmationEmail(
     const { data, error } = await resend.emails.send(payload, {
       idempotencyKey: `delivery-confirmation-${input.requestId}`,
     });
-    if (error) return { ok: false, error: error.message || "Resend returned an error." };
+    if (error)
+      return { ok: false, error: error.message || "Resend returned an error." };
     return { ok: true, resendId: data?.id };
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Unknown email send error",
+      error:
+        error instanceof Error ? error.message : "Unknown email send error",
     };
   }
 }

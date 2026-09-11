@@ -12,7 +12,12 @@ function readManifest(name: string) {
     display: string;
     theme_color: string;
     background_color: string;
-    icons: Array<{ src: string; sizes: string; type: string; purpose?: string }>;
+    icons: Array<{
+      src: string;
+      sizes: string;
+      type: string;
+      purpose?: string;
+    }>;
   };
 }
 
@@ -32,7 +37,9 @@ describe("PWA manifests", () => {
     expect(sizes).toContain("512x512");
     expect(sizes).toContain("192x192");
 
-    const maskables = manifest.icons.filter((icon) => icon.purpose === "maskable");
+    const maskables = manifest.icons.filter(
+      (icon) => icon.purpose === "maskable",
+    );
     expect(maskables.length).toBeGreaterThanOrEqual(1);
   });
 

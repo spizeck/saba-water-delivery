@@ -3,9 +3,17 @@ import "server-only";
 import type { DocumentData } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
-import { sabaCalendarDateKey, startOfSabaMonth, startOfSabaYear } from "@/lib/utils/datetime";
+import {
+  sabaCalendarDateKey,
+  startOfSabaMonth,
+  startOfSabaYear,
+} from "@/lib/utils/datetime";
 
-import type { DispatchPriority, WaterRequestSource, WaterRequestStatus } from "./types";
+import type {
+  DispatchPriority,
+  WaterRequestSource,
+  WaterRequestStatus,
+} from "./types";
 import { appConfig } from "./config";
 import { isConfirmationWindowExpired } from "./deliveryConfirmation";
 import { getOfferAggregate } from "./driverOffers";
@@ -230,7 +238,11 @@ function formatDateKey(date: Date, monthly: boolean): string {
 // ---------------------------------------------------------------------------
 
 /** Statuses that count as "delivered" (actual delivery occurred). */
-const DELIVERED_STATUSES: WaterRequestStatus[] = ["delivered", "confirmed", "disputed"];
+const DELIVERED_STATUSES: WaterRequestStatus[] = [
+  "delivered",
+  "confirmed",
+  "disputed",
+];
 
 /** Statuses that mean the request is still open/active. */
 const OPEN_STATUSES: WaterRequestStatus[] = [
@@ -301,7 +313,12 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       claimedAt: d.claimedAt?.toDate?.() ?? null,
       deliveredAt: d.deliveredAt?.toDate?.() ?? null,
       confirmedAt: d.confirmedAt?.toDate?.() ?? null,
-      loads: typeof d.loads === "number" ? d.loads : Math.floor((d.gallons ?? appConfig.standardLoadGallons) / LOAD_GALLONS),
+      loads:
+        typeof d.loads === "number"
+          ? d.loads
+          : Math.floor(
+              (d.gallons ?? appConfig.standardLoadGallons) / LOAD_GALLONS,
+            ),
       gallons: d.gallons ?? appConfig.standardLoadGallons,
       loadCollections: Array.isArray(d.loadCollections)
         ? d.loadCollections.map((lc: Record<string, unknown>) => ({
@@ -311,7 +328,8 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
             meterCode: lc.meterCode as string,
             meterNumber: lc.meterNumber as number,
             driverId: lc.driverId as string,
-            collectedAt: (lc.collectedAt as { toDate?: () => Date })?.toDate?.() ?? null,
+            collectedAt:
+              (lc.collectedAt as { toDate?: () => Date })?.toDate?.() ?? null,
           }))
         : [],
     };
@@ -323,9 +341,13 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   const now = new Date();
   const summary: SummaryMetrics = {
     totalRequests: requests.length,
-    confirmedDeliveries: requests.filter((r) => r.status === "confirmed").length,
+    confirmedDeliveries: requests.filter((r) => r.status === "confirmed")
+      .length,
     awaitingConfirmation: requests.filter(
-      (r) => r.status === "delivered" && r.deliveredAt && !isConfirmationWindowExpired(r.deliveredAt, now),
+      (r) =>
+        r.status === "delivered" &&
+        r.deliveredAt &&
+        !isConfirmationWindowExpired(r.deliveredAt, now),
     ).length,
     disputed: requests.filter((r) => r.status === "disputed").length,
     cancelled: requests.filter((r) => r.status === "cancelled").length,
@@ -341,7 +363,8 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     byPriority: {
       normal: requests.filter((r) => r.dispatchPriority === "normal").length,
       urgent: requests.filter((r) => r.dispatchPriority === "urgent").length,
-      critical: requests.filter((r) => r.dispatchPriority === "critical").length,
+      critical: requests.filter((r) => r.dispatchPriority === "critical")
+        .length,
     },
   };
 
@@ -358,7 +381,9 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     };
   });
 
-  const openRequests = allRequests.filter((r) => OPEN_STATUSES.includes(r.status));
+  const openRequests = allRequests.filter((r) =>
+    OPEN_STATUSES.includes(r.status),
+  );
   const h24 = 24 * 60 * 60 * 1000;
   const h48 = 48 * 60 * 60 * 1000;
 
@@ -370,13 +395,19 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     openOver48h: openRequests.filter(
       (r) => r.requestedAt && now.getTime() - r.requestedAt.getTime() > h48,
     ).length,
-    oldestRequestDate: openRequests
-      .filter((r) => r.requestedAt)
-      .sort((a, b) => (a.requestedAt!.getTime() - b.requestedAt!.getTime()))[0]
-      ?.requestedAt?.toISOString() ?? null,
-    unresolvedDisputes: allRequests.filter((r) => r.status === "disputed").length,
-    criticalOutstanding: openRequests.filter((r) => r.dispatchPriority === "critical").length,
-    urgentOutstanding: openRequests.filter((r) => r.dispatchPriority === "urgent").length,
+    oldestRequestDate:
+      openRequests
+        .filter((r) => r.requestedAt)
+        .sort((a, b) => a.requestedAt!.getTime() - b.requestedAt!.getTime())[0]
+        ?.requestedAt?.toISOString() ?? null,
+    unresolvedDisputes: allRequests.filter((r) => r.status === "disputed")
+      .length,
+    criticalOutstanding: openRequests.filter(
+      (r) => r.dispatchPriority === "critical",
+    ).length,
+    urgentOutstanding: openRequests.filter(
+      (r) => r.dispatchPriority === "urgent",
+    ).length,
   };
 
   // ---------------------------------------------------------------------------
@@ -435,7 +466,11 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
 
   for (const r of requests) {
     const v = r.village;
-    const entry = villageMap.get(v) ?? { requests: 0, deliveredLoads: 0, gallonsDelivered: 0 };
+    const entry = villageMap.get(v) ?? {
+      requests: 0,
+      deliveredLoads: 0,
+      gallonsDelivered: 0,
+    };
     entry.requests++;
     if (DELIVERED_STATUSES.includes(r.status)) {
       entry.deliveredLoads += r.loads;
@@ -475,15 +510,24 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
 
     // Loads claimed (any request that has been assigned to this driver currently).
     if (r.claimedAt) {
-      driverClaimedMap.set(driverId, (driverClaimedMap.get(driverId) ?? 0) + r.loads);
+      driverClaimedMap.set(
+        driverId,
+        (driverClaimedMap.get(driverId) ?? 0) + r.loads,
+      );
     }
     // Loads delivered
     if (DELIVERED_STATUSES.includes(r.status)) {
-      driverDeliveredMap.set(driverId, (driverDeliveredMap.get(driverId) ?? 0) + r.loads);
+      driverDeliveredMap.set(
+        driverId,
+        (driverDeliveredMap.get(driverId) ?? 0) + r.loads,
+      );
     }
     // Confirmed deliveries
     if (r.status === "confirmed") {
-      driverConfirmedMap.set(driverId, (driverConfirmedMap.get(driverId) ?? 0) + 1);
+      driverConfirmedMap.set(
+        driverId,
+        (driverConfirmedMap.get(driverId) ?? 0) + 1,
+      );
     }
     // Claim-to-delivery time
     if (r.claimedAt && r.deliveredAt) {
@@ -533,7 +577,10 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       for (let k = 0; k < missingUids.length; k++) {
         const userDoc = userDocs[k];
         if (userDoc.exists) {
-          fallbackNames.set(missingUids[k], userDoc.data()!.displayName ?? "Driver");
+          fallbackNames.set(
+            missingUids[k],
+            userDoc.data()!.displayName ?? "Driver",
+          );
         }
       }
     }
@@ -544,13 +591,16 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
 
       drivers.push({
         driverId: dId,
-        displayName: driverData?.displayName ?? fallbackNames.get(dId) ?? "Driver",
+        displayName:
+          driverData?.displayName ?? fallbackNames.get(dId) ?? "Driver",
         loadsClaimed: driverClaimedMap.get(dId) ?? 0,
         loadsDelivered: driverDeliveredMap.get(dId) ?? 0,
         confirmedDeliveries: driverConfirmedMap.get(dId) ?? 0,
         avgClaimToDeliveryHours: average(times),
-        eligibilityStatus: (driverData?.eligibilityStatus as string) ?? "ineligible",
-        availabilityStatus: (driverData?.availabilityStatus as string) ?? "offline",
+        eligibilityStatus:
+          (driverData?.eligibilityStatus as string) ?? "ineligible",
+        availabilityStatus:
+          (driverData?.availabilityStatus as string) ?? "offline",
       });
     }
   }
@@ -560,10 +610,13 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   // ---------------------------------------------------------------------------
   // Preferred-driver metrics
   // ---------------------------------------------------------------------------
-  const requestsWithPreference = requests.filter((r) => r.preferredDriverId).length;
-  const percentWithPreference = requests.length > 0
-    ? Math.round((requestsWithPreference / requests.length) * 100)
-    : 0;
+  const requestsWithPreference = requests.filter(
+    (r) => r.preferredDriverId,
+  ).length;
+  const percentWithPreference =
+    requests.length > 0
+      ? Math.round((requestsWithPreference / requests.length) * 100)
+      : 0;
 
   // For preferred-driver claimed vs expired, we need events.
   // A "preferred_driver_expired" event means the hold expired.
@@ -634,7 +687,9 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   // - Confirmed requests that were previously disputed (check events).
   // - Reopened requests that were previously disputed (check events).
 
-  const currentlyDisputed = requests.filter((r) => r.status === "disputed").length;
+  const currentlyDisputed = requests.filter(
+    (r) => r.status === "disputed",
+  ).length;
 
   // Count resolved disputes from events on confirmed/reopened requests.
   let resolvedAsCompleted = 0;
@@ -652,7 +707,10 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
       .collection(REQUESTS_COLLECTION)
       .doc(reqId)
       .collection("events")
-      .where("type", "in", ["dispute_resolved_completed", "dispute_resolved_reopened"])
+      .where("type", "in", [
+        "dispute_resolved_completed",
+        "dispute_resolved_reopened",
+      ])
       .get();
 
     for (const eventDoc of eventsSnapshot.docs) {
@@ -662,7 +720,8 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     }
   }
 
-  const totalDisputes = currentlyDisputed + resolvedAsCompleted + resolvedAsReopened;
+  const totalDisputes =
+    currentlyDisputed + resolvedAsCompleted + resolvedAsReopened;
   const requestsThatReachedDelivered = requests.filter(
     (r) => DELIVERED_STATUSES.includes(r.status) || r.status === "confirmed",
   ).length;
@@ -692,7 +751,9 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     declined: offerAggregate.declined,
     expired: offerAggregate.expired,
     acceptanceRate:
-      responded > 0 ? Math.round((offerAggregate.accepted / responded) * 1000) / 10 : null,
+      responded > 0
+        ? Math.round((offerAggregate.accepted / responded) * 1000) / 10
+        : null,
   };
 
   // ---------------------------------------------------------------------------
@@ -702,17 +763,19 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   // this can never be used to rank individual residents/villages by
   // urgency (see PRODUCT.md "Privacy").
   // ---------------------------------------------------------------------------
-  const priorityTiming: PriorityTimingRow[] = PRIORITY_LEVELS.map((priority) => {
-    const inLevel = requests.filter((r) => r.dispatchPriority === priority);
-    const deliveryTimes = inLevel
-      .filter((r) => r.requestedAt && r.deliveredAt)
-      .map((r) => hoursBetween(r.requestedAt!, r.deliveredAt!));
-    return {
-      priority,
-      count: inLevel.length,
-      avgRequestToDeliveryHours: average(deliveryTimes),
-    };
-  });
+  const priorityTiming: PriorityTimingRow[] = PRIORITY_LEVELS.map(
+    (priority) => {
+      const inLevel = requests.filter((r) => r.dispatchPriority === priority);
+      const deliveryTimes = inLevel
+        .filter((r) => r.requestedAt && r.deliveredAt)
+        .map((r) => hoursBetween(r.requestedAt!, r.deliveredAt!));
+      return {
+        priority,
+        count: inLevel.length,
+        avgRequestToDeliveryHours: average(deliveryTimes),
+      };
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // Fill station and meter metrics — derived from per-load collection

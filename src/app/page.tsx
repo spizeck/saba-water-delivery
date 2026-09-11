@@ -59,11 +59,15 @@ export default function Home() {
             </div>
 
             <Card className="w-full" aria-labelledby="help-heading">
-              <h2 id="help-heading" className="text-base font-semibold text-slate-900">
+              <h2
+                id="help-heading"
+                className="text-base font-semibold text-slate-900"
+              >
                 Need Help?
               </h2>
               <p className="mt-2 text-slate-600">
-                If you are having difficulty with ordering water from this page, please{" "}
+                If you are having difficulty with ordering water from this page,
+                please{" "}
                 <a
                   href={whatsappHref}
                   className="font-medium text-blue-700 hover:underline"

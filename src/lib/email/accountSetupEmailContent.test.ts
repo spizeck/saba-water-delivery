@@ -9,7 +9,11 @@ describe("getAccountSetupEmailConfig", () => {
   const originalEnv = process.env;
 
   it("returns null when required env vars are missing", () => {
-    process.env = { ...originalEnv, RESEND_API_KEY: "", ACCOUNT_SETUP_EMAIL_FROM: "" };
+    process.env = {
+      ...originalEnv,
+      RESEND_API_KEY: "",
+      ACCOUNT_SETUP_EMAIL_FROM: "",
+    };
     expect(getAccountSetupEmailConfig()).toBeNull();
   });
 

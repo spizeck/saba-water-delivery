@@ -18,10 +18,10 @@ export function DriverTable({ drivers }: DriverTableProps) {
   if (drivers.length === 0) {
     return (
       <Card>
-        <h2 className="text-lg font-bold text-slate-900">
-          Driver Operations
-        </h2>
-        <p className="mt-2 text-sm text-slate-500">No driver activity for this period.</p>
+        <h2 className="text-lg font-bold text-slate-900">Driver Operations</h2>
+        <p className="mt-2 text-sm text-slate-500">
+          No driver activity for this period.
+        </p>
       </Card>
     );
   }
@@ -29,9 +29,7 @@ export function DriverTable({ drivers }: DriverTableProps) {
   return (
     <Card>
       <h2 className="text-lg font-bold text-slate-900">Driver Operations</h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Delivery metrics by driver
-      </p>
+      <p className="mt-1 text-xs text-slate-500">Delivery metrics by driver</p>
 
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-sm">
@@ -81,7 +79,9 @@ export function DriverTable({ drivers }: DriverTableProps) {
                         : "bg-red-50 text-red-700"
                     }`}
                   >
-                    {d.eligibilityStatus === "eligible" ? "Eligible" : "Ineligible"}
+                    {d.eligibilityStatus === "eligible"
+                      ? "Eligible"
+                      : "Ineligible"}
                   </span>
                   <span
                     className={`ml-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${

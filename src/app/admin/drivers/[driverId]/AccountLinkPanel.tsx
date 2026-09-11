@@ -22,8 +22,14 @@ interface Props {
 }
 
 export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
-  const [linkState, linkAction, linkPending] = useActionState(linkDriverAccountAction, initialState);
-  const [unlinkState, unlinkAction, unlinkPending] = useActionState(unlinkDriverAccountAction, initialState);
+  const [linkState, linkAction, linkPending] = useActionState(
+    linkDriverAccountAction,
+    initialState,
+  );
+  const [unlinkState, unlinkAction, unlinkPending] = useActionState(
+    unlinkDriverAccountAction,
+    initialState,
+  );
   const [confirmingUnlink, setConfirmingUnlink] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -61,7 +67,9 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
               </p>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-amber-700">Linked account unavailable</p>
+            <p className="mt-2 text-sm text-amber-700">
+              Linked account unavailable
+            </p>
           )}
 
           {driver.linkedUserId && (
@@ -76,7 +84,9 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
           )}
 
           {unlinkState.status === "success" ? (
-            <p className="mt-3 text-sm font-medium text-green-700">{unlinkState.message}</p>
+            <p className="mt-3 text-sm font-medium text-green-700">
+              {unlinkState.message}
+            </p>
           ) : !confirmingUnlink ? (
             <Button
               variant="outline"
@@ -89,11 +99,13 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
           ) : (
             <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
               <p className="text-sm font-medium text-amber-800">
-                Unlink this account? Active claimed deliveries must be
-                resolved or reassigned first. Delivery history is preserved.
+                Unlink this account? Active claimed deliveries must be resolved
+                or reassigned first. Delivery history is preserved.
               </p>
               {unlinkState.status === "error" && (
-                <p className="mt-2 text-sm text-red-700">{unlinkState.message}</p>
+                <p className="mt-2 text-sm text-red-700">
+                  {unlinkState.message}
+                </p>
               )}
               <form action={unlinkAction} className="mt-2 flex gap-2">
                 <input type="hidden" name="driverId" value={driver.id} />
@@ -113,12 +125,14 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
           )}
         </div>
       ) : linkState.status === "success" ? (
-        <p className="mt-3 text-sm font-medium text-green-700">{linkState.message}</p>
+        <p className="mt-3 text-sm font-medium text-green-700">
+          {linkState.message}
+        </p>
       ) : (
         <div className="mt-3 flex flex-col gap-3">
           <p className="text-sm text-slate-600">
-            No account linked yet. Search for the driver&apos;s existing
-            account once they have signed in, then link it explicitly.
+            No account linked yet. Search for the driver&apos;s existing account
+            once they have signed in, then link it explicitly.
           </p>
           <input
             type="text"
@@ -129,7 +143,9 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
           />
           <div className="flex max-h-56 flex-col divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
             {filtered.length === 0 && (
-              <p className="p-3 text-sm text-slate-500">No matching accounts.</p>
+              <p className="p-3 text-sm text-slate-500">
+                No matching accounts.
+              </p>
             )}
             {filtered.map((r) => (
               <button
@@ -140,7 +156,9 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
                   selectedUserId === r.uid ? "bg-blue-50" : ""
                 }`}
               >
-                <span className="font-medium text-slate-900">{r.displayName || "Unnamed"}</span>
+                <span className="font-medium text-slate-900">
+                  {r.displayName || "Unnamed"}
+                </span>
                 <span className="text-xs text-slate-500">
                   {r.email ?? "No email"}
                   {r.phone ? ` \u00b7 ${r.phone}` : ""}
@@ -150,13 +168,19 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
           </div>
 
           {linkState.status === "error" && (
-            <p className="text-sm font-medium text-red-700">{linkState.message}</p>
+            <p className="text-sm font-medium text-red-700">
+              {linkState.message}
+            </p>
           )}
 
           <form action={linkAction}>
             <input type="hidden" name="driverId" value={driver.id} />
             <input type="hidden" name="userId" value={selectedUserId ?? ""} />
-            <Button type="submit" size="md" disabled={linkPending || !selectedUserId}>
+            <Button
+              type="submit"
+              size="md"
+              disabled={linkPending || !selectedUserId}
+            >
               {linkPending ? "Linking\u2026" : "Link Selected Account"}
             </Button>
           </form>

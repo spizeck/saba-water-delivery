@@ -23,7 +23,9 @@ import type { WaterRequestStatus } from "./types";
  * independent: once a driver marks a request `delivered`, that driver is no
  * longer busy with it, even if the resident has not yet confirmed.
  */
-export function isPhysicallyActiveDriverWork(status: WaterRequestStatus): boolean {
+export function isPhysicallyActiveDriverWork(
+  status: WaterRequestStatus,
+): boolean {
   return status === "claimed";
 }
 

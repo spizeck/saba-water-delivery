@@ -55,7 +55,10 @@ function makeRequest(
   };
 }
 
-function makePendingOffer(request: WaterRequest): { offer: DriverOffer; request: WaterRequest } {
+function makePendingOffer(request: WaterRequest): {
+  offer: DriverOffer;
+  request: WaterRequest;
+} {
   return {
     offer: {
       id: `offer-${request.id}`,
@@ -74,7 +77,8 @@ function priorityRank(priority: WaterRequest["dispatchPriority"]): number {
 }
 
 function byPriorityThenAge(a: WaterRequest, b: WaterRequest): number {
-  const rankDiff = priorityRank(a.dispatchPriority) - priorityRank(b.dispatchPriority);
+  const rankDiff =
+    priorityRank(a.dispatchPriority) - priorityRank(b.dispatchPriority);
   if (rankDiff !== 0) return rankDiff;
   return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
 }
@@ -289,7 +293,9 @@ describe("dispatch selection", () => {
   it("prefers an active preferred-driver hold addressed to this driver", () => {
     const hold = makeRequest("req-hold", "preferred_driver_hold", {
       preferredDriverId: driverId,
-      preferredDriverExpiresAt: new Date(baseTime.getTime() + 60_000).toISOString(),
+      preferredDriverExpiresAt: new Date(
+        baseTime.getTime() + 60_000,
+      ).toISOString(),
     });
     const available = makeRequest("req-available", "available");
 
@@ -309,7 +315,9 @@ describe("dispatch selection", () => {
   it("ignores an expired preferred-driver hold for this driver", () => {
     const hold = makeRequest("req-hold", "preferred_driver_hold", {
       preferredDriverId: driverId,
-      preferredDriverExpiresAt: new Date(baseTime.getTime() - 60_000).toISOString(),
+      preferredDriverExpiresAt: new Date(
+        baseTime.getTime() - 60_000,
+      ).toISOString(),
     });
     const available = makeRequest("req-available", "available");
 
@@ -329,7 +337,9 @@ describe("dispatch selection", () => {
   it("ignores a preferred-driver hold addressed to another driver", () => {
     const hold = makeRequest("req-hold", "preferred_driver_hold", {
       preferredDriverId: "driver-2",
-      preferredDriverExpiresAt: new Date(baseTime.getTime() + 60_000).toISOString(),
+      preferredDriverExpiresAt: new Date(
+        baseTime.getTime() + 60_000,
+      ).toISOString(),
     });
     const available = makeRequest("req-available", "available");
 
@@ -402,7 +412,9 @@ describe("isOfferableToDriver", () => {
   it("offers an active preferred-driver hold addressed to this driver", () => {
     const request = makeRequest("req", "preferred_driver_hold", {
       preferredDriverId: driverId,
-      preferredDriverExpiresAt: new Date(baseTime.getTime() + 60_000).toISOString(),
+      preferredDriverExpiresAt: new Date(
+        baseTime.getTime() + 60_000,
+      ).toISOString(),
     });
     expect(isOfferableToDriver(request, driverId, now)).toBe(true);
   });
@@ -410,7 +422,9 @@ describe("isOfferableToDriver", () => {
   it("does not offer a preferred-driver hold addressed to another driver", () => {
     const request = makeRequest("req", "preferred_driver_hold", {
       preferredDriverId: "driver-2",
-      preferredDriverExpiresAt: new Date(baseTime.getTime() + 60_000).toISOString(),
+      preferredDriverExpiresAt: new Date(
+        baseTime.getTime() + 60_000,
+      ).toISOString(),
     });
     expect(isOfferableToDriver(request, driverId, now)).toBe(false);
   });
@@ -418,7 +432,9 @@ describe("isOfferableToDriver", () => {
   it("does not offer an expired preferred-driver hold even for this driver", () => {
     const request = makeRequest("req", "preferred_driver_hold", {
       preferredDriverId: driverId,
-      preferredDriverExpiresAt: new Date(baseTime.getTime() - 60_000).toISOString(),
+      preferredDriverExpiresAt: new Date(
+        baseTime.getTime() - 60_000,
+      ).toISOString(),
     });
     expect(isOfferableToDriver(request, driverId, now)).toBe(false);
   });

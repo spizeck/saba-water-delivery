@@ -15,7 +15,10 @@ const inputClasses =
   "h-11 rounded-lg border border-slate-300 px-3 text-base text-slate-900 focus:border-blue-600 focus:outline-none";
 
 export function ProfileForm({ profile }: { profile: UserProfile }) {
-  const [state, formAction, pending] = useActionState(updateResidentProfile, initialState);
+  const [state, formAction, pending] = useActionState(
+    updateResidentProfile,
+    initialState,
+  );
   const [village, setVillage] = useState(profile.village ?? "");
 
   return (

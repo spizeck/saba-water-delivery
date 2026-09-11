@@ -22,7 +22,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <SiteHeader />
       <main className="flex flex-1 items-center py-12">
         <Container className="max-w-md">
-          <LoginForm intendedPortal={portal ?? null} returnTo={returnTo ?? null} />
+          <LoginForm
+            intendedPortal={portal ?? null}
+            returnTo={returnTo ?? null}
+          />
         </Container>
       </main>
       <Footer />

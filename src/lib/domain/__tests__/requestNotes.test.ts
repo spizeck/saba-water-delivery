@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeRequestNotes, REQUEST_NOTES_MAX_LENGTH } from "../requestNotes";
+import {
+  normalizeRequestNotes,
+  REQUEST_NOTES_MAX_LENGTH,
+} from "../requestNotes";
 
 describe("request notes", () => {
   it("accepts an absent note", () => {
@@ -15,14 +18,14 @@ describe("request notes", () => {
   });
 
   it("accepts the maximum length", () => {
-    expect(normalizeRequestNotes("a".repeat(REQUEST_NOTES_MAX_LENGTH))).toHaveLength(
-      REQUEST_NOTES_MAX_LENGTH,
-    );
+    expect(
+      normalizeRequestNotes("a".repeat(REQUEST_NOTES_MAX_LENGTH)),
+    ).toHaveLength(REQUEST_NOTES_MAX_LENGTH);
   });
 
   it("rejects an over-limit note", () => {
-    expect(() => normalizeRequestNotes("a".repeat(REQUEST_NOTES_MAX_LENGTH + 1))).toThrow(
-      "REQUEST_NOTES_TOO_LONG",
-    );
+    expect(() =>
+      normalizeRequestNotes("a".repeat(REQUEST_NOTES_MAX_LENGTH + 1)),
+    ).toThrow("REQUEST_NOTES_TOO_LONG");
   });
 });

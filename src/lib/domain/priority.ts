@@ -33,7 +33,11 @@
  *     match the desired dispatch order).
  */
 
-import type { DispatchPriority, ReportedUrgency, VulnerableCircumstance } from "./types";
+import type {
+  DispatchPriority,
+  ReportedUrgency,
+  VulnerableCircumstance,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Priority ranking (for Firestore ordering)
@@ -57,7 +61,9 @@ export function priorityRankFor(priority: DispatchPriority): number {
   return PRIORITY_RANK[priority];
 }
 
-export function isValidDispatchPriority(value: unknown): value is DispatchPriority {
+export function isValidDispatchPriority(
+  value: unknown,
+): value is DispatchPriority {
   return value === "normal" || value === "urgent" || value === "critical";
 }
 
@@ -116,7 +122,8 @@ export function determineInitialDispatchPriority(
   if (waterSituation.reportedUrgency === "critical") {
     return {
       priority: "critical",
-      reason: 'Resident self-reported "Critical" urgency with a required explanation.',
+      reason:
+        'Resident self-reported "Critical" urgency with a required explanation.',
     };
   }
 

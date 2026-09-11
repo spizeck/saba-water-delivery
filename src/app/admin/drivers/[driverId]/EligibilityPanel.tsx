@@ -29,23 +29,34 @@ export function EligibilityPanel({ driver }: { driver: DriverRegistryEntry }) {
           {isEligible ? "Eligible" : "Ineligible"}
         </span>
         {!isEligible && driver.ineligibilityReason && (
-          <span className="text-xs text-slate-600">{driver.ineligibilityReason}</span>
+          <span className="text-xs text-slate-600">
+            {driver.ineligibilityReason}
+          </span>
         )}
       </div>
 
       <div className="mt-4">
-        {isEligible ? <RestrictForm driverId={driver.id} /> : <RestoreForm driverId={driver.id} />}
+        {isEligible ? (
+          <RestrictForm driverId={driver.id} />
+        ) : (
+          <RestoreForm driverId={driver.id} />
+        )}
       </div>
     </Card>
   );
 }
 
 function RestrictForm({ driverId }: { driverId: string }) {
-  const [state, formAction, pending] = useActionState(restrictDriverEntryAction, initialState);
+  const [state, formAction, pending] = useActionState(
+    restrictDriverEntryAction,
+    initialState,
+  );
   const [reason, setReason] = useState("");
 
   if (state.status === "success") {
-    return <p className="text-sm font-medium text-green-700">{state.message}</p>;
+    return (
+      <p className="text-sm font-medium text-green-700">{state.message}</p>
+    );
   }
 
   return (
@@ -79,7 +90,10 @@ function RestrictForm({ driverId }: { driverId: string }) {
 }
 
 function RestoreForm({ driverId }: { driverId: string }) {
-  const [state, formAction, pending] = useActionState(restoreDriverEntryAction, initialState);
+  const [state, formAction, pending] = useActionState(
+    restoreDriverEntryAction,
+    initialState,
+  );
 
   return (
     <form action={formAction}>
@@ -94,7 +108,9 @@ function RestoreForm({ driverId }: { driverId: string }) {
         {pending ? "Restoring..." : "Restore Delivery Access"}
       </Button>
       {state.status === "success" && (
-        <p className="mt-2 text-xs font-medium text-green-700">{state.message}</p>
+        <p className="mt-2 text-xs font-medium text-green-700">
+          {state.message}
+        </p>
       )}
       {state.status === "error" && (
         <p className="mt-2 text-xs font-medium text-red-700">{state.message}</p>

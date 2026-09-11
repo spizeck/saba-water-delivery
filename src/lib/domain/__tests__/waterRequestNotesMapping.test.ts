@@ -31,8 +31,10 @@ describe("water request notes mapping", () => {
 
   it("trims a stored request note", () => {
     expect(
-      toWaterRequest("request-1", { ...base, requestNotes: "  Call before arrival.  " })
-        .requestNotes,
+      toWaterRequest("request-1", {
+        ...base,
+        requestNotes: "  Call before arrival.  ",
+      }).requestNotes,
     ).toBe("Call before arrival.");
   });
 });

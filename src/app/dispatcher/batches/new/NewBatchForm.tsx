@@ -4,7 +4,10 @@ import { useActionState, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { createBatch, type CreateBatchActionState } from "@/app/dispatcher/actions";
+import {
+  createBatch,
+  type CreateBatchActionState,
+} from "@/app/dispatcher/actions";
 import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
 import { formatWaterQuantity, LOAD_GALLONS } from "@/lib/domain/quantity";
 import type { DispatchPriority, RequestedLoads } from "@/lib/domain/types";
@@ -54,7 +57,10 @@ export function NewBatchForm({
   const [driverId, setDriverId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [acknowledgedOverrides, setAcknowledgedOverrides] = useState(false);
-  const [state, formAction, pending] = useActionState(createBatch, initialState);
+  const [state, formAction, pending] = useActionState(
+    createBatch,
+    initialState,
+  );
 
   const selectedDriver = drivers.find((d) => d.uid === driverId) ?? null;
 
@@ -64,19 +70,25 @@ export function NewBatchForm({
   // boxes in a different order without the app silently re-sorting
   // their choice out from under them.
   const selectedRequests = useMemo(
-    () => selectedIds.map((id) => requests.find((r) => r.id === id)!).filter(Boolean),
+    () =>
+      selectedIds
+        .map((id) => requests.find((r) => r.id === id)!)
+        .filter(Boolean),
     [selectedIds, requests],
   );
 
   const overrideRequests = useMemo(
     () =>
       driverId
-        ? selectedRequests.filter((r) => r.preferredDriverId && r.preferredDriverId !== driverId)
+        ? selectedRequests.filter(
+            (r) => r.preferredDriverId && r.preferredDriverId !== driverId,
+          )
         : [],
     [selectedRequests, driverId],
   );
 
-  const canProceedToReview = selectedIds.length > 0 && selectedIds.length <= MAX_BATCH_SIZE;
+  const canProceedToReview =
+    selectedIds.length > 0 && selectedIds.length <= MAX_BATCH_SIZE;
   const canSubmit = overrideRequests.length === 0 || acknowledgedOverrides;
 
   function toggleRequest(id: string) {
@@ -109,15 +121,17 @@ export function NewBatchForm({
           <p className="text-sm font-medium text-slate-700">Select a driver</p>
           <p className="text-xs text-slate-500">
             The driver does not need to be online — a delivery run is a
-            deliberate staff decision. Offline/cooldown status is shown so
-            you can decide with full information.
+            deliberate staff decision. Offline/cooldown status is shown so you
+            can decide with full information.
           </p>
           <div className="mt-2 flex flex-col gap-2">
             {drivers.map((d) => (
               <label
                 key={d.uid}
                 className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
-                  driverId === d.uid ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                  driverId === d.uid
+                    ? "border-blue-600 bg-blue-50"
+                    : "border-slate-200"
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -127,16 +141,32 @@ export function NewBatchForm({
                     checked={driverId === d.uid}
                     onChange={() => setDriverId(d.uid)}
                   />
-                  <span className="font-medium text-slate-900">{d.displayName}</span>
+                  <span className="font-medium text-slate-900">
+                    {d.displayName}
+                  </span>
                 </div>
                 <div className="flex gap-1.5">
                   <StatusBadge
-                    label={d.availabilityStatus === "online" ? "Online" : "Offline"}
-                    color={d.availabilityStatus === "online" ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-600"}
+                    label={
+                      d.availabilityStatus === "online" ? "Online" : "Offline"
+                    }
+                    color={
+                      d.availabilityStatus === "online"
+                        ? "bg-green-50 text-green-700"
+                        : "bg-slate-100 text-slate-600"
+                    }
                   />
-                  {d.inCooldown && <StatusBadge label="In cooldown" color="bg-amber-50 text-amber-800" />}
+                  {d.inCooldown && (
+                    <StatusBadge
+                      label="In cooldown"
+                      color="bg-amber-50 text-amber-800"
+                    />
+                  )}
                   {d.hasActiveDelivery && (
-                    <StatusBadge label="Has active delivery" color="bg-indigo-50 text-indigo-800" />
+                    <StatusBadge
+                      label="Has active delivery"
+                      color="bg-indigo-50 text-indigo-800"
+                    />
                   )}
                 </div>
               </label>
@@ -162,21 +192,25 @@ export function NewBatchForm({
             Select requests for {selectedDriver?.displayName}
           </p>
           <p className="text-xs text-slate-500">
-            Listed in the normal dispatch order — highest priority first,
-            oldest first within the same priority. Selected: {selectedIds.length}
+            Listed in the normal dispatch order — highest priority first, oldest
+            first within the same priority. Selected: {selectedIds.length}
             {" / "}
             {MAX_BATCH_SIZE}
           </p>
           <div className="mt-2 flex max-h-96 flex-col gap-2 overflow-y-auto">
             {requests.map((r) => {
               const isOverride = Boolean(
-                r.preferredDriverId && driverId && r.preferredDriverId !== driverId,
+                r.preferredDriverId &&
+                driverId &&
+                r.preferredDriverId !== driverId,
               );
               return (
                 <label
                   key={r.id}
                   className={`flex cursor-pointer items-start justify-between gap-3 rounded-lg border p-3 text-sm ${
-                    selectedIds.includes(r.id) ? "border-blue-600 bg-blue-50" : "border-slate-200"
+                    selectedIds.includes(r.id)
+                      ? "border-blue-600 bg-blue-50"
+                      : "border-slate-200"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -191,10 +225,13 @@ export function NewBatchForm({
                         {r.customerName} &mdash; {r.village}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {formatWaterQuantity(r.loads)} &middot; Requested {formatSabaDateTime(r.requestedAt)}
+                        {formatWaterQuantity(r.loads)} &middot; Requested{" "}
+                        {formatSabaDateTime(r.requestedAt)}
                       </p>
                       {r.preferredDriverName && (
-                        <p className={`text-xs ${isOverride ? "font-semibold text-amber-800" : "text-slate-500"}`}>
+                        <p
+                          className={`text-xs ${isOverride ? "font-semibold text-amber-800" : "text-slate-500"}`}
+                        >
                           {isOverride
                             ? `Held for preferred driver: ${r.preferredDriverName} (selecting this overrides that preference)`
                             : `Preferred driver: ${r.preferredDriverName}`}
@@ -202,7 +239,9 @@ export function NewBatchForm({
                       )}
                     </div>
                   </div>
-                  <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLOR[r.priority]}`}>
+                  <span
+                    className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLOR[r.priority]}`}
+                  >
                     {PRIORITY_LABEL[r.priority]}
                   </span>
                 </label>
@@ -240,7 +279,12 @@ export function NewBatchForm({
           ))}
           {acknowledgedOverrides &&
             overrideRequests.map((r) => (
-              <input key={r.id} type="hidden" name="acknowledgedOverrideRequestIds" value={r.id} />
+              <input
+                key={r.id}
+                type="hidden"
+                name="acknowledgedOverrideRequestIds"
+                value={r.id}
+              />
             ))}
 
           <p className="text-sm font-medium text-slate-700">
@@ -251,30 +295,46 @@ export function NewBatchForm({
           <div className="rounded-lg bg-slate-50 p-3">
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
               <span className="text-slate-700">
-                <span className="font-bold">Driver:</span> {selectedDriver.displayName}
+                <span className="font-bold">Driver:</span>{" "}
+                {selectedDriver.displayName}
               </span>
               <span className="text-slate-700">
                 <span className="font-semibold">{selectedIds.length}</span>{" "}
                 request{selectedIds.length !== 1 ? "s" : ""}
               </span>
               <span className="text-slate-700">
-                <span className="font-semibold">{selectedRequests.reduce((sum, r) => sum + r.loads, 0)}</span>{" "}
-                load{selectedRequests.reduce((sum, r) => sum + r.loads, 0) !== 1 ? "s" : ""}
+                <span className="font-semibold">
+                  {selectedRequests.reduce((sum, r) => sum + r.loads, 0)}
+                </span>{" "}
+                load
+                {selectedRequests.reduce((sum, r) => sum + r.loads, 0) !== 1
+                  ? "s"
+                  : ""}
               </span>
               <span className="text-slate-500">
-                {selectedRequests.reduce((sum, r) => sum + r.loads * LOAD_GALLONS, 0).toLocaleString("en-US")} gallons
+                {selectedRequests
+                  .reduce((sum, r) => sum + r.loads * LOAD_GALLONS, 0)
+                  .toLocaleString("en-US")}{" "}
+                gallons
               </span>
             </div>
           </div>
 
           <ol className="flex flex-col gap-1.5 rounded-lg border border-slate-200 p-3 text-sm">
             {selectedRequests.map((r, i) => (
-              <li key={r.id} className="flex items-center justify-between gap-2">
+              <li
+                key={r.id}
+                className="flex items-center justify-between gap-2"
+              >
                 <span>
                   {i + 1}. {r.customerName} &mdash; {r.village}
-                  <span className="ml-1.5 text-xs text-slate-500">{formatWaterQuantity(r.loads)}</span>
+                  <span className="ml-1.5 text-xs text-slate-500">
+                    {formatWaterQuantity(r.loads)}
+                  </span>
                 </span>
-                <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLOR[r.priority]}`}>
+                <span
+                  className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLOR[r.priority]}`}
+                >
                   {PRIORITY_LABEL[r.priority]}
                 </span>
               </li>
@@ -284,8 +344,8 @@ export function NewBatchForm({
           {overrideRequests.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
               <p className="text-sm font-semibold text-amber-900">
-                {overrideRequests.length} of these requests are held for a different
-                resident-preferred driver
+                {overrideRequests.length} of these requests are held for a
+                different resident-preferred driver
               </p>
               <ul className="mt-1 list-disc pl-5 text-xs text-amber-900">
                 {overrideRequests.map((r) => (
@@ -301,8 +361,9 @@ export function NewBatchForm({
                   checked={acknowledgedOverrides}
                   onChange={(e) => setAcknowledgedOverrides(e.target.checked)}
                 />
-                I understand this overrides {overrideRequests.length} preferred-driver
-                assignment{overrideRequests.length === 1 ? "" : "s"} and want to proceed.
+                I understand this overrides {overrideRequests.length}{" "}
+                preferred-driver assignment
+                {overrideRequests.length === 1 ? "" : "s"} and want to proceed.
               </label>
             </div>
           )}
@@ -314,7 +375,12 @@ export function NewBatchForm({
           )}
 
           <div className="flex gap-2">
-            <Button type="submit" size="md" disabled={pending || !canSubmit} className="text-sm !h-9 !px-3">
+            <Button
+              type="submit"
+              size="md"
+              disabled={pending || !canSubmit}
+              className="text-sm !h-9 !px-3"
+            >
               {pending ? "Assigning\u2026" : "Create Delivery Run"}
             </Button>
             <Button
@@ -344,7 +410,15 @@ function StepLabel({
   children: React.ReactNode;
 }) {
   return (
-    <span className={active ? "font-bold text-blue-700" : done ? "text-slate-700" : "text-slate-400"}>
+    <span
+      className={
+        active
+          ? "font-bold text-blue-700"
+          : done
+            ? "text-slate-700"
+            : "text-slate-400"
+      }
+    >
       {children}
     </span>
   );
@@ -352,7 +426,9 @@ function StepLabel({
 
 function StatusBadge({ label, color }: { label: string; color: string }) {
   return (
-    <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}>
+    <span
+      className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}
+    >
       {label}
     </span>
   );

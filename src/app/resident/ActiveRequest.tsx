@@ -62,7 +62,9 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
       <dl className="mt-4 flex flex-col gap-3 text-sm">
         <div>
           <dt className="font-medium text-slate-500">Quantity</dt>
-          <dd className="text-slate-900">{formatWaterQuantity(request.loads)}</dd>
+          <dd className="text-slate-900">
+            {formatWaterQuantity(request.loads)}
+          </dd>
         </div>
         <div>
           <dt className="font-medium text-slate-500">Requested</dt>
@@ -76,7 +78,9 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
         {request.requestNotes && (
           <div>
             <dt className="font-medium text-slate-500">Notes / Comments</dt>
-            <dd className="whitespace-pre-wrap text-slate-900">{request.requestNotes}</dd>
+            <dd className="whitespace-pre-wrap text-slate-900">
+              {request.requestNotes}
+            </dd>
           </div>
         )}
         {preferredDriverName && (
@@ -88,7 +92,9 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
         {request.deliveredAt && (
           <div>
             <dt className="font-medium text-slate-500">Delivered</dt>
-            <dd className="text-slate-900">{formatDate(request.deliveredAt)}</dd>
+            <dd className="text-slate-900">
+              {formatDate(request.deliveredAt)}
+            </dd>
           </div>
         )}
       </dl>
@@ -116,7 +122,9 @@ function DeliveryConfirmation({ request }: { request: WaterRequest }) {
   if (confirmState.status === "success") {
     return (
       <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3">
-        <p className="text-sm font-medium text-green-800">{confirmState.message}</p>
+        <p className="text-sm font-medium text-green-800">
+          {confirmState.message}
+        </p>
       </div>
     );
   }
@@ -124,7 +132,9 @@ function DeliveryConfirmation({ request }: { request: WaterRequest }) {
   if (disputeState.status === "success") {
     return (
       <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-        <p className="text-sm font-medium text-amber-800">{disputeState.message}</p>
+        <p className="text-sm font-medium text-amber-800">
+          {disputeState.message}
+        </p>
       </div>
     );
   }

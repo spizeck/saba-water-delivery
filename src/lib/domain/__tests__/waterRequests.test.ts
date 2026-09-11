@@ -49,7 +49,9 @@ describe("buildWaterSituationSnapshot", () => {
       criticalExplanation: "  Out of water and elderly resident on site.  ",
     });
     expect(snapshot.reportedUrgency).toBe("critical");
-    expect(snapshot.criticalExplanation).toBe("Out of water and elderly resident on site.");
+    expect(snapshot.criticalExplanation).toBe(
+      "Out of water and elderly resident on site.",
+    );
   });
 
   it("discards a stale Critical explanation when urgency is Normal", () => {

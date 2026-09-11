@@ -5,11 +5,18 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getActiveDriverRegistryEntries, getEligibleDriverOptions, getMeterAssignments } from "@/lib/domain/driverRegistry";
+import {
+  getActiveDriverRegistryEntries,
+  getEligibleDriverOptions,
+  getMeterAssignments,
+} from "@/lib/domain/driverRegistry";
 import { getFillStations } from "@/lib/domain/fillStations";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
-import { formatWaterQuantity, type RequestedLoads } from "@/lib/domain/quantity";
+import {
+  formatWaterQuantity,
+  type RequestedLoads,
+} from "@/lib/domain/quantity";
 import { toWaterRequest } from "@/lib/domain/waterRequests";
 import {
   checkDeliveryConfirmationTimeout,
@@ -18,7 +25,10 @@ import {
 } from "@/lib/domain/waterRequests";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
-import { formatRequestEventDetails, REQUEST_EVENT_LABELS } from "@/lib/utils/formatAuditEvent";
+import {
+  formatRequestEventDetails,
+  REQUEST_EVENT_LABELS,
+} from "@/lib/utils/formatAuditEvent";
 
 import { RequestActions } from "./RequestActions";
 import { WaterCollectionDisplay } from "./WaterCollectionDisplay";
@@ -65,7 +75,8 @@ const VULNERABLE_LABELS: Record<string, string> = {
   elderly: "Elderly person",
   infant_or_young_child: "Infant or young child",
   medical_need: "Medical need",
-  essential_services_commercial_business: "Essential services (Commercial/business)",
+  essential_services_commercial_business:
+    "Essential services (Commercial/business)",
   hotel_or_restaurant: "Hotel or Restaurant",
   none: "None",
 };
@@ -98,7 +109,10 @@ export default async function RequestDetailPage({ params }: PageProps) {
           <Container>
             <Card>
               <p className="text-slate-600">Request not found.</p>
-              <Link href="/dispatcher" className="mt-2 inline-block text-blue-700 hover:underline text-sm">
+              <Link
+                href="/dispatcher"
+                className="mt-2 inline-block text-blue-700 hover:underline text-sm"
+              >
                 Back to dashboard
               </Link>
             </Card>
@@ -116,14 +130,19 @@ export default async function RequestDetailPage({ params }: PageProps) {
   // snapshot; only fall back to a live profile lookup for legacy requests
   // that predate the snapshot field (and never for unregistered customers,
   // who have no `users/{uid}` document to look up).
-  const [legacyCustomerProfile, events, allDriverEntries, eligibleDriverOptions, fillStations] =
-    await Promise.all([
-      !data.customer && data.customerId ? getUserProfile(data.customerId) : null,
-      getRequestEvents(requestId),
-      getActiveDriverRegistryEntries(),
-      getEligibleDriverOptions(),
-      getFillStations(),
-    ]);
+  const [
+    legacyCustomerProfile,
+    events,
+    allDriverEntries,
+    eligibleDriverOptions,
+    fillStations,
+  ] = await Promise.all([
+    !data.customer && data.customerId ? getUserProfile(data.customerId) : null,
+    getRequestEvents(requestId),
+    getActiveDriverRegistryEntries(),
+    getEligibleDriverOptions(),
+    getFillStations(),
+  ]);
 
   // Fetch meter assignments for the assigned driver (needed for collection display)
   const assignedDriverRegistryEntry = data.assignedDriverId
@@ -133,7 +152,8 @@ export default async function RequestDetailPage({ params }: PageProps) {
     ? await getMeterAssignments(assignedDriverRegistryEntry.id)
     : [];
 
-  const customerPhone = data.customer?.phone ?? legacyCustomerProfile?.phone ?? null;
+  const customerPhone =
+    data.customer?.phone ?? legacyCustomerProfile?.phone ?? null;
   const frequentRequestCount = await getFrequentRequestCountForCustomer(
     (data.customerId as string | null) ?? null,
     customerPhone,
@@ -141,9 +161,17 @@ export default async function RequestDetailPage({ params }: PageProps) {
   const showFrequentWarning = frequentRequestCount >= 3;
 
   const customer = data.customer
-    ? { displayName: data.customer.displayName, phone: data.customer.phone ?? null, email: data.customer.email ?? null }
+    ? {
+        displayName: data.customer.displayName,
+        phone: data.customer.phone ?? null,
+        email: data.customer.email ?? null,
+      }
     : legacyCustomerProfile
-      ? { displayName: legacyCustomerProfile.displayName, phone: legacyCustomerProfile.phone, email: legacyCustomerProfile.email }
+      ? {
+          displayName: legacyCustomerProfile.displayName,
+          phone: legacyCustomerProfile.phone,
+          email: legacyCustomerProfile.email,
+        }
       : null;
 
   // Resolve driver names (keyed by uid, since assignedDriverId/
@@ -175,7 +203,8 @@ export default async function RequestDetailPage({ params }: PageProps) {
     ]),
   ] as string[];
   const actorNames: Record<string, string> = { ...driverNames };
-  if (customer && data.customerId) actorNames[data.customerId] = customer.displayName;
+  if (customer && data.customerId)
+    actorNames[data.customerId] = customer.displayName;
   await Promise.all(
     actorIds
       .filter((id) => !actorNames[id])
@@ -191,7 +220,10 @@ export default async function RequestDetailPage({ params }: PageProps) {
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6 max-w-5xl">
           <div>
-            <Link href="/dispatcher" className="text-blue-700 hover:underline text-sm">
+            <Link
+              href="/dispatcher"
+              className="text-blue-700 hover:underline text-sm"
+            >
               &larr; Back to dashboard
             </Link>
           </div>
@@ -199,9 +231,13 @@ export default async function RequestDetailPage({ params }: PageProps) {
           {/* Request info */}
           <Card>
             <div className="flex items-start justify-between gap-4">
-              <h1 className="text-xl font-bold text-slate-900">Request detail</h1>
+              <h1 className="text-xl font-bold text-slate-900">
+                Request detail
+              </h1>
               <div className="flex flex-col items-end gap-1">
-                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[status]}`}>
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[status]}`}
+                >
                   {STATUS_LABELS[status]}
                 </span>
                 <span
@@ -243,7 +279,9 @@ export default async function RequestDetailPage({ params }: PageProps) {
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Quantity</dt>
-                <dd className="text-slate-900">{formatWaterQuantity(data.loads as RequestedLoads)}</dd>
+                <dd className="text-slate-900">
+                  {formatWaterQuantity(data.loads as RequestedLoads)}
+                </dd>
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Phone</dt>
@@ -254,7 +292,9 @@ export default async function RequestDetailPage({ params }: PageProps) {
                 <dd className="text-slate-900">{data.village}</dd>
               </div>
               <div>
-                <dt className="font-medium text-slate-500">Delivery directions</dt>
+                <dt className="font-medium text-slate-500">
+                  Delivery directions
+                </dt>
                 <dd className="text-slate-900">{data.deliveryDirections}</dd>
               </div>
               <div className="sm:col-span-2">
@@ -266,14 +306,17 @@ export default async function RequestDetailPage({ params }: PageProps) {
               <div>
                 <dt className="font-medium text-slate-500">Requested</dt>
                 <dd className="text-slate-900">
-                  {data.requestedAt?.toDate ? formatDate(data.requestedAt.toDate().toISOString()) : "—"}
+                  {data.requestedAt?.toDate
+                    ? formatDate(data.requestedAt.toDate().toISOString())
+                    : "—"}
                 </dd>
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Preferred driver</dt>
                 <dd className="text-slate-900">
                   {data.preferredDriverId
-                    ? driverNames[data.preferredDriverId] ?? data.preferredDriverId
+                    ? (driverNames[data.preferredDriverId] ??
+                      data.preferredDriverId)
                     : "None"}
                 </dd>
               </div>
@@ -281,26 +324,33 @@ export default async function RequestDetailPage({ params }: PageProps) {
                 <dt className="font-medium text-slate-500">Assigned driver</dt>
                 <dd className="text-slate-900">
                   {data.assignedDriverId
-                    ? driverNames[data.assignedDriverId] ?? data.assignedDriverId
+                    ? (driverNames[data.assignedDriverId] ??
+                      data.assignedDriverId)
                     : "None"}
                 </dd>
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Claimed</dt>
                 <dd className="text-slate-900">
-                  {data.claimedAt?.toDate ? formatDate(data.claimedAt.toDate().toISOString()) : "—"}
+                  {data.claimedAt?.toDate
+                    ? formatDate(data.claimedAt.toDate().toISOString())
+                    : "—"}
                 </dd>
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Delivered</dt>
                 <dd className="text-slate-900">
-                  {data.deliveredAt?.toDate ? formatDate(data.deliveredAt.toDate().toISOString()) : "—"}
+                  {data.deliveredAt?.toDate
+                    ? formatDate(data.deliveredAt.toDate().toISOString())
+                    : "—"}
                 </dd>
               </div>
               <div>
                 <dt className="font-medium text-slate-500">Confirmed</dt>
                 <dd className="text-slate-900">
-                  {data.confirmedAt?.toDate ? formatDate(data.confirmedAt.toDate().toISOString()) : "—"}
+                  {data.confirmedAt?.toDate
+                    ? formatDate(data.confirmedAt.toDate().toISOString())
+                    : "—"}
                 </dd>
               </div>
             </dl>
@@ -311,9 +361,9 @@ export default async function RequestDetailPage({ params }: PageProps) {
                   Frequent requests warning
                 </p>
                 <p className="text-xs text-amber-800">
-                  This customer has {frequentRequestCount} requests in the last 7
-                  days. This is a warning only — review to make sure the loads are
-                  legitimate, but the request remains allowed.
+                  This customer has {frequentRequestCount} requests in the last
+                  7 days. This is a warning only — review to make sure the loads
+                  are legitimate, but the request remains allowed.
                 </p>
               </div>
             )}
@@ -324,24 +374,33 @@ export default async function RequestDetailPage({ params }: PageProps) {
               (see PRODUCT.md "Privacy"). */}
           {data.waterSituation && (
             <Card>
-              <h2 className="text-lg font-bold text-slate-900">Water Situation</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Water Situation
+              </h2>
               <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="font-medium text-slate-500">Resident-reported urgency</dt>
+                  <dt className="font-medium text-slate-500">
+                    Resident-reported urgency
+                  </dt>
                   <dd className="text-slate-900 capitalize">
                     {data.waterSituation.reportedUrgency ?? "—"}
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-medium text-slate-500">Persons affected</dt>
+                  <dt className="font-medium text-slate-500">
+                    Persons affected
+                  </dt>
                   <dd className="text-slate-900">
                     {data.waterSituation.personsAffected ?? "Not provided"}
                   </dd>
                 </div>
                 <div className="sm:col-span-2">
-                  <dt className="font-medium text-slate-500">Available storage</dt>
+                  <dt className="font-medium text-slate-500">
+                    Available storage
+                  </dt>
                   <dd className="text-slate-900">
-                    {data.waterSituation.availableStorageCapacity ?? "Not provided"}
+                    {data.waterSituation.availableStorageCapacity ??
+                      "Not provided"}
                   </dd>
                 </div>
                 <div className="sm:col-span-2">
@@ -349,16 +408,22 @@ export default async function RequestDetailPage({ params }: PageProps) {
                     Vulnerable / critical circumstances
                   </dt>
                   <dd className="text-slate-900">
-                    {((data.waterSituation.vulnerableCircumstances as string[]) ?? ["none"])
+                    {(
+                      (data.waterSituation
+                        .vulnerableCircumstances as string[]) ?? ["none"]
+                    )
                       .map((c) => VULNERABLE_LABELS[c] ?? c)
                       .join(", ")}
                   </dd>
                 </div>
                 {data.waterSituation.reportedUrgency === "critical" && (
                   <div className="sm:col-span-2">
-                    <dt className="font-medium text-slate-500">Critical explanation</dt>
+                    <dt className="font-medium text-slate-500">
+                      Critical explanation
+                    </dt>
                     <dd className="text-slate-900">
-                      {data.waterSituation.criticalExplanation ?? "Not provided"}
+                      {data.waterSituation.criticalExplanation ??
+                        "Not provided"}
                     </dd>
                   </div>
                 )}
@@ -373,37 +438,51 @@ export default async function RequestDetailPage({ params }: PageProps) {
           )}
 
           {/* Dispute reason — prominently displayed for disputed requests */}
-          {status === "disputed" && (() => {
-            const disputeEvent = events.find((e) => e.type === "customer_disputed");
-            const reason = disputeEvent?.metadata?.reason as string | undefined;
-            return (
-              <Card className="!border-red-200 !bg-red-50">
-                <h2 className="text-sm font-bold text-red-900">
-                  Dispute Reason
-                </h2>
-                <p className="mt-1 text-sm text-red-800">
-                  {reason || "No reason provided by resident."}
-                </p>
-                {disputeEvent && (
-                  <p className="mt-2 text-xs text-red-600">
-                    Disputed on {formatDate(disputeEvent.createdAt)}
-                    {disputeEvent.actorId && (
-                      <> by {actorNames[disputeEvent.actorId] ?? "Customer"}</>
-                    )}
+          {status === "disputed" &&
+            (() => {
+              const disputeEvent = events.find(
+                (e) => e.type === "customer_disputed",
+              );
+              const reason = disputeEvent?.metadata?.reason as
+                string | undefined;
+              return (
+                <Card className="!border-red-200 !bg-red-50">
+                  <h2 className="text-sm font-bold text-red-900">
+                    Dispute Reason
+                  </h2>
+                  <p className="mt-1 text-sm text-red-800">
+                    {reason || "No reason provided by resident."}
                   </p>
-                )}
-              </Card>
-            );
-          })()}
+                  {disputeEvent && (
+                    <p className="mt-2 text-xs text-red-600">
+                      Disputed on {formatDate(disputeEvent.createdAt)}
+                      {disputeEvent.actorId && (
+                        <>
+                          {" "}
+                          by {actorNames[disputeEvent.actorId] ?? "Customer"}
+                        </>
+                      )}
+                    </p>
+                  )}
+                </Card>
+              );
+            })()}
 
           {/* Water Collection */}
-          {(status === "claimed" || status === "delivered" || status === "confirmed" || status === "disputed") && (
+          {(status === "claimed" ||
+            status === "delivered" ||
+            status === "confirmed" ||
+            status === "disputed") && (
             <WaterCollectionDisplay
               requestId={requestId}
               loads={(data.loads ?? 1) as RequestedLoads}
               loadCollections={toWaterRequest(requestId, data).loadCollections}
               assignedDriverId={data.assignedDriverId ?? null}
-              assignedDriverName={data.assignedDriverId ? (driverNames[data.assignedDriverId] ?? null) : null}
+              assignedDriverName={
+                data.assignedDriverId
+                  ? (driverNames[data.assignedDriverId] ?? null)
+                  : null
+              }
               stations={fillStations}
               driverMeters={assignedDriverMeters}
               isClaimed={status === "claimed"}
@@ -416,17 +495,26 @@ export default async function RequestDetailPage({ params }: PageProps) {
             requestId={requestId}
             status={status}
             eligibleDrivers={eligibleDriverOptions}
-            canConfirmUnregisteredDelivery={!isRegisteredCustomer && status === "delivered"}
-            currentPriority={(data.dispatchPriority as DispatchPriority) ?? "normal"}
+            canConfirmUnregisteredDelivery={
+              !isRegisteredCustomer && status === "delivered"
+            }
+            currentPriority={
+              (data.dispatchPriority as DispatchPriority) ?? "normal"
+            }
             currentLoads={(data.loads as RequestedLoads) ?? 1}
             currentVillage={(data.village as string) ?? ""}
-            currentDeliveryDirections={(data.deliveryDirections as string) ?? ""}
+            currentDeliveryDirections={
+              (data.deliveryDirections as string) ?? ""
+            }
             currentRequestNotes={(data.requestNotes as string) ?? ""}
             currentCustomerName={customer?.displayName ?? ""}
             currentCustomerPhone={customer?.phone ?? ""}
             currentCustomerEmail={customer?.email ?? ""}
             registeredCustomer={isRegisteredCustomer}
-            hasCollections={Array.isArray(data.loadCollections) && data.loadCollections.length > 0}
+            hasCollections={
+              Array.isArray(data.loadCollections) &&
+              data.loadCollections.length > 0
+            }
           />
 
           {/* Event history */}
@@ -443,7 +531,10 @@ export default async function RequestDetailPage({ params }: PageProps) {
                     { nameMap: actorNames, actorId: event.actorId },
                   );
                   return (
-                    <div key={event.id} className="flex items-start gap-3 rounded-lg border border-slate-100 p-3">
+                    <div
+                      key={event.id}
+                      className="flex items-start gap-3 rounded-lg border border-slate-100 p-3"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-900">
                           {REQUEST_EVENT_LABELS[event.type] ?? event.type}
@@ -451,14 +542,18 @@ export default async function RequestDetailPage({ params }: PageProps) {
                         <p className="text-xs text-slate-500">
                           {formatDate(event.createdAt)}
                           {event.actorId && (
-                            <> &mdash; {actorNames[event.actorId] ?? event.actorId}</>
+                            <>
+                              {" "}
+                              &mdash;{" "}
+                              {actorNames[event.actorId] ?? event.actorId}
+                            </>
                           )}
-                          {event.actorRole && (
-                            <> ({event.actorRole})</>
-                          )}
+                          {event.actorRole && <> ({event.actorRole})</>}
                         </p>
                         {details && (
-                          <p className="mt-1 text-xs text-slate-600">{details}</p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {details}
+                          </p>
                         )}
                       </div>
                     </div>

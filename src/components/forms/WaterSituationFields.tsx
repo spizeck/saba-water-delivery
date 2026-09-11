@@ -1,6 +1,9 @@
 "use client";
 
-import type { ReportedUrgency, VulnerableCircumstance } from "@/lib/domain/types";
+import type {
+  ReportedUrgency,
+  VulnerableCircumstance,
+} from "@/lib/domain/types";
 
 /**
  * Shared "Your Water Situation" fields used by both the resident request
@@ -31,7 +34,8 @@ export const EMPTY_WATER_SITUATION: WaterSituationValue = {
 
 export function isWaterSituationComplete(value: WaterSituationValue): boolean {
   if (!value.reportedUrgency) return false;
-  if (value.reportedUrgency === "critical") return value.criticalExplanation.trim().length > 0;
+  if (value.reportedUrgency === "critical")
+    return value.criticalExplanation.trim().length > 0;
   return true;
 }
 
@@ -39,7 +43,10 @@ const VULNERABLE_OPTIONS: { value: VulnerableCircumstance; label: string }[] = [
   { value: "elderly", label: "Elderly person" },
   { value: "infant_or_young_child", label: "Infant or young child" },
   { value: "medical_need", label: "Medical need" },
-  { value: "essential_services_commercial_business", label: "Essential services (Commercial/business)" },
+  {
+    value: "essential_services_commercial_business",
+    label: "Essential services (Commercial/business)",
+  },
   { value: "hotel_or_restaurant", label: "Hotel or Restaurant" },
 ];
 
@@ -67,14 +74,19 @@ export function WaterSituationFields({ value, onChange }: Props) {
     if (option === "none") {
       next = has ? [] : ["none"];
     } else {
-      const withoutNone = value.vulnerableCircumstances.filter((c) => c !== "none");
-      next = has ? withoutNone.filter((c) => c !== option) : [...withoutNone, option];
+      const withoutNone = value.vulnerableCircumstances.filter(
+        (c) => c !== "none",
+      );
+      next = has
+        ? withoutNone.filter((c) => c !== option)
+        : [...withoutNone, option];
     }
     onChange({ ...value, vulnerableCircumstances: next });
   }
 
   const noneSelected =
-    value.vulnerableCircumstances.length === 0 || value.vulnerableCircumstances.includes("none");
+    value.vulnerableCircumstances.length === 0 ||
+    value.vulnerableCircumstances.includes("none");
 
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-slate-200 p-3">
@@ -88,7 +100,9 @@ export function WaterSituationFields({ value, onChange }: Props) {
           step={1}
           inputMode="numeric"
           value={value.personsAffected}
-          onChange={(e) => onChange({ ...value, personsAffected: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...value, personsAffected: e.target.value })
+          }
           className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
         />
       </label>
@@ -98,7 +112,9 @@ export function WaterSituationFields({ value, onChange }: Props) {
         <input
           type="text"
           value={value.availableStorageCapacity}
-          onChange={(e) => onChange({ ...value, availableStorageCapacity: e.target.value })}
+          onChange={(e) =>
+            onChange({ ...value, availableStorageCapacity: e.target.value })
+          }
           placeholder="e.g. 1500, About 2,000 gallons, Unknown"
           className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
         />
@@ -112,7 +128,10 @@ export function WaterSituationFields({ value, onChange }: Props) {
           Are there vulnerable persons or critical circumstances?
         </legend>
         {VULNERABLE_OPTIONS.map((opt) => (
-          <label key={opt.value} className="flex items-center gap-2 text-sm text-slate-700">
+          <label
+            key={opt.value}
+            className="flex items-center gap-2 text-sm text-slate-700"
+          >
             <input
               type="checkbox"
               checked={value.vulnerableCircumstances.includes(opt.value)}
@@ -122,13 +141,19 @@ export function WaterSituationFields({ value, onChange }: Props) {
           </label>
         ))}
         <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input type="checkbox" checked={noneSelected} onChange={() => toggleVulnerable("none")} />
+          <input
+            type="checkbox"
+            checked={noneSelected}
+            onChange={() => toggleVulnerable("none")}
+          />
           None of these
         </label>
       </fieldset>
 
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="text-sm font-medium text-slate-700">How urgent is your request?</legend>
+        <legend className="text-sm font-medium text-slate-700">
+          How urgent is your request?
+        </legend>
         {URGENCY_OPTIONS.map((opt) => (
           <label
             key={opt.value}
@@ -145,7 +170,8 @@ export function WaterSituationFields({ value, onChange }: Props) {
                   reportedUrgency: opt.value,
                   // Never retain stale Critical explanation text if the
                   // resident switches back to Normal before submitting.
-                  criticalExplanation: opt.value === "critical" ? value.criticalExplanation : "",
+                  criticalExplanation:
+                    opt.value === "critical" ? value.criticalExplanation : "",
                 })
               }
               required
@@ -160,7 +186,9 @@ export function WaterSituationFields({ value, onChange }: Props) {
           Please explain why this request is critical.
           <textarea
             value={value.criticalExplanation}
-            onChange={(e) => onChange({ ...value, criticalExplanation: e.target.value })}
+            onChange={(e) =>
+              onChange({ ...value, criticalExplanation: e.target.value })
+            }
             rows={3}
             required
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-blue-600 focus:outline-none"
@@ -175,22 +203,41 @@ export function WaterSituationFields({ value, onChange }: Props) {
  * `WaterSituationValue` above so callers don't have to repeat the field
  * names. `vulnerableCircumstances` uses repeated inputs of the same
  * name so the server can read them with `formData.getAll(...)`. */
-export function WaterSituationHiddenFields({ value }: { value: WaterSituationValue }) {
+export function WaterSituationHiddenFields({
+  value,
+}: {
+  value: WaterSituationValue;
+}) {
   return (
     <>
-      <input type="hidden" name="personsAffected" value={value.personsAffected} />
-      <input type="hidden" name="availableStorageCapacity" value={value.availableStorageCapacity} />
-      <input type="hidden" name="reportedUrgency" value={value.reportedUrgency} />
+      <input
+        type="hidden"
+        name="personsAffected"
+        value={value.personsAffected}
+      />
+      <input
+        type="hidden"
+        name="availableStorageCapacity"
+        value={value.availableStorageCapacity}
+      />
+      <input
+        type="hidden"
+        name="reportedUrgency"
+        value={value.reportedUrgency}
+      />
       <input
         type="hidden"
         name="criticalExplanation"
-        value={value.reportedUrgency === "critical" ? value.criticalExplanation : ""}
+        value={
+          value.reportedUrgency === "critical" ? value.criticalExplanation : ""
+        }
       />
-      {(value.vulnerableCircumstances.length > 0 ? value.vulnerableCircumstances : ["none"]).map(
-        (c) => (
-          <input key={c} type="hidden" name="vulnerableCircumstances" value={c} />
-        ),
-      )}
+      {(value.vulnerableCircumstances.length > 0
+        ? value.vulnerableCircumstances
+        : ["none"]
+      ).map((c) => (
+        <input key={c} type="hidden" name="vulnerableCircumstances" value={c} />
+      ))}
     </>
   );
 }

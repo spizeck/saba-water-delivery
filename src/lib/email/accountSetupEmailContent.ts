@@ -67,7 +67,7 @@ export function buildAccountSetupEmailPayload(
 
   const html = [
     "<!DOCTYPE html>",
-    "<html><head><meta charset=\"utf-8\"></head><body>",
+    '<html><head><meta charset="utf-8"></head><body>',
     `<p>${salutation}</p>`,
     "<p>An online resident account has been prepared for you for the <strong>Saba Water Delivery</strong> system.</p>",
     "<p>Use the secure link below to finish setting up your account and access your water-delivery information:</p>",

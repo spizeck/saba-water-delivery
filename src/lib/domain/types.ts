@@ -12,7 +12,8 @@
  * need visibility into operations without operational control. See
  * PRODUCT.md / TECHNICAL.md "Viewer Role".
  */
-export type UserRole = "resident" | "driver" | "dispatcher" | "admin" | "viewer";
+export type UserRole =
+  "resident" | "driver" | "dispatcher" | "admin" | "viewer";
 
 /**
  * How the account was created:
@@ -356,10 +357,7 @@ export interface PropertyPhoto {
  * Only the assigned driver may upload photos for a request.
  */
 export type WaterRequestPhotoType =
-  | "proof_of_delivery"
-  | "delivery_issue"
-  | "access_issue"
-  | "other";
+  "proof_of_delivery" | "delivery_issue" | "access_issue" | "other";
 
 export interface WaterRequestPhoto {
   id: string;

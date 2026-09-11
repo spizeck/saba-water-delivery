@@ -93,7 +93,11 @@ function sabaDateParts(instant: Date): SabaDateParts {
   }).formatToParts(instant);
   const map: Record<string, string> = {};
   for (const p of parts) map[p.type] = p.value;
-  return { year: Number(map.year), month: Number(map.month), day: Number(map.day) };
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+  };
 }
 
 /**

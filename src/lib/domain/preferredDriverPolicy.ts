@@ -33,13 +33,17 @@ export function decidePreferredDriverHold(
   } = input;
   const hasPreferredDriver = Boolean(preferredDriverId);
   const bypassedForPriority =
-    hasPreferredDriver && dispatchPriority !== "normal" && !preferredDriverImmediatelyAvailable;
+    hasPreferredDriver &&
+    dispatchPriority !== "normal" &&
+    !preferredDriverImmediatelyAvailable;
   const willHold = hasPreferredDriver && !bypassedForPriority;
 
   return {
     willHold,
     status: willHold ? "preferred_driver_hold" : "available",
-    expiresAt: willHold ? new Date(now.getTime() + windowHours * 60 * 60 * 1000) : null,
+    expiresAt: willHold
+      ? new Date(now.getTime() + windowHours * 60 * 60 * 1000)
+      : null,
     bypassedForPriority,
   };
 }

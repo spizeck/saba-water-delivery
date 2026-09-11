@@ -23,7 +23,11 @@ export default function ResidentInstallPage() {
       <SiteHeader />
       <main className="flex flex-1 items-center py-12">
         <Container className="max-w-xl">
-          <InstallPrompt portal="resident" title="Resident App" portalName="Resident" />
+          <InstallPrompt
+            portal="resident"
+            title="Resident App"
+            portalName="Resident"
+          />
         </Container>
       </main>
     </>

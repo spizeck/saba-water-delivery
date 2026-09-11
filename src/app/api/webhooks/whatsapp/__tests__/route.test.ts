@@ -20,8 +20,9 @@ vi.mock("@/lib/whatsapp/handleIncomingMessage", () => ({
 // `server-only` guard) so signature/challenge behavior is genuinely
 // exercised, not faked.
 vi.mock("@/lib/whatsapp/client", async () => {
-  const configModule =
-    await vi.importActual<typeof import("@/lib/whatsapp/clientConfig")>("@/lib/whatsapp/clientConfig");
+  const configModule = await vi.importActual<
+    typeof import("@/lib/whatsapp/clientConfig")
+  >("@/lib/whatsapp/clientConfig");
   return {
     getWhatsAppClientConfig: configModule.getWhatsAppClientConfig,
     verifyWhatsAppWebhookChallenge: configModule.verifyWhatsAppWebhookChallenge,
@@ -49,7 +50,14 @@ function messagePayload(messageId = "wamid.ABC123"): string {
         changes: [
           {
             value: {
-              messages: [{ from: "5994165363", id: messageId, type: "text", text: { body: "Hi" } }],
+              messages: [
+                {
+                  from: "5994165363",
+                  id: messageId,
+                  type: "text",
+                  text: { body: "Hi" },
+                },
+              ],
             },
           },
         ],
@@ -59,12 +67,20 @@ function messagePayload(messageId = "wamid.ABC123"): string {
 }
 
 function signedRequest(body: string, signature?: string): NextRequest {
-  const sig = signature ?? `sha256=${createHmac("sha256", APP_SECRET).update(body, "utf8").digest("hex")}`;
-  return new NextRequest("https://saba-water-delivery.vercel.app/api/webhooks/whatsapp", {
-    method: "POST",
-    headers: { "x-hub-signature-256": sig, "content-type": "application/json" },
-    body,
-  });
+  const sig =
+    signature ??
+    `sha256=${createHmac("sha256", APP_SECRET).update(body, "utf8").digest("hex")}`;
+  return new NextRequest(
+    "https://saba-water-delivery.vercel.app/api/webhooks/whatsapp",
+    {
+      method: "POST",
+      headers: {
+        "x-hub-signature-256": sig,
+        "content-type": "application/json",
+      },
+      body,
+    },
+  );
 }
 
 describe("GET /api/webhooks/whatsapp", () => {
@@ -105,7 +121,12 @@ describe("POST /api/webhooks/whatsapp", () => {
 
   it("rejects a request with an invalid signature", async () => {
     const body = messagePayload();
-    const response = await POST(signedRequest(body, "sha256=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
+    const response = await POST(
+      signedRequest(
+        body,
+        "sha256=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      ),
+    );
     expect(response.status).toBe(401);
     expect(claimMessageIdMock).not.toHaveBeenCalled();
     expect(handleIncomingMock).not.toHaveBeenCalled();

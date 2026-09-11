@@ -35,7 +35,10 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!sessionCookie) return null;
 
   try {
-    const decoded = await getAdminAuth().verifySessionCookie(sessionCookie, true);
+    const decoded = await getAdminAuth().verifySessionCookie(
+      sessionCookie,
+      true,
+    );
     const profile = await getUserProfile(decoded.uid);
     if (!profile) return null;
     return { uid: decoded.uid, profile };
@@ -53,7 +56,9 @@ export async function getSessionUser(): Promise<SessionUser | null> {
  * one of the `allowed` roles. Never relies on the client to report its
  * own roles.
  */
-export async function requireRole(allowed: UserRole | UserRole[]): Promise<SessionUser> {
+export async function requireRole(
+  allowed: UserRole | UserRole[],
+): Promise<SessionUser> {
   const session = await getSessionUser();
   if (!session) redirect("/login");
 

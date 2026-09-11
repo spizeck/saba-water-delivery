@@ -42,12 +42,25 @@ export async function createDriverAction(
   if (!displayName) return { status: "error", message: "Name is required." };
 
   try {
-    await createDriver({ displayName, phone: phone || null, actorId: session.uid });
+    await createDriver({
+      displayName,
+      phone: phone || null,
+      actorId: session.uid,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
-      if (err.message === "DISPLAY_NAME_REQUIRED") return { status: "error", message: "Name is required." };
-      if (err.message === "DRIVER_NAME_EXISTS") return { status: "error", message: "A driver with this name already exists." };
-      if (err.message === "DRIVER_PHONE_EXISTS") return { status: "error", message: "A driver with this phone number already exists." };
+      if (err.message === "DISPLAY_NAME_REQUIRED")
+        return { status: "error", message: "Name is required." };
+      if (err.message === "DRIVER_NAME_EXISTS")
+        return {
+          status: "error",
+          message: "A driver with this name already exists.",
+        };
+      if (err.message === "DRIVER_PHONE_EXISTS")
+        return {
+          status: "error",
+          message: "A driver with this phone number already exists.",
+        };
     }
     throw err;
   }
@@ -69,13 +82,28 @@ export async function updateDriverAction(
   if (!displayName) return { status: "error", message: "Name is required." };
 
   try {
-    await updateDriver({ driverId, displayName, phone: phone || null, actorId: session.uid });
+    await updateDriver({
+      driverId,
+      displayName,
+      phone: phone || null,
+      actorId: session.uid,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
-      if (err.message === "DRIVER_NOT_FOUND") return { status: "error", message: "Driver not found." };
-      if (err.message === "DISPLAY_NAME_REQUIRED") return { status: "error", message: "Name is required." };
-      if (err.message === "DRIVER_NAME_EXISTS") return { status: "error", message: "A driver with this name already exists." };
-      if (err.message === "DRIVER_PHONE_EXISTS") return { status: "error", message: "A driver with this phone number already exists." };
+      if (err.message === "DRIVER_NOT_FOUND")
+        return { status: "error", message: "Driver not found." };
+      if (err.message === "DISPLAY_NAME_REQUIRED")
+        return { status: "error", message: "Name is required." };
+      if (err.message === "DRIVER_NAME_EXISTS")
+        return {
+          status: "error",
+          message: "A driver with this name already exists.",
+        };
+      if (err.message === "DRIVER_PHONE_EXISTS")
+        return {
+          status: "error",
+          message: "A driver with this phone number already exists.",
+        };
     }
     throw err;
   }
@@ -97,7 +125,8 @@ export async function linkDriverAccountAction(
   const userId = String(formData.get("userId") ?? "").trim();
 
   if (!driverId) return { status: "error", message: "Missing driver ID." };
-  if (!userId) return { status: "error", message: "Select an account to link." };
+  if (!userId)
+    return { status: "error", message: "Select an account to link." };
 
   try {
     await linkDriverAccount({ driverId, userId, actorId: session.uid });
@@ -107,11 +136,17 @@ export async function linkDriverAccountAction(
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver not found." };
         case "DRIVER_ALREADY_LINKED":
-          return { status: "error", message: "This driver is already linked to an account." };
+          return {
+            status: "error",
+            message: "This driver is already linked to an account.",
+          };
         case "USER_NOT_FOUND":
           return { status: "error", message: "Account not found." };
         case "USER_ALREADY_LINKED":
-          return { status: "error", message: "That account is already linked to a different driver." };
+          return {
+            status: "error",
+            message: "That account is already linked to a different driver.",
+          };
         default:
           throw err;
       }
@@ -140,11 +175,15 @@ export async function unlinkDriverAccountAction(
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver not found." };
         case "DRIVER_NOT_LINKED":
-          return { status: "error", message: "This driver has no linked account." };
+          return {
+            status: "error",
+            message: "This driver has no linked account.",
+          };
         case "DRIVER_HAS_ACTIVE_DELIVERIES":
           return {
             status: "error",
-            message: "This driver has active claimed deliveries. Resolve or reassign them first.",
+            message:
+              "This driver has active claimed deliveries. Resolve or reassign them first.",
           };
         default:
           throw err;
@@ -221,15 +260,28 @@ export async function setMeterAssignmentAction(
   const meterCode = String(formData.get("meterCode") ?? "").trim();
   const meterNumber = Number(formData.get("meterNumber"));
 
-  if (!driverId || !stationId) return { status: "error", message: "Missing driver or station." };
+  if (!driverId || !stationId)
+    return { status: "error", message: "Missing driver or station." };
 
   try {
-    await setMeterAssignment({ driverId, stationId, meterCode, meterNumber, actorId: session.uid });
+    await setMeterAssignment({
+      driverId,
+      stationId,
+      meterCode,
+      meterNumber,
+      actorId: session.uid,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
-      if (err.message === "METER_CODE_REQUIRED") return { status: "error", message: "Meter code is required." };
-      if (err.message === "INVALID_METER_NUMBER") return { status: "error", message: "Meter number must be a non-negative number." };
-      if (err.message === "DRIVER_NOT_FOUND") return { status: "error", message: "Driver not found." };
+      if (err.message === "METER_CODE_REQUIRED")
+        return { status: "error", message: "Meter code is required." };
+      if (err.message === "INVALID_METER_NUMBER")
+        return {
+          status: "error",
+          message: "Meter number must be a non-negative number.",
+        };
+      if (err.message === "DRIVER_NOT_FOUND")
+        return { status: "error", message: "Driver not found." };
     }
     throw err;
   }
@@ -246,7 +298,8 @@ export async function removeMeterAssignmentAction(
   const driverId = String(formData.get("driverId") ?? "").trim();
   const stationId = String(formData.get("stationId") ?? "").trim();
 
-  if (!driverId || !stationId) return { status: "error", message: "Missing driver or station." };
+  if (!driverId || !stationId)
+    return { status: "error", message: "Missing driver or station." };
 
   await removeMeterAssignment({ driverId, stationId, actorId: session.uid });
 
@@ -282,11 +335,22 @@ export async function archiveDriverAction(
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver not found." };
         case "DRIVER_ALREADY_ARCHIVED":
-          return { status: "error", message: "This driver is already archived." };
+          return {
+            status: "error",
+            message: "This driver is already archived.",
+          };
         case "DRIVER_HAS_ACTIVE_REQUEST":
-          return { status: "error", message: "This driver has an active request. Resolve or reassign it first." };
+          return {
+            status: "error",
+            message:
+              "This driver has an active request. Resolve or reassign it first.",
+          };
         case "DRIVER_HAS_ACTIVE_DELIVERIES":
-          return { status: "error", message: "This driver has active claimed deliveries. Resolve or reassign them first." };
+          return {
+            status: "error",
+            message:
+              "This driver has active claimed deliveries. Resolve or reassign them first.",
+          };
         case "ARCHIVE_REASON_REQUIRED":
           return { status: "error", message: "A reason is required." };
       }
@@ -334,7 +398,11 @@ export async function deleteDriverAction(
   const confirmation = String(formData.get("confirmation") ?? "").trim();
 
   if (!driverId) return { status: "error", message: "Missing driver ID." };
-  if (!confirmation) return { status: "error", message: "Type the driver name to confirm deletion." };
+  if (!confirmation)
+    return {
+      status: "error",
+      message: "Type the driver name to confirm deletion.",
+    };
 
   try {
     await deleteDriver({ driverId, deletedBy: session.uid, confirmation });
@@ -344,9 +412,15 @@ export async function deleteDriverAction(
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver not found." };
         case "DRIVER_NOT_ELIGIBLE_FOR_DELETION":
-          return { status: "error", message: "This driver cannot be deleted. Archive it instead." };
+          return {
+            status: "error",
+            message: "This driver cannot be deleted. Archive it instead.",
+          };
         case "CONFIRMATION_NAME_MISMATCH":
-          return { status: "error", message: "Confirmation does not match the driver name." };
+          return {
+            status: "error",
+            message: "Confirmation does not match the driver name.",
+          };
       }
     }
     throw err;

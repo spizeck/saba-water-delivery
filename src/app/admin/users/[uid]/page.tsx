@@ -6,7 +6,10 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getRoleEvents } from "@/lib/domain/admin";
-import { getDriverByLinkedUserId, getDriverEvents } from "@/lib/domain/driverRegistry";
+import {
+  getDriverByLinkedUserId,
+  getDriverEvents,
+} from "@/lib/domain/driverRegistry";
 import { getUserProfile } from "@/lib/domain/users";
 import { formatSabaDate } from "@/lib/utils/datetime";
 
@@ -144,12 +147,17 @@ export default async function UserDetailPage({ params }: PageProps) {
               from the Driver Registry, not here). */}
           {isDriver && (
             <Card>
-              <h2 className="text-lg font-bold text-slate-900">Driver Status</h2>
+              <h2 className="text-lg font-bold text-slate-900">
+                Driver Status
+              </h2>
               {linkedDriver ? (
                 <>
                   <p className="mt-2 text-sm text-slate-600">
                     Linked to Driver Registry entry{" "}
-                    <span className="font-medium text-slate-900">{linkedDriver.displayName}</span>.
+                    <span className="font-medium text-slate-900">
+                      {linkedDriver.displayName}
+                    </span>
+                    .
                   </p>
                   <Link
                     href={`/admin/drivers/${linkedDriver.id}`}
@@ -160,9 +168,12 @@ export default async function UserDetailPage({ params }: PageProps) {
                 </>
               ) : (
                 <p className="mt-2 text-sm text-slate-600">
-                  This user has the driver role but is not linked to a
-                  Driver Registry entry.{" "}
-                  <Link href="/admin/drivers" className="text-blue-700 hover:underline">
+                  This user has the driver role but is not linked to a Driver
+                  Registry entry.{" "}
+                  <Link
+                    href="/admin/drivers"
+                    className="text-blue-700 hover:underline"
+                  >
                     Manage the Driver Registry &rarr;
                   </Link>
                 </p>

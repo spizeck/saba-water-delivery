@@ -13,7 +13,10 @@ interface Props {
 }
 
 export function AvailabilityToggle({ currentStatus }: Props) {
-  const [state, formAction, pending] = useActionState(toggleAvailability, initialState);
+  const [state, formAction, pending] = useActionState(
+    toggleAvailability,
+    initialState,
+  );
   const isOnline = currentStatus === "online";
   const nextStatus = isOnline ? "offline" : "online";
 
@@ -27,11 +30,7 @@ export function AvailabilityToggle({ currentStatus }: Props) {
         disabled={pending}
         className="w-full"
       >
-        {pending
-          ? "Updating\u2026"
-          : isOnline
-            ? "Go Offline"
-            : "Go Online"}
+        {pending ? "Updating\u2026" : isOnline ? "Go Offline" : "Go Online"}
       </Button>
       {state.status === "error" && (
         <p role="alert" className="mt-2 text-sm font-medium text-red-700">

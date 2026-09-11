@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 
 import { requireRole } from "@/lib/auth/session";
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
-import { closeDeliveryRun, createDispatchBatch } from "@/lib/domain/dispatchBatches";
+import {
+  closeDeliveryRun,
+  createDispatchBatch,
+} from "@/lib/domain/dispatchBatches";
 import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
 import {
   getDriverByLinkedUserId,
@@ -137,8 +140,10 @@ export async function cancelRequest(
     await cancelWaterRequest({ requestId, actorId: session.uid, reason });
   } catch (err: unknown) {
     if (err instanceof Error) {
-      if (err.message === "REQUEST_NOT_FOUND") return { status: "error", message: "Request not found." };
-      if (err.message === "REQUEST_ALREADY_RESOLVED") return { status: "error", message: "Request is already resolved." };
+      if (err.message === "REQUEST_NOT_FOUND")
+        return { status: "error", message: "Request not found." };
+      if (err.message === "REQUEST_ALREADY_RESOLVED")
+        return { status: "error", message: "Request is already resolved." };
     }
     throw err;
   }
@@ -164,16 +169,22 @@ export async function editRequest(
   const villageRaw = formData.get("village");
   const directionsRaw = formData.get("deliveryDirections");
   const requestNotesRaw = formData.get("requestNotes");
-  const customerDisplayName = String(formData.get("customerDisplayName") ?? "").trim();
+  const customerDisplayName = String(
+    formData.get("customerDisplayName") ?? "",
+  ).trim();
   const customerPhone = String(formData.get("customerPhone") ?? "").trim();
   const customerEmail = String(formData.get("customerEmail") ?? "").trim();
   if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
-    return { status: "error", message: "Please enter a valid customer email address." };
+    return {
+      status: "error",
+      message: "Please enter a valid customer email address.",
+    };
   }
 
   const loads = loadsRaw != null ? parseRequestedLoads(loadsRaw) : null;
   const village = villageRaw != null ? String(villageRaw).trim() || null : null;
-  const deliveryDirections = directionsRaw != null ? String(directionsRaw).trim() || null : null;
+  const deliveryDirections =
+    directionsRaw != null ? String(directionsRaw).trim() || null : null;
 
   try {
     await editWaterRequest({
@@ -182,7 +193,8 @@ export async function editRequest(
       loads,
       village,
       deliveryDirections,
-      requestNotes: requestNotesRaw === null ? undefined : String(requestNotesRaw),
+      requestNotes:
+        requestNotesRaw === null ? undefined : String(requestNotesRaw),
       customerDisplayName,
       customerPhone,
       customerEmail,
@@ -194,25 +206,51 @@ export async function editRequest(
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_EDITABLE":
-          return { status: "error", message: "This request can no longer be edited. It has already been claimed or further along." };
+          return {
+            status: "error",
+            message:
+              "This request can no longer be edited. It has already been claimed or further along.",
+          };
         case "INVALID_LOADS":
-          return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+          return {
+            status: "error",
+            message: "Please select a valid quantity (1 or 2 loads).",
+          };
         case "INVALID_VILLAGE":
-          return { status: "error", message: "Please select a valid village from the list." };
+          return {
+            status: "error",
+            message: "Please select a valid village from the list.",
+          };
         case "DIRECTIONS_REQUIRED":
-          return { status: "error", message: "Delivery directions are required." };
+          return {
+            status: "error",
+            message: "Delivery directions are required.",
+          };
         case "REQUEST_NOTES_TOO_LONG":
-          return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
+          return {
+            status: "error",
+            message: "Notes / Comments must be 1,000 characters or fewer.",
+          };
         case "CUSTOMER_NAME_REQUIRED":
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
           return { status: "error", message: "Customer phone is required." };
         case "INVALID_CUSTOMER_EMAIL":
-          return { status: "error", message: "Please enter a valid customer email address." };
+          return {
+            status: "error",
+            message: "Please enter a valid customer email address.",
+          };
         case "CUSTOMER_PROFILE_NOT_FOUND":
-          return { status: "error", message: "The registered customer profile could not be found." };
+          return {
+            status: "error",
+            message: "The registered customer profile could not be found.",
+          };
         case "QUANTITY_LOCKED_BY_COLLECTION":
-          return { status: "error", message: "Quantity cannot be changed because water collection has already been recorded for this request." };
+          return {
+            status: "error",
+            message:
+              "Quantity cannot be changed because water collection has already been recorded for this request.",
+          };
         case "NO_CHANGES":
           return { status: "error", message: "No changes were made." };
         default:
@@ -236,20 +274,26 @@ export async function resolveDisputeAsCompleted(
   const note = String(formData.get("note") ?? "").trim();
 
   if (!requestId) return { status: "error", message: "Missing request ID." };
-  if (!note) return { status: "error", message: "A resolution note is required." };
+  if (!note)
+    return { status: "error", message: "A resolution note is required." };
 
   try {
     await resolveDisputeCompleted({ requestId, actorId: session.uid, note });
   } catch (err: unknown) {
     if (err instanceof Error) {
-      if (err.message === "REQUEST_NOT_FOUND") return { status: "error", message: "Request not found." };
-      if (err.message === "REQUEST_NOT_DISPUTED") return { status: "error", message: "Request is not disputed." };
+      if (err.message === "REQUEST_NOT_FOUND")
+        return { status: "error", message: "Request not found." };
+      if (err.message === "REQUEST_NOT_DISPUTED")
+        return { status: "error", message: "Request is not disputed." };
     }
     throw err;
   }
 
   revalidatePath("/dispatcher");
-  return { status: "success", message: "Dispute resolved — delivery accepted." };
+  return {
+    status: "success",
+    message: "Dispute resolved — delivery accepted.",
+  };
 }
 
 export async function resolveDisputeAsReopened(
@@ -261,20 +305,26 @@ export async function resolveDisputeAsReopened(
   const note = String(formData.get("note") ?? "").trim();
 
   if (!requestId) return { status: "error", message: "Missing request ID." };
-  if (!note) return { status: "error", message: "A resolution note is required." };
+  if (!note)
+    return { status: "error", message: "A resolution note is required." };
 
   try {
     await resolveDisputeReopened({ requestId, actorId: session.uid, note });
   } catch (err: unknown) {
     if (err instanceof Error) {
-      if (err.message === "REQUEST_NOT_FOUND") return { status: "error", message: "Request not found." };
-      if (err.message === "REQUEST_NOT_DISPUTED") return { status: "error", message: "Request is not disputed." };
+      if (err.message === "REQUEST_NOT_FOUND")
+        return { status: "error", message: "Request not found." };
+      if (err.message === "REQUEST_NOT_DISPUTED")
+        return { status: "error", message: "Request is not disputed." };
     }
     throw err;
   }
 
   revalidatePath("/dispatcher");
-  return { status: "success", message: "Dispute resolved — reopened for new delivery." };
+  return {
+    status: "success",
+    message: "Dispute resolved — reopened for new delivery.",
+  };
 }
 
 export async function assignRequest(
@@ -299,16 +349,27 @@ export async function assignRequest(
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
-        case "REQUEST_NOT_FOUND": return { status: "error", message: "Request not found." };
-        case "REQUEST_NOT_ASSIGNABLE": return { status: "error", message: "Request is not in an assignable state." };
-        case "DRIVER_NOT_FOUND": return { status: "error", message: "Driver not found." };
-        case "DRIVER_INELIGIBLE": return { status: "error", message: "Selected driver is not eligible." };
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_ASSIGNABLE":
+          return {
+            status: "error",
+            message: "Request is not in an assignable state.",
+          };
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver not found." };
+        case "DRIVER_INELIGIBLE":
+          return {
+            status: "error",
+            message: "Selected driver is not eligible.",
+          };
         case "DRIVER_HAS_ACTIVE_DELIVERY":
           return {
             status: "error",
             message: "Selected driver already has an active delivery.",
           };
-        default: throw err;
+        default:
+          throw err;
       }
     }
     throw err;
@@ -336,20 +397,36 @@ export async function reassignRequest(
   if (newDriverEntry) await reconcileActiveRequest(newDriverEntry.id);
 
   try {
-    await dispatcherReassign({ requestId, newDriverId, actorId: session.uid, reason });
+    await dispatcherReassign({
+      requestId,
+      newDriverId,
+      actorId: session.uid,
+      reason,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
-        case "REQUEST_NOT_FOUND": return { status: "error", message: "Request not found." };
-        case "REQUEST_NOT_CLAIMED": return { status: "error", message: "Request is not currently claimed." };
-        case "DRIVER_NOT_FOUND": return { status: "error", message: "Driver not found." };
-        case "DRIVER_INELIGIBLE": return { status: "error", message: "Selected driver is not eligible." };
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_CLAIMED":
+          return {
+            status: "error",
+            message: "Request is not currently claimed.",
+          };
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver not found." };
+        case "DRIVER_INELIGIBLE":
+          return {
+            status: "error",
+            message: "Selected driver is not eligible.",
+          };
         case "DRIVER_HAS_ACTIVE_DELIVERY":
           return {
             status: "error",
             message: "Selected driver already has an active delivery.",
           };
-        default: throw err;
+        default:
+          throw err;
       }
     }
     throw err;
@@ -370,16 +447,27 @@ export async function returnRequestToQueue(
   if (!reason) return { status: "error", message: "A reason is required." };
 
   try {
-    await returnAssignedRequestToQueue({ requestId, actorId: session.uid, reason });
+    await returnAssignedRequestToQueue({
+      requestId,
+      actorId: session.uid,
+      reason,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_ASSIGNED":
-          return { status: "error", message: "Only an assigned request can be returned to the queue." };
+          return {
+            status: "error",
+            message: "Only an assigned request can be returned to the queue.",
+          };
         case "REQUEST_HAS_COLLECTIONS":
-          return { status: "error", message: "This request cannot be returned because water collection has already been recorded." };
+          return {
+            status: "error",
+            message:
+              "This request cannot be returned because water collection has already been recorded.",
+          };
       }
     }
     throw err;
@@ -388,7 +476,10 @@ export async function returnRequestToQueue(
   revalidatePath("/dispatcher");
   revalidatePath(`/dispatcher/${requestId}`);
   revalidatePath("/dispatcher/batches");
-  return { status: "success", message: "Request returned to the normal dispatch queue." };
+  return {
+    status: "success",
+    message: "Request returned to the normal dispatch queue.",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +494,8 @@ export interface DuplicateMatch {
 }
 
 export interface CreateRequestActionState {
-  status: "idle" | "success" | "error" | "duplicate_warning" | "invitation_warning";
+  status:
+    "idle" | "success" | "error" | "duplicate_warning" | "invitation_warning";
   message?: string;
   duplicates?: DuplicateMatch[];
   invitation?: AccountInvitationResult;
@@ -425,20 +517,32 @@ export async function createManualRequest(
   const customerType = String(formData.get("customerType") ?? "existing");
   const loads = parseRequestedLoads(formData.get("loads"));
   const village = String(formData.get("village") ?? "").trim();
-  const deliveryDirections = String(formData.get("deliveryDirections") ?? "").trim();
+  const deliveryDirections = String(
+    formData.get("deliveryDirections") ?? "",
+  ).trim();
   const requestNotes = String(formData.get("requestNotes") ?? "");
-  const preferredDriverIdRaw = String(formData.get("preferredDriverId") ?? "").trim();
+  const preferredDriverIdRaw = String(
+    formData.get("preferredDriverId") ?? "",
+  ).trim();
   const preferredDriverId =
-    preferredDriverIdRaw && preferredDriverIdRaw !== "none" ? preferredDriverIdRaw : null;
+    preferredDriverIdRaw && preferredDriverIdRaw !== "none"
+      ? preferredDriverIdRaw
+      : null;
   const overrideDuplicate = formData.get("overrideDuplicate") === "true";
   const attestationAccepted = formData.get("attestationAccepted") === "true";
-  const linkedResidentUid = String(formData.get("linkedResidentUid") ?? "").trim() || null;
-  const sendAccountInvitation = formData.get("sendAccountInvitation") === "true";
+  const linkedResidentUid =
+    String(formData.get("linkedResidentUid") ?? "").trim() || null;
+  const sendAccountInvitation =
+    formData.get("sendAccountInvitation") === "true";
 
   if (loads === null) {
-    return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+    return {
+      status: "error",
+      message: "Please select a valid quantity (1 or 2 loads).",
+    };
   }
-  if (!village) return { status: "error", message: "Village/area is required." };
+  if (!village)
+    return { status: "error", message: "Village/area is required." };
   if (!deliveryDirections) {
     return { status: "error", message: "Delivery directions are required." };
   }
@@ -452,7 +556,9 @@ export async function createManualRequest(
   // selected someone, or they chose "New / unregistered" but the email
   // matched an existing account and they decided to use it.
   const effectiveResidentUid =
-    customerType === "existing" ? String(formData.get("residentUid") ?? "").trim() : linkedResidentUid;
+    customerType === "existing"
+      ? String(formData.get("residentUid") ?? "").trim()
+      : linkedResidentUid;
 
   if (effectiveResidentUid) {
     try {
@@ -471,13 +577,20 @@ export async function createManualRequest(
     } catch (err: unknown) {
       if (err instanceof Error) {
         if (err.message === "INVALID_LOADS") {
-          return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+          return {
+            status: "error",
+            message: "Please select a valid quantity (1 or 2 loads).",
+          };
         }
         if (err.message === "INVALID_VILLAGE") {
-          return { status: "error", message: "Please select a valid village from the list." };
+          return {
+            status: "error",
+            message: "Please select a valid village from the list.",
+          };
         }
         if (err.message === "DUPLICATE_ACTIVE_REQUEST") {
-          const existing = await getActiveRequestForCustomer(effectiveResidentUid);
+          const existing =
+            await getActiveRequestForCustomer(effectiveResidentUid);
           return {
             status: "error",
             message: existing
@@ -486,12 +599,16 @@ export async function createManualRequest(
           };
         }
         if (err.message === "REQUEST_NOTES_TOO_LONG") {
-          return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
+          return {
+            status: "error",
+            message: "Notes / Comments must be 1,000 characters or fewer.",
+          };
         }
         if (err.message === "ATTESTATION_REQUIRED") {
           return {
             status: "error",
-            message: "You must confirm the attestation before creating the request.",
+            message:
+              "You must confirm the attestation before creating the request.",
           };
         }
         const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
@@ -515,8 +632,10 @@ export async function createManualRequest(
   const customerPhone = String(formData.get("customerPhone") ?? "").trim();
   const customerEmail = String(formData.get("customerEmail") ?? "").trim();
 
-  if (!customerName) return { status: "error", message: "Customer name is required." };
-  if (!customerPhone) return { status: "error", message: "Phone number is required." };
+  if (!customerName)
+    return { status: "error", message: "Customer name is required." };
+  if (!customerPhone)
+    return { status: "error", message: "Phone number is required." };
 
   // Soft duplicate check: phone-number matching is not reliable identity
   // verification, so this is a warning staff can deliberately override,
@@ -560,19 +679,29 @@ export async function createManualRequest(
     if (err instanceof Error) {
       switch (err.message) {
         case "INVALID_LOADS":
-          return { status: "error", message: "Please select a valid quantity (1 or 2 loads)." };
+          return {
+            status: "error",
+            message: "Please select a valid quantity (1 or 2 loads).",
+          };
         case "INVALID_VILLAGE":
-          return { status: "error", message: "Please select a valid village from the list." };
+          return {
+            status: "error",
+            message: "Please select a valid village from the list.",
+          };
         case "CUSTOMER_NAME_REQUIRED":
           return { status: "error", message: "Customer name is required." };
         case "CUSTOMER_PHONE_REQUIRED":
           return { status: "error", message: "Phone number is required." };
         case "REQUEST_NOTES_TOO_LONG":
-          return { status: "error", message: "Notes / Comments must be 1,000 characters or fewer." };
+          return {
+            status: "error",
+            message: "Notes / Comments must be 1,000 characters or fewer.",
+          };
         case "ATTESTATION_REQUIRED":
           return {
             status: "error",
-            message: "You must confirm the attestation before creating the request.",
+            message:
+              "You must confirm the attestation before creating the request.",
           };
         default: {
           const situationMessage = WATER_SITUATION_ERROR_MESSAGES[err.message];
@@ -594,7 +723,10 @@ export async function createManualRequest(
     try {
       invitation = await createAccountInvitation(customerEmail, customerName);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to send account setup email.";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to send account setup email.";
       invitation = {
         created: false,
         uid: null,
@@ -640,10 +772,14 @@ export async function confirmUnregisteredDelivery(
         case "REQUEST_HAS_REGISTERED_CUSTOMER":
           return {
             status: "error",
-            message: "This request has a registered customer and must be confirmed through the normal resident workflow.",
+            message:
+              "This request has a registered customer and must be confirmed through the normal resident workflow.",
           };
         case "INVALID_STATUS_FOR_CONFIRM":
-          return { status: "error", message: "This delivery cannot be confirmed right now." };
+          return {
+            status: "error",
+            message: "This delivery cannot be confirmed right now.",
+          };
         default:
           throw err;
       }
@@ -652,7 +788,10 @@ export async function confirmUnregisteredDelivery(
   }
 
   revalidatePath("/dispatcher");
-  return { status: "success", message: "Delivery confirmed on behalf of the customer." };
+  return {
+    status: "success",
+    message: "Delivery confirmed on behalf of the customer.",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -683,11 +822,18 @@ export async function changePriority(
   const newPriority = newPriorityRaw as DispatchPriority;
 
   try {
-    await changeRequestPriority({ requestId, actorId: session.uid, newPriority, reason });
+    await changeRequestPriority({
+      requestId,
+      actorId: session.uid,
+      newPriority,
+      reason,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
-      if (err.message === "REQUEST_NOT_FOUND") return { status: "error", message: "Request not found." };
-      if (err.message === "PRIORITY_REASON_REQUIRED") return { status: "error", message: "A reason is required." };
+      if (err.message === "REQUEST_NOT_FOUND")
+        return { status: "error", message: "Request not found." };
+      if (err.message === "PRIORITY_REASON_REQUIRED")
+        return { status: "error", message: "A reason is required." };
     }
     throw err;
   }
@@ -763,14 +909,20 @@ export async function createBatch(
 ): Promise<CreateBatchActionState> {
   const session = await requireStaff();
   const driverId = String(formData.get("driverId") ?? "").trim();
-  const requestIds = formData.getAll("requestIds").map((v) => String(v)).filter(Boolean);
+  const requestIds = formData
+    .getAll("requestIds")
+    .map((v) => String(v))
+    .filter(Boolean);
   const acknowledgedPreferredOverrideRequestIds = formData
     .getAll("acknowledgedOverrideRequestIds")
     .map((v) => String(v));
 
   if (!driverId) return { status: "error", message: "Select a driver." };
   if (requestIds.length === 0) {
-    return { status: "error", message: "Select at least one request for this batch." };
+    return {
+      status: "error",
+      message: "Select at least one request for this batch.",
+    };
   }
 
   let batchId: string;
@@ -789,9 +941,15 @@ export async function createBatch(
         case "DRIVER_NOT_FOUND":
           return { status: "error", message: "Driver not found." };
         case "DRIVER_INELIGIBLE":
-          return { status: "error", message: "Selected driver is not eligible." };
+          return {
+            status: "error",
+            message: "Selected driver is not eligible.",
+          };
         case "NO_REQUESTS_SELECTED":
-          return { status: "error", message: "Select at least one request for this batch." };
+          return {
+            status: "error",
+            message: "Select at least one request for this batch.",
+          };
         case "TOO_MANY_REQUESTS":
           return {
             status: "error",
@@ -842,7 +1000,11 @@ export async function recordBatchDelivery(
   const note = String(formData.get("note") ?? "").trim();
 
   if (!requestId) return { status: "error", message: "Missing request ID." };
-  if (!note) return { status: "error", message: "A short verification note is required." };
+  if (!note)
+    return {
+      status: "error",
+      message: "A short verification note is required.",
+    };
 
   try {
     await markWaterDeliveredByStaff({ requestId, actorId: session.uid, note });
@@ -852,9 +1014,16 @@ export async function recordBatchDelivery(
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_CLAIMABLE":
-          return { status: "error", message: "This request is not in a deliverable state." };
+          return {
+            status: "error",
+            message: "This request is not in a deliverable state.",
+          };
         case "LOADS_NOT_COLLECTED":
-          return { status: "error", message: "All physical loads must be recorded as collected before marking delivered. Record the missing load collections first." };
+          return {
+            status: "error",
+            message:
+              "All physical loads must be recorded as collected before marking delivered. Record the missing load collections first.",
+          };
         default:
           throw err;
       }
@@ -909,7 +1078,11 @@ export async function markDeliveredByStaff(
   const note = String(formData.get("note") ?? "").trim();
 
   if (!requestId) return { status: "error", message: "Missing request ID." };
-  if (!note) return { status: "error", message: "A short verification note is required." };
+  if (!note)
+    return {
+      status: "error",
+      message: "A short verification note is required.",
+    };
 
   try {
     await markWaterDeliveredByStaff({ requestId, actorId: session.uid, note });
@@ -919,9 +1092,16 @@ export async function markDeliveredByStaff(
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_CLAIMABLE":
-          return { status: "error", message: "This request is not in a deliverable state." };
+          return {
+            status: "error",
+            message: "This request is not in a deliverable state.",
+          };
         case "LOADS_NOT_COLLECTED":
-          return { status: "error", message: "All physical loads must be recorded as collected before marking delivered. Use the Water Collection section to record missing loads." };
+          return {
+            status: "error",
+            message:
+              "All physical loads must be recorded as collected before marking delivered. Use the Water Collection section to record missing loads.",
+          };
         default:
           throw err;
       }
@@ -953,7 +1133,10 @@ export async function escalateRequest(
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_ESCALATABLE":
-          return { status: "error", message: "This request cannot be escalated." };
+          return {
+            status: "error",
+            message: "This request cannot be escalated.",
+          };
         case "ESCALATE_REASON_REQUIRED":
           return { status: "error", message: "A reason is required." };
         default:
@@ -965,7 +1148,10 @@ export async function escalateRequest(
 
   revalidatePath("/dispatcher");
   revalidatePath(`/dispatcher/${requestId}`);
-  return { status: "success", message: "Request escalated. It now appears ahead in the dispatch queue." };
+  return {
+    status: "success",
+    message: "Request escalated. It now appears ahead in the dispatch queue.",
+  };
 }
 
 export async function getFrequentRequestCount(input: {
@@ -985,7 +1171,9 @@ export async function getFrequentRequestCount(input: {
 
 export type { EmailAccountStatus };
 
-export async function checkEmailAccountStatus(email: string): Promise<EmailAccountStatus> {
+export async function checkEmailAccountStatus(
+  email: string,
+): Promise<EmailAccountStatus> {
   await requireStaff();
   return getEmailAccountStatus(email);
 }
@@ -1005,7 +1193,11 @@ export async function sendAccountSetupInvitation(
   const email = String(formData.get("email") ?? "").trim();
   const displayName = String(formData.get("displayName") ?? "").trim();
 
-  if (!email) return { status: "error", message: "Email is required to send an invitation." };
+  if (!email)
+    return {
+      status: "error",
+      message: "Email is required to send an invitation.",
+    };
 
   try {
     const result = await createAccountInvitation(email, displayName);
@@ -1019,7 +1211,8 @@ export async function sendAccountSetupInvitation(
     if (!result.created && result.uid) {
       return {
         status: "error",
-        message: "An account already exists for this email. Use that existing account instead.",
+        message:
+          "An account already exists for this email. Use that existing account instead.",
         result,
       };
     }
@@ -1029,7 +1222,8 @@ export async function sendAccountSetupInvitation(
       result,
     };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to send invitation.";
+    const message =
+      err instanceof Error ? err.message : "Failed to send invitation.";
     return { status: "error", message };
   }
 }
@@ -1062,9 +1256,14 @@ export async function recordCollectionByStaff(
   if (loadNumberRaw !== 1 && loadNumberRaw !== 2) {
     return { status: "error", message: "Invalid load number." };
   }
-  if (!fillStationId) return { status: "error", message: "Please select a fill station." };
+  if (!fillStationId)
+    return { status: "error", message: "Please select a fill station." };
   if (!driverId) return { status: "error", message: "Missing driver ID." };
-  if (!note) return { status: "error", message: "A note is required when recording on behalf of a driver." };
+  if (!note)
+    return {
+      status: "error",
+      message: "A note is required when recording on behalf of a driver.",
+    };
 
   try {
     await recordWaterCollection({
@@ -1073,7 +1272,9 @@ export async function recordCollectionByStaff(
       fillStationId,
       driverId,
       actorId: session.uid,
-      actorRole: session.profile.roles.includes("admin") ? "admin" : "dispatcher",
+      actorRole: session.profile.roles.includes("admin")
+        ? "admin"
+        : "dispatcher",
       note,
     });
   } catch (err: unknown) {
@@ -1082,31 +1283,65 @@ export async function recordCollectionByStaff(
         case "REQUEST_NOT_FOUND":
           return { status: "error", message: "Request not found." };
         case "REQUEST_NOT_CLAIMABLE":
-          return { status: "error", message: "This request is not in a deliverable state." };
+          return {
+            status: "error",
+            message: "This request is not in a deliverable state.",
+          };
         case "INVALID_LOAD_NUMBER":
-          return { status: "error", message: "Invalid load number for this request." };
+          return {
+            status: "error",
+            message: "Invalid load number for this request.",
+          };
         case "LOAD_ALREADY_COLLECTED":
-          return { status: "error", message: "This load has already been recorded as collected." };
+          return {
+            status: "error",
+            message: "This load has already been recorded as collected.",
+          };
         case "NO_METER_ASSIGNMENT":
-          return { status: "error", message: "No meter is assigned to this driver for the selected fill station." };
+          return {
+            status: "error",
+            message:
+              "No meter is assigned to this driver for the selected fill station.",
+          };
         case "FILL_STATION_NOT_FOUND":
           return { status: "error", message: "Fill station not found." };
         case "FILL_STATION_INACTIVE":
-          return { status: "error", message: "This fill station is no longer active." };
+          return {
+            status: "error",
+            message: "This fill station is no longer active.",
+          };
         case "DRIVER_NOT_FOUND":
-          return { status: "error", message: "Driver registry entry not found." };
+          return {
+            status: "error",
+            message: "Driver registry entry not found.",
+          };
         case "STAFF_NOTE_REQUIRED":
-          return { status: "error", message: "A note is required when recording on behalf of a driver." };
+          return {
+            status: "error",
+            message: "A note is required when recording on behalf of a driver.",
+          };
         default:
-          console.error("[recordCollectionByStaff] unexpected error:", err.message);
-          return { status: "error", message: "Failed to record collection. Please try again." };
+          console.error(
+            "[recordCollectionByStaff] unexpected error:",
+            err.message,
+          );
+          return {
+            status: "error",
+            message: "Failed to record collection. Please try again.",
+          };
       }
     }
     console.error("[recordCollectionByStaff] unexpected error:", err);
-    return { status: "error", message: "Failed to record collection. Please try again." };
+    return {
+      status: "error",
+      message: "Failed to record collection. Please try again.",
+    };
   }
 
   revalidatePath("/dispatcher");
   revalidatePath(`/dispatcher/${requestId}`);
-  return { status: "success", message: "Water collection recorded on behalf of driver." };
+  return {
+    status: "success",
+    message: "Water collection recorded on behalf of driver.",
+  };
 }

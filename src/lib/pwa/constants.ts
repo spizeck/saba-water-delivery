@@ -12,7 +12,10 @@ export const PWA_INSTALL_PATHS: Record<PwaPortal, `/${PwaPortal}/install`> = {
   resident: "/resident/install",
 };
 
-export const PWA_MANIFEST_PATHS: Record<PwaPortal, `/${PwaPortal}-manifest.json`> = {
+export const PWA_MANIFEST_PATHS: Record<
+  PwaPortal,
+  `/${PwaPortal}-manifest.json`
+> = {
   driver: "/driver-manifest.json",
   resident: "/resident-manifest.json",
 };

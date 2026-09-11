@@ -13,9 +13,7 @@ import {
 import { sabaCalendarDateKey, startOfSabaDay } from "@/lib/utils/datetime";
 import { appConfig } from "./config";
 import type { DriverOffer, WaterRequest } from "./types";
-import {
-  dispatchQueueCompare,
-} from "./dispatchBatchSelection";
+import { dispatchQueueCompare } from "./dispatchBatchSelection";
 import {
   isOfferableToDriver,
   selectNextDispatchCandidate,
@@ -43,7 +41,6 @@ import {
  */
 
 const REQUESTS_COLLECTION = "waterRequests";
-
 
 // ---------------------------------------------------------------------------
 // Selecting the next offer
@@ -77,7 +74,9 @@ export interface NextOffer {
  * decline cooldown before calling this — those are prerequisites for
  * receiving offers at all, not part of request selection itself.
  */
-export async function getNextOfferForDriver(driverId: string): Promise<NextOffer | null> {
+export async function getNextOfferForDriver(
+  driverId: string,
+): Promise<NextOffer | null> {
   const db = getAdminDb();
   const now = new Date();
 
@@ -254,163 +253,181 @@ export async function declineDriverOffer(
   const offerRef = db.collection("driverOffers").doc(offerId);
 
   const now = new Date();
-  const endOfToday = startOfSabaDay(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  const endOfToday = startOfSabaDay(
+    new Date(now.getTime() + 24 * 60 * 60 * 1000),
+  );
 
-  const result = await db.runTransaction<DeclineDriverOfferResult>(async (txn) => {
-    // ---- All reads first ----
-    const offerSnap = await txn.get(offerRef);
-    if (!offerSnap.exists) throw new Error("OFFER_NOT_FOUND");
-    const offerData = offerSnap.data()!;
-    if (offerData.driverId !== driverId) throw new Error("OFFER_NOT_FOUND");
-    if (offerData.response !== null) throw new Error("OFFER_ALREADY_RESOLVED");
+  const result = await db.runTransaction<DeclineDriverOfferResult>(
+    async (txn) => {
+      // ---- All reads first ----
+      const offerSnap = await txn.get(offerRef);
+      if (!offerSnap.exists) throw new Error("OFFER_NOT_FOUND");
+      const offerData = offerSnap.data()!;
+      if (offerData.driverId !== driverId) throw new Error("OFFER_NOT_FOUND");
+      if (offerData.response !== null)
+        throw new Error("OFFER_ALREADY_RESOLVED");
 
-    const requestId = offerData.requestId as string;
-    const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-    const requestSnap = await txn.get(requestRef);
+      const requestId = offerData.requestId as string;
+      const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+      const requestSnap = await txn.get(requestRef);
 
-    // Any other pending offers of this same request to this driver are
-    // duplicates; expire them alongside the decline so the request is not
-    // immediately re-offered from a stale pending record. Equality-only
-    // query — no composite index required.
-    const duplicatePendingSnap = await txn.get(
-      db
-        .collection("driverOffers")
-        .where("driverId", "==", driverId)
-        .where("requestId", "==", requestId)
-        .where("response", "==", null),
-    );
-
-    const settingsRef = db.collection("config").doc("dispatchSettings");
-    const settingsSnap = await txn.get(settingsRef);
-    const settingsData = settingsSnap.data() ?? {};
-    const maxDeclinesPerDay =
-      typeof settingsData.maxDeclinesPerDay === "number" && settingsData.maxDeclinesPerDay >= 1
-        ? settingsData.maxDeclinesPerDay
-        : appConfig.defaultMaxDeclinesPerDay;
-    const declineCooldownHours =
-      typeof settingsData.declineCooldownHours === "number" && settingsData.declineCooldownHours > 0
-        ? settingsData.declineCooldownHours
-        : appConfig.defaultDeclineCooldownHours;
-
-    // Count declines already recorded today (this offer is not yet declined).
-    const lookback = new Date(now.getTime() - 26 * 60 * 60 * 1000);
-    const declinesSnap = await txn.get(
-      db
-        .collection("driverOffers")
-        .where("driverId", "==", driverId)
-        .where("response", "==", "declined")
-        .where("respondedAt", ">=", lookback),
-    );
-    const todayKey = sabaCalendarDateKey(now);
-    const declinesBeforeThis = declinesSnap.docs.filter((doc) => {
-      const respondedAt = doc.data().respondedAt?.toDate?.();
-      return respondedAt instanceof Date && sabaCalendarDateKey(respondedAt) === todayKey;
-    }).length;
-
-    const willEnterCooldown = declinesBeforeThis + 1 >= maxDeclinesPerDay;
-
-    // If cooldown is needed, locate the driver registry by linked user.
-    let registryRef = null as DocumentReference | null;
-    if (willEnterCooldown) {
-      const registrySnap = await txn.get(
+      // Any other pending offers of this same request to this driver are
+      // duplicates; expire them alongside the decline so the request is not
+      // immediately re-offered from a stale pending record. Equality-only
+      // query — no composite index required.
+      const duplicatePendingSnap = await txn.get(
         db
-          .collection("driverRegistry")
-          .where("linkedUserId", "==", driverId)
-          .limit(1),
+          .collection("driverOffers")
+          .where("driverId", "==", driverId)
+          .where("requestId", "==", requestId)
+          .where("response", "==", null),
       );
-      if (!registrySnap.empty) {
-        registryRef = registrySnap.docs[0].ref;
+
+      const settingsRef = db.collection("config").doc("dispatchSettings");
+      const settingsSnap = await txn.get(settingsRef);
+      const settingsData = settingsSnap.data() ?? {};
+      const maxDeclinesPerDay =
+        typeof settingsData.maxDeclinesPerDay === "number" &&
+        settingsData.maxDeclinesPerDay >= 1
+          ? settingsData.maxDeclinesPerDay
+          : appConfig.defaultMaxDeclinesPerDay;
+      const declineCooldownHours =
+        typeof settingsData.declineCooldownHours === "number" &&
+        settingsData.declineCooldownHours > 0
+          ? settingsData.declineCooldownHours
+          : appConfig.defaultDeclineCooldownHours;
+
+      // Count declines already recorded today (this offer is not yet declined).
+      const lookback = new Date(now.getTime() - 26 * 60 * 60 * 1000);
+      const declinesSnap = await txn.get(
+        db
+          .collection("driverOffers")
+          .where("driverId", "==", driverId)
+          .where("response", "==", "declined")
+          .where("respondedAt", ">=", lookback),
+      );
+      const todayKey = sabaCalendarDateKey(now);
+      const declinesBeforeThis = declinesSnap.docs.filter((doc) => {
+        const respondedAt = doc.data().respondedAt?.toDate?.();
+        return (
+          respondedAt instanceof Date &&
+          sabaCalendarDateKey(respondedAt) === todayKey
+        );
+      }).length;
+
+      const willEnterCooldown = declinesBeforeThis + 1 >= maxDeclinesPerDay;
+
+      // If cooldown is needed, locate the driver registry by linked user.
+      let registryRef = null as DocumentReference | null;
+      if (willEnterCooldown) {
+        const registrySnap = await txn.get(
+          db
+            .collection("driverRegistry")
+            .where("linkedUserId", "==", driverId)
+            .limit(1),
+        );
+        if (!registrySnap.empty) {
+          registryRef = registrySnap.docs[0].ref;
+        }
       }
-    }
 
-    // ---- All writes after reads ----
-    const nowField = FieldValue.serverTimestamp();
+      // ---- All writes after reads ----
+      const nowField = FieldValue.serverTimestamp();
 
-    // 1. Record the offer as declined; expire duplicate pending offers of
-    // the same request so only one decline is counted.
-    txn.update(offerRef, {
-      response: "declined",
-      respondedAt: nowField,
-    });
-    for (const doc of duplicatePendingSnap.docs) {
-      if (doc.id === offerId) continue;
-      txn.update(doc.ref, {
-        response: "expired",
+      // 1. Record the offer as declined; expire duplicate pending offers of
+      // the same request so only one decline is counted.
+      txn.update(offerRef, {
+        response: "declined",
         respondedAt: nowField,
       });
-    }
+      for (const doc of duplicatePendingSnap.docs) {
+        if (doc.id === offerId) continue;
+        txn.update(doc.ref, {
+          response: "expired",
+          respondedAt: nowField,
+        });
+      }
 
-    // 2. Release an active preferred-driver hold to the general queue.
-    if (requestSnap.exists) {
-      const requestData = requestSnap.data()!;
-      if (requestData.status === "preferred_driver_hold" && requestData.preferredDriverId === driverId) {
-        const requestUpdate: Record<string, unknown> = {
-          availableAt: nowField,
+      // 2. Release an active preferred-driver hold to the general queue.
+      if (requestSnap.exists) {
+        const requestData = requestSnap.data()!;
+        if (
+          requestData.status === "preferred_driver_hold" &&
+          requestData.preferredDriverId === driverId
+        ) {
+          const requestUpdate: Record<string, unknown> = {
+            availableAt: nowField,
+            updatedAt: nowField,
+          };
+          // Preserve status if it is already being updated to available. Use a
+          // single update for both status and timestamps to keep writes minimal.
+          requestUpdate.status = "available";
+          txn.update(requestRef, requestUpdate);
+
+          const eventRef = requestRef.collection("events").doc();
+          txn.set(eventRef, {
+            type: "preferred_driver_declined",
+            actorId: driverId,
+            actorRole: "driver",
+            createdAt: nowField,
+            metadata: { preferredDriverId: driverId },
+          });
+        }
+      }
+
+      // 3. Start cooldown if threshold reached.
+      const declineCount = declinesBeforeThis + 1;
+      if (willEnterCooldown) {
+        if (!registryRef) {
+          throw new Error("DRIVER_NOT_LINKED_FOR_COOLDOWN");
+        }
+
+        const cooldownUntil = new Date(
+          now.getTime() + declineCooldownHours * 60 * 60 * 1000,
+        );
+
+        txn.update(registryRef, {
+          cooldownUntil,
           updatedAt: nowField,
-        };
-        // Preserve status if it is already being updated to available. Use a
-        // single update for both status and timestamps to keep writes minimal.
-        requestUpdate.status = "available";
-        txn.update(requestRef, requestUpdate);
+          updatedBy: driverId,
+        });
 
-        const eventRef = requestRef.collection("events").doc();
-        txn.set(eventRef, {
-          type: "preferred_driver_declined",
+        const cooldownEventRef = registryRef.collection("events").doc();
+        txn.set(cooldownEventRef, {
+          type: "driver_cooldown_started",
           actorId: driverId,
           actorRole: "driver",
           createdAt: nowField,
-          metadata: { preferredDriverId: driverId },
+          metadata: {
+            declineCount,
+            maxDeclinesPerDay,
+            cooldownUntil: cooldownUntil.toISOString(),
+          },
         });
-      }
-    }
 
-    // 3. Start cooldown if threshold reached.
-    const declineCount = declinesBeforeThis + 1;
-    if (willEnterCooldown) {
-      if (!registryRef) {
-        throw new Error("DRIVER_NOT_LINKED_FOR_COOLDOWN");
-      }
+        const availabilityStatus =
+          cooldownUntil.getTime() >= endOfToday.getTime()
+            ? "daily_limit"
+            : "cooldown";
 
-      const cooldownUntil = new Date(now.getTime() + declineCooldownHours * 60 * 60 * 1000);
-
-      txn.update(registryRef, {
-        cooldownUntil,
-        updatedAt: nowField,
-        updatedBy: driverId,
-      });
-
-      const cooldownEventRef = registryRef.collection("events").doc();
-      txn.set(cooldownEventRef, {
-        type: "driver_cooldown_started",
-        actorId: driverId,
-        actorRole: "driver",
-        createdAt: nowField,
-        metadata: {
+        return {
+          declined: true,
+          availabilityStatus,
+          cooldownUntil: cooldownUntil.toISOString(),
           declineCount,
           maxDeclinesPerDay,
-          cooldownUntil: cooldownUntil.toISOString(),
-        },
-      });
-
-      const availabilityStatus = cooldownUntil.getTime() >= endOfToday.getTime() ? "daily_limit" : "cooldown";
+        };
+      }
 
       return {
         declined: true,
-        availabilityStatus,
-        cooldownUntil: cooldownUntil.toISOString(),
+        availabilityStatus: "available",
+        cooldownUntil: null,
         declineCount,
         maxDeclinesPerDay,
       };
-    }
-
-    return {
-      declined: true,
-      availabilityStatus: "available",
-      cooldownUntil: null,
-      declineCount,
-      maxDeclinesPerDay,
-    };
-  });
+    },
+  );
 
   return result;
 }

@@ -9,7 +9,8 @@ import { useEffect } from "react";
  */
 export function ServiceWorkerRegistration() {
   useEffect(() => {
-    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator))
+      return;
 
     let cancelled = false;
 
@@ -26,7 +27,10 @@ export function ServiceWorkerRegistration() {
           const installing = registration.installing;
           if (installing) {
             installing.addEventListener("statechange", () => {
-              if (installing.state === "installed" && navigator.serviceWorker.controller) {
+              if (
+                installing.state === "installed" &&
+                navigator.serviceWorker.controller
+              ) {
                 // A new service worker is waiting; skip waiting in development.
                 if (process.env.NODE_ENV === "development") {
                   void installing.postMessage({ type: "SKIP_WAITING" });

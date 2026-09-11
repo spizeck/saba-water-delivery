@@ -29,7 +29,8 @@ export function OfflineBanner() {
       role="status"
       className="bg-amber-50 px-4 py-2 text-center text-sm font-medium text-amber-800"
     >
-      You appear to be offline. Some features will be available again when your connection returns.
+      You appear to be offline. Some features will be available again when your
+      connection returns.
     </div>
   );
 }

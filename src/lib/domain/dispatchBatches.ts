@@ -11,7 +11,11 @@ import {
   deriveRunState,
   validateBatchSelection,
 } from "./dispatchBatchSelection";
-import type { DispatchBatch, DispatchBatchStatus, WaterRequestStatus } from "./types";
+import type {
+  DispatchBatch,
+  DispatchBatchStatus,
+  WaterRequestStatus,
+} from "./types";
 import { getRequestsForDispatchBatch } from "./waterRequests";
 
 /**
@@ -38,11 +42,15 @@ function toDispatchBatch(id: string, data: DocumentData): DispatchBatch {
     driverId: data.driverId,
     driverDisplayName: (data.driverDisplayName as string) ?? null,
     createdBy: data.createdBy,
-    createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    createdAt:
+      data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     status: (data.status as DispatchBatchStatus) ?? "active",
-    originalRequestIds: Array.isArray(data.originalRequestIds) ? data.originalRequestIds : [],
+    originalRequestIds: Array.isArray(data.originalRequestIds)
+      ? data.originalRequestIds
+      : [],
     generatedAt: data.generatedAt?.toDate?.().toISOString() ?? null,
-    updatedAt: data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+    updatedAt:
+      data.updatedAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
   };
 }
 
@@ -105,9 +113,14 @@ export interface CreateDispatchBatchInput {
  */
 export async function createDispatchBatch(
   input: CreateDispatchBatchInput,
-): Promise<{ batch: DispatchBatch; requests: Awaited<ReturnType<typeof getRequestsForDispatchBatch>> }> {
+): Promise<{
+  batch: DispatchBatch;
+  requests: Awaited<ReturnType<typeof getRequestsForDispatchBatch>>;
+}> {
   const { driverId, requestIds, actorId } = input;
-  const acknowledged = new Set(input.acknowledgedPreferredOverrideRequestIds ?? []);
+  const acknowledged = new Set(
+    input.acknowledgedPreferredOverrideRequestIds ?? [],
+  );
   const db = getAdminDb();
   const batchRef = db.collection(BATCHES_COLLECTION).doc();
   const now = FieldValue.serverTimestamp();
@@ -115,25 +128,45 @@ export async function createDispatchBatch(
   await db.runTransaction(async (txn) => {
     // ---- All reads first ----
     const driverSnap = await txn.get(
-      db.collection(REGISTRY_COLLECTION).where("linkedUserId", "==", driverId).limit(1),
+      db
+        .collection(REGISTRY_COLLECTION)
+        .where("linkedUserId", "==", driverId)
+        .limit(1),
     );
     if (driverSnap.empty) throw new Error("DRIVER_NOT_FOUND");
     const driverData = driverSnap.docs[0].data();
-    if (driverData.eligibilityStatus !== "eligible") throw new Error("DRIVER_INELIGIBLE");
-    const driverDisplayName = (driverData.displayName as string) || "Unknown driver";
+    if (driverData.eligibilityStatus !== "eligible")
+      throw new Error("DRIVER_INELIGIBLE");
+    const driverDisplayName =
+      (driverData.displayName as string) || "Unknown driver";
 
-    const requestRefs = requestIds.map((id) => db.collection(REQUESTS_COLLECTION).doc(id));
-    const requestSnaps = await Promise.all(requestRefs.map((ref) => txn.get(ref)));
+    const requestRefs = requestIds.map((id) =>
+      db.collection(REQUESTS_COLLECTION).doc(id),
+    );
+    const requestSnaps = await Promise.all(
+      requestRefs.map((ref) => txn.get(ref)),
+    );
 
     const snapshots: BatchCandidateSnapshot[] = requestSnaps.map((snap, i) => ({
       id: requestIds[i],
       exists: snap.exists,
-      status: snap.exists ? ((snap.data()!.status as WaterRequestStatus) ?? null) : null,
-      assignedDriverId: snap.exists ? (snap.data()!.assignedDriverId ?? null) : null,
-      preferredDriverId: snap.exists ? (snap.data()!.preferredDriverId ?? null) : null,
+      status: snap.exists
+        ? ((snap.data()!.status as WaterRequestStatus) ?? null)
+        : null,
+      assignedDriverId: snap.exists
+        ? (snap.data()!.assignedDriverId ?? null)
+        : null,
+      preferredDriverId: snap.exists
+        ? (snap.data()!.preferredDriverId ?? null)
+        : null,
     }));
 
-    const issues = validateBatchSelection(requestIds, snapshots, driverId, acknowledged);
+    const issues = validateBatchSelection(
+      requestIds,
+      snapshots,
+      driverId,
+      acknowledged,
+    );
     if (issues.length > 0) throw batchIssueToError(issues[0]);
 
     // ---- All writes after reads (atomic: this transaction either
@@ -188,7 +221,9 @@ export async function createDispatchBatch(
           dispatchBatchId: batchRef.id,
           driverId,
           sequence,
-          ...(overriddenPreferredDriverId ? { overriddenPreferredDriverId } : {}),
+          ...(overriddenPreferredDriverId
+            ? { overriddenPreferredDriverId }
+            : {}),
         },
       });
     });
@@ -201,7 +236,9 @@ export async function createDispatchBatch(
   return { batch: toDispatchBatch(batchRef.id, batchDoc.data()!), requests };
 }
 
-export async function getDispatchBatch(batchId: string): Promise<DispatchBatch | null> {
+export async function getDispatchBatch(
+  batchId: string,
+): Promise<DispatchBatch | null> {
   const db = getAdminDb();
   const doc = await db.collection(BATCHES_COLLECTION).doc(batchId).get();
   if (!doc.exists) return null;
@@ -214,7 +251,9 @@ export async function getDispatchBatch(batchId: string): Promise<DispatchBatch |
  * archive (see DEVIN.md "Do Not Overbuild"). A single `orderBy` on
  * `createdAt` needs no composite index.
  */
-export async function getAllDispatchBatches(limitCount = 50): Promise<DispatchBatch[]> {
+export async function getAllDispatchBatches(
+  limitCount = 50,
+): Promise<DispatchBatch[]> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(BATCHES_COLLECTION)
@@ -275,10 +314,13 @@ export async function getAllDispatchBatchSummaries(
 
   return batches.map((batch) => {
     const members = memberMap.get(batch.id) ?? [];
-    const { derivedState, totalLoads, loadsDelivered } = deriveRunState(members);
+    const { derivedState, totalLoads, loadsDelivered } =
+      deriveRunState(members);
 
     const resolvedDriverName =
-      batch.driverDisplayName || driverNames[batch.driverId] || "Unknown driver";
+      batch.driverDisplayName ||
+      driverNames[batch.driverId] ||
+      "Unknown driver";
 
     return {
       ...batch,
@@ -300,7 +342,9 @@ export interface DispatchBatchEventRecord {
   metadata: Record<string, unknown> | null;
 }
 
-export async function getDispatchBatchEvents(batchId: string): Promise<DispatchBatchEventRecord[]> {
+export async function getDispatchBatchEvents(
+  batchId: string,
+): Promise<DispatchBatchEventRecord[]> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(BATCHES_COLLECTION)
@@ -315,7 +359,8 @@ export async function getDispatchBatchEvents(batchId: string): Promise<DispatchB
       type: data.type,
       actorId: data.actorId ?? null,
       actorRole: data.actorRole ?? null,
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
+      createdAt:
+        data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
       metadata: data.metadata ?? null,
     };
   });
@@ -326,7 +371,10 @@ export async function getDispatchBatchEvents(batchId: string): Promise<DispatchB
  * Never creates a new batch merely because the PDF needs regenerating —
  * see PRODUCT.md "Batch Dispatch" "Reprint".
  */
-export async function recordBatchGenerated(batchId: string, actorId: string): Promise<void> {
+export async function recordBatchGenerated(
+  batchId: string,
+  actorId: string,
+): Promise<void> {
   const db = getAdminDb();
   const ref = db.collection(BATCHES_COLLECTION).doc(batchId);
   const now = FieldValue.serverTimestamp();

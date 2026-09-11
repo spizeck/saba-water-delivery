@@ -23,7 +23,11 @@ export default function DriverInstallPage() {
       <SiteHeader />
       <main className="flex flex-1 items-center py-12">
         <Container className="max-w-xl">
-          <InstallPrompt portal="driver" title="Driver App" portalName="Driver" />
+          <InstallPrompt
+            portal="driver"
+            title="Driver App"
+            portalName="Driver"
+          />
         </Container>
       </main>
     </>

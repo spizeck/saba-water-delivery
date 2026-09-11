@@ -4,17 +4,25 @@
  */
 
 export function isIOSSafari(): boolean {
-  if (typeof navigator === "undefined" || typeof window === "undefined" || typeof document === "undefined") {
+  if (
+    typeof navigator === "undefined" ||
+    typeof window === "undefined" ||
+    typeof document === "undefined"
+  ) {
     return false;
   }
 
   const ua = navigator.userAgent;
-  const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as unknown as { MSStream?: boolean }).MSStream;
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) &&
+    !(window as unknown as { MSStream?: boolean }).MSStream;
 
   // iPadOS 13+ reports "Macintosh" with a touch screen; treat it as iOS only
   // when the touch-enabled Mac user agent pattern matches.
   const isIPad =
-    /Macintosh/.test(ua) && "ontouchend" in document && navigator.maxTouchPoints > 0;
+    /Macintosh/.test(ua) &&
+    "ontouchend" in document &&
+    navigator.maxTouchPoints > 0;
 
   return isIOS || isIPad;
 }
@@ -43,7 +51,10 @@ export type InstallPrompt = {
 export function toInstallPrompt(event: Event): InstallPrompt | null {
   const prompt = event as unknown as {
     prompt?: () => Promise<void>;
-    userChoice?: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+    userChoice?: Promise<{
+      outcome: "accepted" | "dismissed";
+      platform: string;
+    }>;
   };
 
   const { prompt: show, userChoice } = prompt;
