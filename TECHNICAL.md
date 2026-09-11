@@ -2327,6 +2327,97 @@ because no Facebook browser resource is loaded.
 
 ---
 
+# Rate limiting
+
+`src/lib/security/rateLimit.ts` is a centralized, server-side rate limiter for
+abuse-sensitive operations. It is a **security** control, deliberately separate
+from the app's **business** limits — driver decline cooldowns, duplicate
+active-request prevention, the delivery state machine, Firestore transaction
+guards, and WhatsApp webhook idempotency remain the authoritative rules and are
+NOT replaced by it.
+
+## Algorithm, time, and storage
+
+- **Fixed window**, the simplest correct model at Saba's scale. Time is the
+  **server's** `Date.now()` — never a client value.
+- **Storage: Firestore** (the app's existing infrastructure), one small
+  document per bucket in the server-only `rateLimits` collection, incremented
+  inside a **transaction** so simultaneous requests cannot all read a stale
+  count and bypass the limit (proven by an emulator concurrency test). No new
+  external service (Redis/Upstash/KV) was added.
+- **Keys are HMAC-SHA256 hashes** (`RATE_LIMIT_HASH_SECRET`, or a static salt if
+  unset) of `policy:type:identifier`, so a raw identifier — especially a
+  small-space value like an IP — is never stored and cannot be trivially
+  reversed from the document id.
+
+## Policies and thresholds
+
+Defined once, in `RATE_LIMIT_POLICIES` (adjust there; no route changes needed):
+
+| Policy | Limit / window | Identifier | Protects |
+| --- | --- | --- | --- |
+| `auth-session` | 50 / 5 min | IP | `POST /api/auth/session` (pre-auth, public) |
+| `request-create` | 10 / 10 min | UID | Resident water-request submission |
+| `delivery-response` | 20 / 10 min | UID | Delivery confirm/dispute |
+
+Thresholds are intentionally **generous** — enough to stop automated abuse,
+loose enough not to lock out legitimate Saba users (including several people
+behind one shared island ISP IP for `auth-session`).
+
+## Identifiers and IP trust
+
+`uid` is preferred where the caller is authenticated. For the pre-auth session
+route the only identifier is the client IP, taken from the leftmost
+`x-forwarded-for` (fallback `x-real-ip`) **only when running behind Vercel**
+(`VERCEL_ENV` set) so a spoofed forwarding header cannot mint identities;
+locally the IP is `null` and IP limiting is simply inactive. The raw IP is used
+only to build the HMAC key — never stored or logged.
+
+## Fail-open
+
+If the Firestore transaction fails, the limiter **fails open**: it logs an
+operational `rate_limit.storage_unavailable` event (via the #29 logger) and
+ALLOWS the request. The limiter must never turn a Firestore blip into a
+water-delivery outage — it is defense in depth, not an availability dependency.
+
+## Rejection behavior and events
+
+- HTTP routes use `enforceRateLimit(...)`, which throws `AppRateLimitError`
+  (#30) → **429**, code **`RATE_LIMITED`**, a safe message, a **`Retry-After`**
+  header, and the correlated request id (all via `withApiRoute`).
+- Server actions use `checkRateLimit(...)` and return their existing
+  `{ status: "error", message }` shape (no HTTP response to reshape).
+- Every rejection logs a **`security.rate_limit.exceeded`** event with safe
+  metadata only — policy, identifier **type** (`uid`/`ip`), `retryAfterSeconds`,
+  and the opaque `uid` for uid-keyed policies. The raw IP/value is never logged,
+  and a rate-limit rejection is NOT written as a Firestore business-audit event.
+
+## Retention / TTL
+
+Each document carries an `expiresAt` (`resetAt + 24h`) for a **Firestore TTL
+policy** to reclaim it. TTL is a **manual, one-time** Firebase setup step (see
+docs/DEPLOYMENT.md) — but **correctness never depends on it**: an elapsed window
+is treated as fresh on the next read regardless of whether the document has been
+physically deleted, so an expired record can never keep blocking a user, and the
+collection is bounded by the number of recently-active identifiers (tiny for
+Saba).
+
+## Endpoints deliberately NOT rate limited
+
+- **WhatsApp webhook** — HMAC signature verification and message idempotency are
+  the correct, stronger controls; a naive per-IP limit would reject legitimate
+  Meta retries from shared infrastructure.
+- **Continuity cron** — `CRON_SECRET` is the control.
+- **PDF/report routes** — staff-only (`requireRole`); already sufficiently
+  protected.
+- **Dispatcher/admin mutations** — authenticated staff performing legitimate
+  repeated work must not be throttled.
+- **Account setup/recovery** — dispatcher-initiated (staff-only) with existing
+  idempotency; Firebase handles password reset client-side, so there is no
+  public server surface to protect.
+
+---
+
 # Saba Operational Timezone
 
 The application's operational timezone is `America/Puerto_Rico`

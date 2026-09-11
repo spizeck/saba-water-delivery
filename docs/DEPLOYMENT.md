@@ -235,6 +235,40 @@ blocked, fix the specific directive in `headers.ts` (or temporarily set
 `CSP_REPORT_ONLY` to unblock while diagnosing) — never widen the policy with a
 wildcard to make a symptom disappear.
 
+## Rate limiting
+
+Abuse-sensitive operations are rate limited server-side (see
+[`../TECHNICAL.md`](../TECHNICAL.md) "Rate limiting" and
+[`OPERATIONS.md`](./OPERATIONS.md)). Two deployment points:
+
+### `RATE_LIMIT_HASH_SECRET` (optional)
+
+Rate-limit identifiers (e.g. IPs) are HMAC-hashed before being used as Firestore
+keys so a raw identifier is never stored. Set `RATE_LIMIT_HASH_SECRET` in Vercel
+to a unique random value (`openssl rand -hex 32`) in production so those hashes
+cannot be reversed by precomputation. It is **optional** — the limiter works
+without it (using a static salt) — but recommended. It is a **secret** (never
+commit a real value); rotating it just resets in-flight limiter windows
+(harmless). Do not reuse `CRON_SECRET`, the Firebase private key, or any
+WhatsApp/Resend secret for it.
+
+### Firestore TTL for `rateLimits` (one-time, manual)
+
+Limiter counters live in the Firestore `rateLimits` collection, each with an
+`expiresAt` timestamp. Configure a **TTL policy** on that field once so Firestore
+reclaims expired documents automatically:
+
+```bash
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=rateLimits --enable-ttl
+```
+
+(Or Firebase Console → Firestore → the `rateLimits` collection → TTL.) This is a
+housekeeping optimization only: **the app is correct even if TTL is never
+configured** — an elapsed window is always treated as fresh on read, so no user
+is ever blocked by a stale document; the collection would just retain a small
+number of inactive counters (negligible at Saba's scale).
+
 ## Cron
 
 `vercel.json` schedules the continuity report:

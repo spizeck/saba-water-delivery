@@ -978,6 +978,33 @@ essentials for contributors:
 
 ---
 
+# Rate limiting
+
+Full reference in `TECHNICAL.md` "Rate limiting". For contributors:
+
+- Abuse rate limiting is a **security** control and is separate from **business**
+  limits (duplicate-request prevention, decline cooldowns, the state machine,
+  idempotency). The limiter never replaces those — they stay authoritative. A
+  rate-limit rejection must never create a partial write.
+- To protect an abuse-sensitive operation, use `@/lib/security/rateLimit`:
+  - **HTTP routes**: `await enforceRateLimit(policy, identifier)` — throws
+    `AppRateLimitError` → 429 via `withApiRoute` (Retry-After + request id).
+  - **Server actions**: `const d = await checkRateLimit(policy, identifier)`;
+    if `!d.allowed`, return the action's existing `{ status: "error", message }`.
+- Add thresholds ONLY in `RATE_LIMIT_POLICIES` (one place, typed). Choose
+  **generous** limits — prefer logging over locking legitimate users out.
+- Identifiers: prefer `{ type: "uid", value: session.uid }`; for pre-auth
+  routes use `{ type: "ip", value: getTrustedClientIp(request) }`. **Never** put
+  a raw email, phone, WhatsApp number, token, or cookie in an identifier, and
+  never log the raw value (the limiter hashes it and logs only the type).
+- The limiter is **fail-open** (a storage outage logs and allows) and stores
+  server-only counters in Firestore (`rateLimits`, deny-by-default). Do NOT use
+  an in-memory/module-level counter for production.
+- Do not rate limit the WhatsApp webhook (signature + idempotency), the cron
+  (`CRON_SECRET`), or ordinary authenticated staff mutations.
+
+---
+
 # Public pages and legal
 
 - `/` — public homepage with the PES logo, resident/driver login buttons, Need Help card, and footer.
