@@ -250,6 +250,50 @@ URL and the directive that blocked it (e.g. "Refused to connect to
 Never disable or broaden the CSP just to silence a violation — determine
 which browser resource actually needs the allowance.
 
+### Rate limiting (abuse protection)
+
+A few abuse-sensitive operations are rate limited to slow down automated
+abuse. This is separate from the app's business rules (a resident may
+still only have one active request, etc.). Quick reference for a
+maintainer:
+
+- **Which operations, and the thresholds?** Sign-in (`POST
+  /api/auth/session`, 50 per 5 min per IP), resident water-request
+  submission (10 per 10 min per resident), and delivery
+  confirm/dispute (20 per 10 min per resident). The exact numbers live in
+  one place — `RATE_LIMIT_POLICIES` in `src/lib/security/rateLimit.ts`.
+- **What is NOT limited, and why:** the WhatsApp webhook (protected by
+  signature + idempotency), the nightly cron (`CRON_SECRET`), PDF/report
+  downloads and other staff actions (authenticated staff), and account
+  invitations (staff-only). See TECHNICAL.md "Rate limiting".
+- **Where is the state? How long does it live?** In Firestore, collection
+  `rateLimits`, one opaque hashed document per counter, each with an
+  `expiresAt` ~24h after its window ends. It is server-only (residents,
+  drivers, and staff cannot read it).
+- **How do I spot a rate-limit rejection in Vercel logs?** Search the
+  Logs for the event `security.rate_limit.exceeded`; it names the `policy`
+  and the identifier `type` (never a raw IP/email/phone).
+- **A user reports being blocked (suspected false positive):** find their
+  `security.rate_limit.exceeded` events; if a legitimate user (or a shared
+  island IP for sign-in) is hitting a limit, raise that policy's `limit` (or
+  shorten its `windowMs`) in `RATE_LIMIT_POLICIES` and redeploy. Windows
+  are short, so an accidental block clears itself within minutes.
+- **Adjusting a policy requires a redeploy** (thresholds are in source, not
+  env). Changing them does not require touching any route.
+- **If Firestore is unavailable**, the limiter *fails open* — it logs
+  `rate_limit.storage_unavailable` and lets the request through, so a
+  Firestore outage never blocks water-delivery operations.
+- **If `RATE_LIMIT_HASH_SECRET` is missing on a deployed environment**, the
+  limiter is treated as unavailable and also *fails open*, logging a
+  high-severity `rate_limit.secret_missing` event on each check. This means
+  rate limiting is effectively **off** until the secret is set: if you see
+  that event, set `RATE_LIMIT_HASH_SECRET` in Vercel (Production and Preview
+  each need one) and redeploy. See [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+- **Firebase TTL:** cleanup of expired `rateLimits` documents relies on a
+  one-time Firestore TTL policy (see [`DEPLOYMENT.md`](./DEPLOYMENT.md)). If
+  it has not been configured, the app is still correct — expired counters
+  are ignored on read — the collection just retains a few stale documents.
+
 By default only `info` and above are logged in production. A maintainer
 can temporarily raise verbosity by setting the `LOG_LEVEL` environment
 variable to `debug` in Vercel and redeploying (see

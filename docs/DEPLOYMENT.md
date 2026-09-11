@@ -235,6 +235,53 @@ blocked, fix the specific directive in `headers.ts` (or temporarily set
 `CSP_REPORT_ONLY` to unblock while diagnosing) — never widen the policy with a
 wildcard to make a symptom disappear.
 
+## Rate limiting
+
+Abuse-sensitive operations are rate limited server-side (see
+[`../TECHNICAL.md`](../TECHNICAL.md) "Rate limiting" and
+[`OPERATIONS.md`](./OPERATIONS.md)). Two deployment points:
+
+### `RATE_LIMIT_HASH_SECRET` (required in deployed environments)
+
+Rate-limit identifiers (e.g. IPs) are HMAC-hashed before being used as Firestore
+keys so a raw identifier is never stored or reversible. Because this repository
+is **public**, there is no built-in salt that could protect a small-space value
+like an IP, so this secret is **required in every deployed Vercel environment**:
+
+- Set `RATE_LIMIT_HASH_SECRET` on **Production and Preview** (each its own unique
+  random value, `openssl rand -hex 32`) in Vercel Project Settings → Environment
+  Variables.
+- If it is **missing** in a deployed environment the limiter treats itself as
+  unavailable and **fails open** — it logs a high-severity
+  `rate_limit.secret_missing` operational event and allows the request. It never
+  blocks sign-in or water delivery just because the config is missing, and it
+  never hashes with a repo-known salt. (So a missing secret means rate limiting
+  is effectively OFF until you set it — search the logs for
+  `rate_limit.secret_missing` to catch this.)
+- **Local development and automated tests** need no secret: they use a
+  deterministic dev-only fallback, which is **not** a production privacy control.
+
+It is a **secret** (never commit a real value). Rotating it just resets in-flight
+limiter windows (harmless — they re-fill). Do not reuse `CRON_SECRET`, the
+Firebase private key, or any WhatsApp/Resend secret for it.
+
+### Firestore TTL for `rateLimits` (one-time, manual)
+
+Limiter counters live in the Firestore `rateLimits` collection, each with an
+`expiresAt` timestamp. Configure a **TTL policy** on that field once so Firestore
+reclaims expired documents automatically:
+
+```bash
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=rateLimits --enable-ttl
+```
+
+(Or Firebase Console → Firestore → the `rateLimits` collection → TTL.) This is a
+housekeeping optimization only: **the app is correct even if TTL is never
+configured** — an elapsed window is always treated as fresh on read, so no user
+is ever blocked by a stale document; the collection would just retain a small
+number of inactive counters (negligible at Saba's scale).
+
 ## Cron
 
 `vercel.json` schedules the continuity report:

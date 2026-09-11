@@ -147,6 +147,17 @@ Vitest covers the pure domain logic extensively, including:
   and HSTS. CSP is a browser-runtime concern, so these unit tests are backed by
   the required Vercel **preview smoke test** in [`DEPLOYMENT.md`](./DEPLOYMENT.md)
   (an automated browser test arrives with issue #34's Playwright work).
+- Rate limiting (`src/lib/security/__tests__/rateLimit.test.ts`): the
+  fixed-window algorithm (below/at/above limit, window reset, server-supplied
+  time), identifier and policy isolation, IP normalization, fail-open on a
+  storage error (with an operational log and no false rejection event), the
+  `security.rate_limit.exceeded` event carrying only the identifier *type*
+  (never a raw IP/value), `enforceRateLimit` throwing a 429/`RATE_LIMITED`
+  error with `Retry-After`, and trusted-IP extraction. The Firestore store's
+  transaction **atomicity under concurrency** is proven against the emulator in
+  `firestore.rateLimit.emulator.test.ts` (run by `npm run test:rules`), and
+  `firestore.rules.test.ts` confirms the `rateLimits` collection is
+  deny-by-default for clients.
 - Error handling (`src/lib/errors/__tests__/`, `src/lib/http/__tests__/`):
   `AppError` category/code/status mapping, `normalizeError` for known/unknown
   errors, the flat client error body (public message vs. generic; no raw

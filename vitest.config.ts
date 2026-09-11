@@ -6,6 +6,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    exclude: ["**/node_modules/**", "**/.next/**", "firestore.rules.test.ts"],
+    exclude: [
+      "**/node_modules/**",
+      "**/.next/**",
+      "firestore.rules.test.ts",
+      // Emulator-backed tests run under `npm run test:rules`, not the plain
+      // `vitest` run (which has no Firebase emulator).
+      "**/*.emulator.test.ts",
+    ],
   },
 });

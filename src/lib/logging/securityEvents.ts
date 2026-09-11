@@ -25,6 +25,8 @@ export const SECURITY_EVENTS = {
   webhookSignatureInvalid: "security.webhook.signature_invalid",
   /** Protected cron endpoint hit without valid authorization. */
   cronUnauthorized: "security.cron.unauthorized",
+  /** A caller exceeded a rate-limit policy for an abuse-sensitive operation. */
+  rateLimitExceeded: "security.rate_limit.exceeded",
 } as const;
 
 const securityLogger = getLogger("security");
