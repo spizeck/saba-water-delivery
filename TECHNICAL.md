@@ -2018,6 +2018,115 @@ Avoid destructive history changes where an event record is more appropriate.
 
 ---
 
+# Operational logging and observability
+
+The durable Firestore audit events above are the **authoritative business
+history**. They are the record of what happened to a request, who acted, and
+when. They are access-controlled and may contain personal data by design.
+
+**Operational logging is a separate concern** — short-lived diagnostic
+telemetry (captured by Vercel from stdout/stderr) for debugging production
+failures and security monitoring. It never replaces or duplicates the audit
+model, is never written to Firestore, and must never contain personal data or
+secrets.
+
+## The logger
+
+`src/lib/logging/` is the canonical toolkit; import it from `@/lib/logging`.
+
+```ts
+import { getLogger, serializeError } from "@/lib/logging";
+
+const log = getLogger("domain.waterRequests");
+
+log.error("email.delivery_confirmation.notify_failed", {
+  requestId,
+  error: serializeError(err),
+});
+```
+
+- `getLogger(component)` returns a logger with `debug` / `info` / `warn` /
+  `error`. Each emits one JSON line: `timestamp`, `level`, `event`,
+  `component`, `env`, `requestId`/`correlationId` (from context), plus the
+  redacted metadata you pass.
+- The **first argument is a stable event name** (see below), not a sentence.
+- The logger is **fail-safe**: a logging error can never throw into the caller,
+  so core operations (request creation, dispatch, delivery state, webhook
+  handling) are never behind logging success. It also never writes to
+  Firestore and does no work inside tight loops.
+
+## Event naming
+
+Dotted, lowercase, `area.subject.outcome` — for example
+`report.continuity.generated`, `report.continuity.email_failed`,
+`auth.session.verify_failed`, `whatsapp.webhook.signature_invalid`,
+`whatsapp.message.processing_failed`, `email.delivery_confirmation.failed`,
+`dispatch.record_collection.failed`. Keep the taxonomy small; reuse an existing
+name before inventing one.
+
+## Request / correlation IDs
+
+HTTP routes are wrapped with `withRequestLogging(name, handler)`
+(`src/lib/logging/requestContext.ts`), which:
+
+- adopts a safe inbound `x-request-id` header or generates a random UUID;
+- makes that ID ambient (via `AsyncLocalStorage`) so every log line for the
+  request — including downstream domain logs — shares it;
+- echoes the ID back in the `x-request-id` **response header** so an operator
+  can tie a user-reported failure to the logs;
+- logs completion/first-throw, then re-throws unchanged (it does **not**
+  reshape responses or convert errors — routes keep their own status codes; a
+  broader error-normalization layer is deliberately out of scope, see #30).
+
+IDs are always random and non-identifying — never a phone, email, or uid.
+
+## Redaction policy and prohibited fields
+
+`src/lib/logging/redaction.ts` is a defense-in-depth net; the **primary**
+control is discipline at the call site: pass only allowlisted, known-safe
+metadata (internal IDs, counts, statuses, outcomes) — never raw
+resident/customer objects, request bodies, headers, cookies, provider response
+objects, or free text. When a field is ambiguous, do not log it.
+
+The net still redacts, even if something slips through:
+
+- **Secrets/credentials** by key: passwords, any `*token*`, `*secret*`,
+  `apiKey`, `authorization`, cookies, `*private*key*`, service-account
+  credentials, bearer values, webhook `signature`s.
+- **Personal data** by key: `email`, any `*phone*`, `mobile`, name variants
+  (`name`, `displayName`, `fullName`, …), `deliveryDirections`/`address`,
+  `notes`/`note`/`comments`, and a `customer` snapshot object (`customerId`
+  stays loggable as a safe internal ID).
+- **Value scrubbing** inside any string: email addresses, international
+  (`+`-prefixed) phone numbers, URL credentials and secret query params, and
+  Bearer/Basic/PEM secret-shaped values.
+- Errors are serialized with `serializeError` (name/code/status/message/stack
+  only) — never a spread of an arbitrary provider error object.
+
+**Never logged, anywhere:** Firebase ID tokens / session cookies /
+`Authorization` headers, `CRON_SECRET`, `RESEND_API_KEY`, WhatsApp access
+token / app secret / verify token, Firebase Admin private key or service-account
+credentials, webhook signatures, password-reset links/tokens, raw WhatsApp
+message bodies, raw request bodies of sensitive routes, resident name+phone,
+name+directions, or full request/customer snapshots.
+
+`Firebase UID`/`customerId` are treated as opaque **internal** identifiers and
+are safe to log; they are never combined with a name, phone, or address.
+
+## Log level
+
+The optional `LOG_LEVEL` environment variable (`debug` | `info` | `warn` |
+`error`) sets the minimum emitted level. It defaults to `info` in production
+and `debug` otherwise, so production is not noisy by default. It is never
+required for the app to run. See `docs/DEPLOYMENT.md`.
+
+## Diagnosing with request IDs
+
+A user-reported failure can be correlated to logs via the `x-request-id`
+response header — see `docs/OPERATIONS.md`.
+
+---
+
 # Saba Operational Timezone
 
 The application's operational timezone is `America/Puerto_Rico`

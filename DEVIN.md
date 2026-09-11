@@ -879,6 +879,43 @@ flow, and `docs/TESTING.md` for the full command reference.
 
 ---
 
+# Operational logging
+
+Server code uses the canonical logger in `src/lib/logging` (import from
+`@/lib/logging`) for operational diagnostics — never `console.*` directly
+in server paths.
+
+```ts
+import { getLogger, serializeError } from "@/lib/logging";
+const log = getLogger("domain.waterRequests");
+log.error("request.create.failed", { requestId, error: serializeError(err) });
+```
+
+Rules of the road (full reference in `TECHNICAL.md` "Operational logging
+and observability"):
+
+- **Operational logs are not audit events.** Firestore audit events remain
+  the authoritative business history; logs are short-lived Vercel telemetry.
+  Never write operational logs to Firestore.
+- **Allowlist safe metadata.** Pass only internal IDs
+  (`requestId`/`customerId`/`driverId`/`batchId`/`uid`), counts, statuses,
+  and outcomes. Never pass a raw request/customer object, request body,
+  headers, cookies, a provider error object, or free text (notes,
+  directions). If a field is ambiguous, leave it out — redaction is a safety
+  net, not a license to log everything.
+- **Never log** tokens, cookies, `CRON_SECRET`, `RESEND_API_KEY`, WhatsApp
+  secrets, the Firebase Admin private key, webhook signatures, resident
+  email/phone/name/directions/notes, or raw WhatsApp message content.
+- **Stable event names**: dotted `area.subject.outcome`
+  (`whatsapp.message.processing_failed`). Reuse before inventing.
+- **Errors** go through `serializeError(err)`, never a raw spread.
+- HTTP routes are wrapped with `withRequestLogging(...)`, which attaches a
+  request ID (`x-request-id`), shares it across the request's logs, and
+  returns it as a response header. The logger is fail-safe — it can never
+  throw into a caller, so it must never gate core correctness.
+
+---
+
 # Public pages and legal
 
 - `/` — public homepage with the PES logo, resident/driver login buttons, Need Help card, and footer.

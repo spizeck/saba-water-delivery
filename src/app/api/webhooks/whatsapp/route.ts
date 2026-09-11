@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getLogger, serializeError, withRequestLogging } from "@/lib/logging";
 import {
   getWhatsAppClientConfig,
   verifyWhatsAppWebhookChallenge,
@@ -7,6 +8,8 @@ import {
 } from "@/lib/whatsapp/client";
 import { handleIncomingWhatsAppMessage } from "@/lib/whatsapp/handleIncomingMessage";
 import { claimMessageId } from "@/lib/whatsapp/idempotency";
+
+const log = getLogger("api.webhooks.whatsapp");
 
 /**
  * Meta WhatsApp Cloud API webhook — see PRODUCT.md / TECHNICAL.md
@@ -79,7 +82,14 @@ export async function GET(request: NextRequest) {
   return new Response(challenge, { status: 200 });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRequestLogging(
+  "webhooks.whatsapp",
+  async (request: NextRequest) => {
+    return handleWhatsAppWebhook(request);
+  },
+);
+
+async function handleWhatsAppWebhook(request: NextRequest) {
   const config = getWhatsAppClientConfig();
   if (!config) {
     return NextResponse.json(
@@ -93,6 +103,8 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const signature = request.headers.get("x-hub-signature-256");
   if (!verifyWhatsAppWebhookSignature(config, rawBody, signature)) {
+    // Security signal only — never log the body, signature, or sender.
+    log.warn("whatsapp.webhook.signature_invalid");
     return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
   }
 
@@ -121,11 +133,12 @@ export async function POST(request: NextRequest) {
       // A failure processing one message must never fail the whole
       // webhook response (Meta would just retry, and we've already
       // claimed the message ID, so it wouldn't retry-safely anyway) —
-      // log and continue.
-      console.error(
-        "[whatsapp webhook] failed to process message:",
-        err instanceof Error ? err.message : err,
-      );
+      // log and continue. Log only the message type/outcome, never the
+      // sender phone or the raw message body.
+      log.error("whatsapp.message.processing_failed", {
+        messageType: message.type,
+        error: serializeError(err),
+      });
     }
   }
 

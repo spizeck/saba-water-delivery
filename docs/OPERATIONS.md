@@ -181,3 +181,36 @@ Dispatchers can also generate this report at any time (for example,
 before a storm, or when testing) using "Generate Continuity Report" on
 the dispatcher dashboard, and can send it by email immediately with
 "Send Continuity Report Now" without waiting for 8:00 PM.
+
+## Diagnosing a failure (for technical maintainers)
+
+When something fails in production, the application writes structured
+diagnostic logs (visible in the Vercel dashboard under the project's
+**Logs**). These are operational logs for debugging only — they are
+separate from, and never a substitute for, the durable request history
+Firestore keeps.
+
+Every server request is tagged with a random **request ID**, returned to
+the browser in the `x-request-id` response header and included on every
+log line for that request. To diagnose a specific user-reported failure:
+
+1. Ask the reporter (or read from their browser's network tab) for the
+   `x-request-id` value on the failed request, if available.
+2. In Vercel → Logs, search for that ID to see every log line for that
+   request, including the safe error name/code.
+3. Each log line names a stable **event** (for example
+   `whatsapp.message.processing_failed`,
+   `report.continuity.email_failed`, `auth.session.verify_failed`) and
+   safe context (request ID, internal record IDs, counts, outcome).
+
+The logs are deliberately privacy-preserving: they never contain a
+resident's name, phone, email, delivery directions, request notes, or
+any secret or access token. If you need the full business detail of a
+request (who, what, when), use the in-app request history / audit trail,
+not the logs.
+
+By default only `info` and above are logged in production. A maintainer
+can temporarily raise verbosity by setting the `LOG_LEVEL` environment
+variable to `debug` in Vercel and redeploying (see
+[`DEPLOYMENT.md`](./DEPLOYMENT.md)); it is optional and safe to leave
+unset.

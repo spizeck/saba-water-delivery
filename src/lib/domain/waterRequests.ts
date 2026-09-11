@@ -8,6 +8,7 @@ import {
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import { notifyDeliveryConfirmation } from "@/lib/email/deliveryConfirmationNotification";
+import { getLogger, serializeError } from "@/lib/logging";
 import { processInBatches } from "@/lib/utils/processInBatches";
 
 import { appConfig } from "./config";
@@ -50,6 +51,8 @@ import type { WaterSituationInput } from "./waterSituation";
 
 export { buildWaterSituationSnapshot } from "./waterSituation";
 export type { WaterSituationInput } from "./waterSituation";
+
+const log = getLogger("domain.waterRequests");
 
 /**
  * Domain/service layer for water request operations.
@@ -1451,10 +1454,11 @@ export async function markWaterDelivered(
   try {
     await notifyDeliveryConfirmation(request);
   } catch (notificationError) {
-    console.error(
-      "[markWaterDelivered] delivery confirmation notification failed",
-      notificationError,
-    );
+    log.error("email.delivery_confirmation.notify_failed", {
+      requestId: request.id,
+      path: "driver",
+      error: serializeError(notificationError),
+    });
   }
   return request;
 }
@@ -1583,10 +1587,11 @@ export async function markWaterDeliveredByStaff(
   try {
     await notifyDeliveryConfirmation(request);
   } catch (notificationError) {
-    console.error(
-      "[markWaterDeliveredByStaff] delivery confirmation notification failed",
-      notificationError,
-    );
+    log.error("email.delivery_confirmation.notify_failed", {
+      requestId: request.id,
+      path: "staff",
+      error: serializeError(notificationError),
+    });
   }
   return request;
 }

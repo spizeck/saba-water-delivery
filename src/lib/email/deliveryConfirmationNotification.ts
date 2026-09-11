@@ -5,8 +5,11 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { getLogger, serializeError } from "@/lib/logging";
 
 import { sendDeliveryConfirmationEmail } from "./deliveryConfirmationEmail";
+
+const log = getLogger("email.delivery-confirmation");
 
 export async function notifyDeliveryConfirmation(
   request: WaterRequest,
@@ -70,6 +73,16 @@ export async function notifyDeliveryConfirmation(
   }
 
   const metadata = { status, recipient, resendId, error };
+
+  // Operational signal only — never the recipient email. The provider error
+  // string is passed through redaction, which masks any embedded email/URL.
+  if (status === "failed") {
+    log.warn("email.delivery_confirmation.failed", {
+      requestId: request.id,
+      providerError: error,
+    });
+  }
+
   try {
     await claimRef.update({
       ...metadata,
@@ -88,9 +101,9 @@ export async function notifyDeliveryConfirmation(
         metadata,
       });
   } catch (auditError) {
-    console.error(
-      "[delivery-confirmation-email] could not record notification result",
-      auditError,
-    );
+    log.error("email.delivery_confirmation.audit_write_failed", {
+      requestId: request.id,
+      error: serializeError(auditError),
+    });
   }
 }

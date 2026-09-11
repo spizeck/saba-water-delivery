@@ -2,7 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { generateContinuityReportData } from "@/lib/domain/continuityReport";
 import { sendContinuityReportEmail } from "@/lib/email/continuityReportEmail";
+import { getLogger, serializeError, withRequestLogging } from "@/lib/logging";
 import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
+
+const log = getLogger("api.cron.continuity-report");
 
 /**
  * Nightly operational continuity snapshot — invoked by Vercel Cron
@@ -24,52 +27,71 @@ import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
  * header are rejected so this endpoint cannot be triggered by an
  * arbitrary public request.
  */
-export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    console.error("[continuity-report] CRON_SECRET is not configured");
-    return NextResponse.json(
-      { ok: false, error: "Service unavailable" },
-      { status: 503 },
-    );
-  }
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
-
-  try {
-    const data = await generateContinuityReportData();
-    const pdfBuffer = await renderContinuityReportPdf(data);
-    const result = await sendContinuityReportEmail(pdfBuffer, data);
-
-    if (!result.ok) {
-      console.error("[continuity-report] email send failed:", result.error);
+export const GET = withRequestLogging(
+  "cron.continuity-report",
+  async (request: NextRequest) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      log.error("report.continuity.cron_secret_missing");
       return NextResponse.json(
-        {
-          ok: false,
-          error: result.error,
-          unassigned: data.unassigned.length,
-          assigned: data.assigned.length,
-        },
-        { status: 502 },
+        { ok: false, error: "Service unavailable" },
+        { status: 503 },
+      );
+    }
+    const authHeader = request.headers.get("authorization");
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      log.warn("report.continuity.unauthorized");
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 },
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      generatedAt: data.generatedAt,
-      unassigned: data.unassigned.length,
-      assigned: data.assigned.length,
-    });
-  } catch (err) {
-    console.error("[continuity-report] generation failed:", err);
-    return NextResponse.json(
-      { ok: false, error: "Report generation failed." },
-      { status: 500 },
-    );
-  }
-}
+    const startedAt = Date.now();
+    try {
+      const data = await generateContinuityReportData();
+      const pdfBuffer = await renderContinuityReportPdf(data);
+      const result = await sendContinuityReportEmail(pdfBuffer, data);
+
+      if (!result.ok) {
+        log.error("report.continuity.email_failed", {
+          unassigned: data.unassigned.length,
+          assigned: data.assigned.length,
+          // Provider error string; redaction masks any embedded PII/URLs.
+          providerError: result.error,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: result.error,
+            unassigned: data.unassigned.length,
+            assigned: data.assigned.length,
+          },
+          { status: 502 },
+        );
+      }
+
+      log.info("report.continuity.generated", {
+        generatedAt: data.generatedAt,
+        unassigned: data.unassigned.length,
+        assigned: data.assigned.length,
+        durationMs: Date.now() - startedAt,
+      });
+      return NextResponse.json({
+        ok: true,
+        generatedAt: data.generatedAt,
+        unassigned: data.unassigned.length,
+        assigned: data.assigned.length,
+      });
+    } catch (err) {
+      log.error("report.continuity.generation_failed", {
+        durationMs: Date.now() - startedAt,
+        error: serializeError(err),
+      });
+      return NextResponse.json(
+        { ok: false, error: "Report generation failed." },
+        { status: 500 },
+      );
+    }
+  },
+);
