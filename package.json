@@ -11,7 +11,7 @@
     "postbuild": "node scripts/verify-pdfkit-trace.mjs",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",

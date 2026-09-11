@@ -13,17 +13,23 @@ complete:
 npm run check
 ```
 
-`check` runs, in order: `lint` (ESLint) → `typecheck` (`tsc --noEmit`)
-→ `test` (Vitest) → `build` (`next build --webpack`). It requires no
-credentials, no live Firebase, and no network services. The equivalent
-individual commands are still available if you want to run one step:
+`check` runs, in order: `lint` (ESLint) → `typecheck` (`next typegen`
+then `tsc --noEmit`) → `test` (Vitest) → `build` (`next build
+--webpack`). It requires no credentials, no live Firebase, and no
+network services. The equivalent individual commands are still available
+if you want to run one step:
 
 ```bash
 npm run lint       # ESLint
-npm run typecheck  # tsc --noEmit
+npm run typecheck  # next typegen (generate route types) then tsc --noEmit
 npm run test       # Vitest (npx vitest run)
 npm run build      # Production build; postbuild runs the PDFKit trace check
 ```
+
+`typecheck` runs `next typegen` before `tsc` on purpose. Next 16
+generates the `LayoutProps`/`PageProps`/route types into `.next/types/`;
+on a clean checkout (no `.next/`) a bare `tsc --noEmit` fails with
+`Cannot find name 'LayoutProps'`, so the type generation must run first.
 
 `npm run build` runs `next build --webpack`. This project pins the
 webpack bundler (not Turbopack, which is the Next.js 16 default)

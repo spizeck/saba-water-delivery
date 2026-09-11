@@ -822,10 +822,16 @@ opening a pull request:
 npm run check
 ```
 
-`check` runs, in order: `lint` (ESLint) → `typecheck` (`tsc --noEmit`)
-→ `test` (Vitest unit/domain suite) → `build` (`next build --webpack`,
-whose `postbuild` runs the PDFKit trace verifier). It requires no
-credentials, no live Firebase, and no network services.
+`check` runs, in order: `lint` (ESLint) → `typecheck` (`next typegen`
+then `tsc --noEmit`) → `test` (Vitest unit/domain suite) → `build`
+(`next build --webpack`, whose `postbuild` runs the PDFKit trace
+verifier). It requires no credentials, no live Firebase, and no network
+services.
+
+`typecheck` runs `next typegen` first on purpose: Next 16 generates the
+`LayoutProps`/`PageProps`/route types into `.next/types/`, and a bare
+`tsc --noEmit` fails on a clean checkout (no `.next/`) with
+`Cannot find name 'LayoutProps'`. Do not reduce it back to plain `tsc`.
 
 The Firestore/Storage security-rules tests are run separately because
 they need the Firebase emulators (and a JVM):
