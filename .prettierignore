@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+build/
+coverage/
+
+# Generated / vendored (do not reformat)
+package-lock.json
+next-env.d.ts
+*.tsbuildinfo
+# Firebase CLI owns this file's formatting.
+firestore.indexes.json
+
+# Static assets and the hand-maintained service worker
+public/
+
+# Logs and local debug output
+*.log
+
+# Binary docs
+*.pdf
+
+# Prose docs are managed by hand; skip to avoid large reflow diffs.
+*.md
+docs/

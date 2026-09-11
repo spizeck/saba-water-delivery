@@ -4,6 +4,58 @@ How to reproduce and configure the production deployment. See
 [`INTEGRATIONS.md`](./INTEGRATIONS.md) for what each external service
 is used for and its failure impact.
 
+## Release flow
+
+Changes reach production through this path:
+
+```
+feature branch
+  → pull request
+  → automated checks (GitHub Actions: CI / verify)
+  → Vercel Preview deployment
+  → human review
+  → merge to main
+  → production deployment (Vercel)
+```
+
+The two automated layers verify different things and are both required
+in practice:
+
+- **GitHub Actions (`CI / verify`)** verifies code correctness — lint,
+  typecheck, unit/domain tests, the production build (including the
+  PDFKit trace verification), and the Firestore/Storage rules tests. It
+  uses no production secrets and does not deploy.
+- **Vercel Preview** verifies deployment and render behavior in a real
+  serverless build for each pull request, using the Preview
+  environment's own configuration. Do not put production credentials
+  into GitHub Actions; Vercel's Git integration owns Preview and
+  production deploys.
+
+Merging to `main` triggers the production deployment.
+
+## Continuous integration and branch protection
+
+CI is defined in `.github/workflows/ci.yml` (workflow **CI**, job
+**verify**). See [`TESTING.md`](./TESTING.md) for exactly what it runs.
+The stable required-check name is **`CI / verify`**.
+
+Branch protection / rulesets are repository administration settings and
+are not configured from code. Recommended ruleset for `main` (configure
+in GitHub → Settings → Rules → Rulesets):
+
+- Require a pull request before merging.
+- Require **1** approval.
+- Dismiss stale approvals when new commits are pushed.
+- Require conversation resolution before merging.
+- Require the status check **`CI / verify`** to pass.
+- Block force pushes.
+- Block branch deletion.
+
+A merge queue and signed commits are intentionally omitted unless the
+team decides it needs them. Note the required-check name only appears in
+the ruleset picker after the workflow has run at least once on the
+repository (merge this workflow first, then add the rule).
+
 ## External services
 
 | Service | Purpose |
@@ -95,6 +147,21 @@ webpack; see [`TECHNICAL.md`](../TECHNICAL.md) for why Turbopack is not
 used). Set all environment variables in Vercel Project Settings before
 the first deploy that needs them; changing an environment variable
 requires a redeploy to take effect.
+
+### Node.js version
+
+Production runs on **Node.js 24.x**. This is pinned so local development,
+CI, and production all agree:
+
+- `.nvmrc` (`24`) drives local `fnm`/`nvm` and GitHub Actions.
+- `package.json` `engines.node` (`>=24.0.0`) is what Vercel reads to
+  select the runtime.
+
+Keep Vercel Project Settings → Node.js Version consistent with these
+(24.x). If you ever change the Node major version, change `.nvmrc`,
+`engines`, and the Vercel setting together and re-run `npm run check`
+and `npm run test:rules` — the runtime major is what production actually
+executes on, so do not change it casually.
 
 ## Cron
 

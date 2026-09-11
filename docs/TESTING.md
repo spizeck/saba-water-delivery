@@ -1,14 +1,28 @@
 # Testing
 
+This project targets **Node.js 24** (pinned in `.nvmrc` and
+`package.json` `engines`). Use `fnm use` / `nvm use` to match it before
+running the commands below.
+
 ## Standard verification
 
-Run before considering any change complete:
+Run the full non-destructive suite before considering any change
+complete:
 
 ```bash
-npx tsc --noEmit
-npx eslint src
-npx vitest run
-npm run build
+npm run check
+```
+
+`check` runs, in order: `lint` (ESLint) → `typecheck` (`tsc --noEmit`)
+→ `test` (Vitest) → `build` (`next build --webpack`). It requires no
+credentials, no live Firebase, and no network services. The equivalent
+individual commands are still available if you want to run one step:
+
+```bash
+npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
+npm run test       # Vitest (npx vitest run)
+npm run build      # Production build; postbuild runs the PDFKit trace check
 ```
 
 `npm run build` runs `next build --webpack`. This project pins the
@@ -17,7 +31,57 @@ because Turbopack cannot currently bundle `fontkit`, a transitive
 dependency of `pdfkit` used by the continuity-report PDF. Do not remove
 `--webpack` from `package.json`'s `dev`/`build` scripts without first
 confirming `npm run build` still succeeds — this is the exact command
-Vercel's deployment runs.
+Vercel's deployment runs. `build`'s `postbuild` step runs
+`scripts/verify-pdfkit-trace.mjs`, which fails the build if any server
+bundle that reaches a PDFKit renderer is missing pdfkit's font/color
+asset trees (the exact packaging regression that has broken production
+PDFs before).
+
+### Security-rules tests
+
+The Firestore and Storage security rules have their own test suite
+(`firestore.rules.test.ts`), which runs against the local Firebase
+emulators and needs a JVM installed:
+
+```bash
+npm run test:rules
+```
+
+This is kept out of `npm run check` (it is heavier and emulator-backed)
+but is run in CI. It never contacts production Firebase — the emulators
+run entirely locally against a throwaway test project id.
+
+## Continuous integration
+
+`.github/workflows/CI` runs on every pull request and every push to
+`main`. It has a single job, **verify** (so the required status check is
+**`CI / verify`**), which:
+
+1. checks out the repo and sets up Node from `.nvmrc` with npm caching;
+2. sets up a Temurin JVM for the Firebase emulators;
+3. runs `npm ci`;
+4. runs `lint` → `typecheck` → `test` → `build` (with the PDFKit trace
+   verification) → `test:rules`.
+
+Two steps are **informational only** (they run with
+`continue-on-error`, so they never block a merge):
+
+- `format:check` — the repo has not yet had its one-time Prettier pass,
+  so formatting is not enforced yet (tracked in issue #37).
+- `npm audit --audit-level=high` — the only outstanding advisories are
+  transitive (`firebase-admin`/`@google-cloud/*` and Next's `sharp`) and
+  need breaking upstream bumps; Dependabot handles dependency updates.
+
+What CI intentionally does **not** do:
+
+- It uses **no production secrets**. The build runs with no Firebase
+  configuration and still succeeds (the app renders its "not configured"
+  state), unit tests exercise pure domain logic, and rules tests use
+  local emulators only.
+- It does **not** deploy. Vercel's Git integration owns Preview and
+  production deployments (see [`DEPLOYMENT.md`](./DEPLOYMENT.md)). CI
+  verifies code correctness; Vercel Preview verifies deployment/render
+  behavior.
 
 ## Unit tests
 
