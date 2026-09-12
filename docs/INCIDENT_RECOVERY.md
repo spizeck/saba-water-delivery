@@ -4,6 +4,15 @@ Concrete procedures for keeping water deliveries moving during an
 outage, and for handling a suspected security incident. This document
 is written for government operations staff and IT support.
 
+> **Scope.** This document is about **availability** — keeping deliveries
+> moving when the website, Firebase, Vercel, or WhatsApp is down, and
+> handling a suspected security incident. It is **not** about backing up or
+> restoring data. If an incident involves **lost, deleted, or corrupted
+> data** (a bad deployment that wrote wrong data, accidental
+> deletion, a botched migration, or a full database restore), use
+> [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) — the canonical backup and
+> data-recovery runbook — instead of, or in addition to, this document.
+
 ## Website unavailable
 
 If the website cannot be reached at all:
@@ -120,6 +129,21 @@ node --env-file=.env.local scripts/reconcile-stale-driver-locks.mjs --write  # a
 ```
 
 No staff action is required — the system repairs itself transparently.
+
+## Accidental data loss or corruption
+
+If data has been **deleted, overwritten, or corrupted** (a bad deployment
+wrote wrong values, a collection or documents were deleted, a migration
+went wrong), this is a **data-recovery** situation, not an availability
+outage. Do not improvise. Follow
+[`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md), which covers triaging the
+scope, preserving the current (damaged) state before doing anything,
+choosing a restore point (point-in-time recovery or a scheduled backup),
+restoring into a **separate** database first, validating with the read-only
+recovery validator, and only then switching service. A single stale driver
+lock or one bad request is a **targeted repair**, not a restore — see the
+"Stale driver activeRequestId" section above and `DISASTER_RECOVERY.md`
+§"Recovery modes".
 
 ## Suspected security incident
 

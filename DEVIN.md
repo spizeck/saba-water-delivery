@@ -1059,6 +1059,29 @@ contributors:
 
 ---
 
+# Backup and disaster recovery
+
+Full reference in [docs/DISASTER_RECOVERY.md](./docs/DISASTER_RECOVERY.md) and
+TECHNICAL.md "Backup and disaster recovery". For contributors:
+
+- Recovery uses **managed Firebase/Google Cloud** capabilities (Firestore PITR,
+  scheduled backups, on-demand exports; `firebase auth:export`/`import` for Auth)
+  — **not** a custom JSON backup system. Do not add one.
+- **A Firestore backup does not include Firebase Auth users.** Never commit,
+  log, or put Auth exports (password hashes + PII) in CI artifacts.
+- Firebase **Storage is not used in production yet** (deny-by-default rules, no
+  Storage SDK code); do not add Storage backup automation until photos ship.
+- `scripts/verify-recovery.mjs` (logic in `scripts/lib/recovery-checks.mjs`) is a
+  **read-only** post-restore validator — no mutation, prints only opaque IDs/no
+  PII, exits non-zero on findings. Remediation uses the existing targeted tools
+  (`scripts/reconcile-stale-driver-locks.mjs`, dispatcher/admin actions). Do not
+  turn the validator into an auto-fix.
+- Application code never enables cloud backups; those are operator/console
+  actions (see the "manual actions" section of the DR doc). Documentation/code
+  existing does **not** mean backups are active.
+
+---
+
 # Public pages and legal
 
 - `/` — public homepage with the PES logo, resident/driver login buttons, Need Help card, and footer.

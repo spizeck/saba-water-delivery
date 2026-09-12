@@ -333,6 +333,26 @@ maintainer:
   it has not been configured, the app is still correct — expired counters
   are ignored on read — the collection just retains a few stale documents.
 
+### Backups and data recovery
+
+Backing up and restoring the water-delivery **data** (the Firestore database
+and Firebase Auth identities) is covered by its own canonical runbook,
+[`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md). A maintainer should read it to:
+
+- understand what is backed up (Firestore collections; Firebase Auth is backed
+  up separately; Firebase Storage is not in production use yet);
+- enable the recommended managed protections (Firestore point-in-time recovery
+  and daily scheduled backups) — these are **operator/console actions and are
+  not enabled by the application**;
+- run the read-only recovery validator (`npm run verify:recovery`) and the
+  quarterly restore drill;
+- recover source code (GitHub) and environment variables (Vercel / vendor
+  consoles) after a major incident.
+
+This is distinct from [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md), which is
+about keeping deliveries moving during an **outage**. The nightly continuity
+report PDF is an outage aid, **not** a database backup.
+
 By default only `info` and above are logged in production. A maintainer
 can temporarily raise verbosity by setting the `LOG_LEVEL` environment
 variable to `debug` in Vercel and redeploying (see
