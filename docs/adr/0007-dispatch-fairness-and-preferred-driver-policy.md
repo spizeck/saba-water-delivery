@@ -30,7 +30,8 @@ convenience.
     different **bucket** (e.g. `normal` → `urgent`/`critical`), recorded as a
     `request_priority_changed` event; because the bucket is compared first, this
     can jump a request ahead of anything in a lower bucket.
-  - an **escalation** (`escalateRequest`) sets the **override rank** to move a
+  - an **escalation** (domain `escalateDispatchRequest`, invoked by the
+    `escalateRequest` dispatcher action) sets the **override rank** to move a
     request ahead **within its bucket**.
 
   **Neither override rewrites the original `requestedAt`.** Absent an explicit
@@ -87,8 +88,11 @@ convenience.
 - [`src/lib/domain/dispatch.ts`](../../src/lib/domain/dispatch.ts),
   [`src/lib/domain/preferredDriverPolicy.ts`](../../src/lib/domain/preferredDriverPolicy.ts)
 - [`src/lib/domain/waterRequests.ts`](../../src/lib/domain/waterRequests.ts)
-  (`changeRequestPriority` — priority override; `escalateRequest` — override rank;
-  both audited and both preserve `requestedAt`)
+  (`changeRequestPriority` — priority override; `escalateDispatchRequest` —
+  within-bucket override rank; both audited and both preserve `requestedAt`).
+  The `escalateRequest` server action in
+  [`src/app/dispatcher/actions.ts`](../../src/app/dispatcher/actions.ts) wraps
+  `escalateDispatchRequest`.
 - [`src/lib/domain/driverOffers.ts`](../../src/lib/domain/driverOffers.ts),
   [`src/lib/domain/dispatchSettings.ts`](../../src/lib/domain/dispatchSettings.ts)
 - TECHNICAL.md "Request Claiming", "Dispatch Offers", "Priority-Based Dispatch",
