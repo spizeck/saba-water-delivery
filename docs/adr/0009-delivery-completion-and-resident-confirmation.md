@@ -58,7 +58,9 @@ next job on the resident's confirmation would stall operations.
   registered resident has already raised (`resolveDisputeCompleted` /
   `resolveDisputeReopened`). An unregistered customer's complaint is therefore
   handled operationally (e.g. by reopening/creating a request), not as a
-  `disputed` state.
+  `disputed` state. Adding a staff path to record an unregistered customer's
+  dispute is tracked as a follow-up in
+  [#50](https://github.com/spizeck/saba-water-delivery/issues/50).
 
 ## Operational implications
 

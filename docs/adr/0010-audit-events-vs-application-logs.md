@@ -59,12 +59,13 @@ into logs.
 - When adding a new significant action, record a durable audit event, not just a
   log line — and prefer writing the event **in the same transaction** as the
   business change so the record cannot be lost if the second write fails.
-- **Known limitation / follow-up:** not every existing path is transactional
-  (e.g. dispatch-settings updates append the event after committing the change),
-  so a rare failure between the two writes could leave a change without its audit
-  event. Making these paths write the event in the same transaction is a
-  worthwhile hardening follow-up; this ADR documents the current behavior rather
-  than overstating it.
+- **Known limitation / follow-up (issue #49):** not every existing path is
+  transactional (e.g. dispatch-settings updates append the event after committing
+  the change), so a rare failure between the two writes could leave a change
+  without its audit event. Making required audit events atomic with sensitive
+  admin mutations is tracked in
+  [#49](https://github.com/spizeck/saba-water-delivery/issues/49); this ADR
+  documents the current behavior rather than overstating it.
 - Log volume is deliberately quiet for routine success (e.g. health probes log at
   debug) so meaningful events stand out ([0012](./0012-security-and-observability-baseline.md)).
 

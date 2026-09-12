@@ -62,13 +62,13 @@ not let holding the `driver` role by itself make someone an operational driver.
   ability to sign in.
 - Role/registry changes are recorded as durable audit events
   ([0010](./0010-audit-events-vs-application-logs.md)).
-- **Known limitation / follow-up:** the last-admin check is not enforced inside
-  the role-removal transaction, so two simultaneous removals of different admins
-  could in principle both pass and leave zero admins. In practice admin-role
-  changes are rare and effectively sequential, but making the admin count part
-  of the transaction (or otherwise serializing admin-role changes) is a worthwhile
-  hardening follow-up. This ADR documents the guard as it exists; it does not
-  claim race-safety.
+- **Known limitation / follow-up (issue #48):** the last-admin check is not
+  enforced inside the role-removal transaction, so two simultaneous removals of
+  different admins could in principle both pass and leave zero admins. In practice
+  admin-role changes are rare and effectively sequential, but making the admin
+  count part of the transaction (or otherwise serializing admin-role changes) is
+  tracked in [#48](https://github.com/spizeck/saba-water-delivery/issues/48). This
+  ADR documents the guard as it exists; it does not claim race-safety.
 
 ## References
 

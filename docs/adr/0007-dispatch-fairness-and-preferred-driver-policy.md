@@ -14,15 +14,29 @@ convenience.
 
 ## Decision
 
-- **Priority ordering:** `critical` > `urgent` > `normal`. Within a priority
-  level, the queue comparator sorts an explicit **dispatcher override rank first**
-  (lower ranks ahead of higher ranks, and any ranked request ahead of unranked
-  ones), then falls back to the **oldest original request time** — fairness-by-age.
-  The one deliberate way a request moves ahead of an older one is an authorized
-  dispatcher **escalation**, which sets that override rank; it changes queue
-  position **without** rewriting the original `requestedAt`. Absent an
-  escalation, a request never loses its place because of a decline, an expired
-  hold, or reassignment, and `requestedAt` is always preserved.
+- **Priority ordering.** The dispatch queue comparator
+  (`dispatchQueueCompare`) sorts by three keys, in this order:
+  1. **Priority bucket:** `critical` > `urgent` > `normal`. The bucket is
+     compared **first**, before override rank and age.
+  2. **Dispatcher override rank** (`dispatchOverrideRank`): within the same
+     bucket, a ranked request sorts ahead of higher-ranked and unranked ones
+     (lower rank first; unranked is treated as last).
+  3. **Original request time** (`requestedAt`): remaining ties and unranked
+     requests are ordered oldest-first — fairness-by-age.
+
+  There are **two** authorized, audited staff overrides that can move a newer
+  request ahead of an older one, and they act on different keys:
+  - a **priority override** (`changeRequestPriority`) moves a request into a
+    different **bucket** (e.g. `normal` → `urgent`/`critical`), recorded as a
+    `request_priority_changed` event; because the bucket is compared first, this
+    can jump a request ahead of anything in a lower bucket.
+  - an **escalation** (`escalateRequest`) sets the **override rank** to move a
+    request ahead **within its bucket**.
+
+  **Neither override rewrites the original `requestedAt`.** Absent an explicit
+  priority override or escalation, a request never loses its place because of a
+  decline, an expired preferred-driver hold, or reassignment — its original age
+  (`requestedAt`) is always preserved.
 - **Preferred driver:** a resident may choose a preferred driver. For a
   **`normal`** request, that driver gets a **24-hour hold** (first access). For
   **`urgent`/`critical`** requests, the preference is honored **only if that
@@ -67,9 +81,14 @@ convenience.
 
 ## References
 
+- [`src/lib/domain/dispatchBatchSelection.ts`](../../src/lib/domain/dispatchBatchSelection.ts)
+  (`dispatchQueueCompare`: priority bucket → `dispatchOverrideRank` → `requestedAt`),
+  [`src/lib/domain/priority.ts`](../../src/lib/domain/priority.ts) (`priorityRankFor`)
 - [`src/lib/domain/dispatch.ts`](../../src/lib/domain/dispatch.ts),
-  [`src/lib/domain/priority.ts`](../../src/lib/domain/priority.ts),
   [`src/lib/domain/preferredDriverPolicy.ts`](../../src/lib/domain/preferredDriverPolicy.ts)
+- [`src/lib/domain/waterRequests.ts`](../../src/lib/domain/waterRequests.ts)
+  (`changeRequestPriority` — priority override; `escalateRequest` — override rank;
+  both audited and both preserve `requestedAt`)
 - [`src/lib/domain/driverOffers.ts`](../../src/lib/domain/driverOffers.ts),
   [`src/lib/domain/dispatchSettings.ts`](../../src/lib/domain/dispatchSettings.ts)
 - TECHNICAL.md "Request Claiming", "Dispatch Offers", "Priority-Based Dispatch",
