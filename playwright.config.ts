@@ -54,7 +54,12 @@ export default defineConfig({
     // Auth emulator and the Admin SDK runs in emulator mode.
     command: `npm run build && npm run start -- -p ${APP_PORT}`,
     url: APP_BASE_URL,
-    reuseExistingServer: !isCI,
+    // Never attach to a pre-existing server. Playwright must always start THIS
+    // emulator-configured build; if something else is already listening on the
+    // port the run fails fast rather than silently driving an unrelated app that
+    // may be pointed at real Firebase (Aikido finding). This is a load-bearing
+    // production-safety property — asserted in e2e/support/__tests__.
+    reuseExistingServer: false,
     timeout: 180_000,
     env: {
       ...E2E_PUBLIC_ENV,

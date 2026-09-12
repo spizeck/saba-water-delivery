@@ -27,6 +27,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # This job only reads the repo (it never pushes commits), so do not
+          # leave the GITHUB_TOKEN in the local git config for later steps to
+          # read (Aikido finding).
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

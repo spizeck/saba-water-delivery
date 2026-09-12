@@ -5,17 +5,32 @@
  * run against local emulators backed by a disposable `demo-` project. This
  * module fails loudly and refuses to continue if anything looks like it could
  * touch real Firebase — no test, seed, or fixture may run until
- * `assertEmulatorSafety()` has passed.
+ * `assertEmulatorSafety()` has passed. In particular, the destructive reset
+ * helpers (`clearFirestore`/`clearAuthUsers`) call this before issuing their
+ * HTTP DELETEs, so a mis-set host can never be wiped.
  *
- * The three independent conditions:
- *   1. The Firestore AND Auth emulator host variables are present (so the SDKs
- *      are pointed at local emulators, never real Google endpoints).
+ * The independent conditions:
+ *   1. The Firestore AND Auth emulator host variables point at a LOOPBACK
+ *      emulator at the expected port (never a remote IP, arbitrary hostname,
+ *      URL with a scheme, alternate port, or empty value).
  *   2. The project id is a `demo-` project (Firebase's offline-only class) or
  *      the known E2E test id.
  *   3. We are NOT running in a deployed Vercel environment.
  */
 
-import { E2E_PROJECT_ID } from "./config";
+import {
+  AUTH_EMULATOR_PORT,
+  E2E_PROJECT_ID,
+  FIRESTORE_EMULATOR_PORT,
+} from "./config";
+
+/**
+ * Loopback hostnames the emulators may bind to. `firebase.json` binds both
+ * emulators to `127.0.0.1`; `localhost` and the IPv6 loopback `::1` are the
+ * only other genuine loopback forms and are accepted explicitly rather than
+ * loosening the check to arbitrary hosts.
+ */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 function resolveProjectId(): string | undefined {
   return (
@@ -35,8 +50,45 @@ export function isSafeEmulatorProject(projectId: string | undefined): boolean {
 }
 
 /**
+ * True only when `value` is a bare `host:port` (no scheme, no path) whose host
+ * is a loopback address and whose port equals `expectedPort`. This is what
+ * `firebase emulators:exec` sets for the local emulators; anything else — a
+ * remote IP, an arbitrary hostname, a `http://…` URL, a different port, or an
+ * empty value — is rejected so a destructive reset can never reach it.
+ */
+export function isLoopbackEmulatorHost(
+  value: string | undefined,
+  expectedPort: number,
+): boolean {
+  if (!value) return false;
+  // Reject any scheme/URL form (e.g. "http://127.0.0.1:8080") or path.
+  if (value.includes("/") || value.includes("://")) return false;
+
+  let host: string;
+  let port: string;
+  if (value.startsWith("[")) {
+    // Bracketed IPv6, e.g. "[::1]:9099".
+    const match = /^\[([^\]]+)\]:(\d+)$/.exec(value);
+    if (!match) return false;
+    host = match[1];
+    port = match[2];
+  } else {
+    const lastColon = value.lastIndexOf(":");
+    if (lastColon === -1) return false; // missing port
+    host = value.slice(0, lastColon);
+    port = value.slice(lastColon + 1);
+    // A bare unbracketed IPv6 address still contains colons — reject it (the
+    // only accepted IPv6 form is the bracketed "[::1]" above).
+    if (host.includes(":")) return false;
+  }
+
+  if (!/^\d+$/.test(port)) return false;
+  return LOOPBACK_HOSTS.has(host) && Number(port) === expectedPort;
+}
+
+/**
  * Throws unless the current environment is a safe local emulator environment.
- * Called at the very start of global setup and by the seed helpers.
+ * Called at the very start of global setup and by the seed/reset helpers.
  */
 export function assertEmulatorSafety(): void {
   const problems: string[] = [];
@@ -48,14 +100,21 @@ export function assertEmulatorSafety(): void {
     );
   }
 
-  if (!process.env.FIRESTORE_EMULATOR_HOST) {
+  const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
+  if (!isLoopbackEmulatorHost(firestoreHost, FIRESTORE_EMULATOR_PORT)) {
     problems.push(
-      "FIRESTORE_EMULATOR_HOST is not set (Firestore emulator required)",
+      `FIRESTORE_EMULATOR_HOST must be the local emulator (expected ` +
+        `127.0.0.1:${FIRESTORE_EMULATOR_PORT} or localhost:${FIRESTORE_EMULATOR_PORT}, ` +
+        `got ${firestoreHost ?? "(unset)"})`,
     );
   }
-  if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+
+  const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  if (!isLoopbackEmulatorHost(authHost, AUTH_EMULATOR_PORT)) {
     problems.push(
-      "FIREBASE_AUTH_EMULATOR_HOST is not set (Auth emulator required)",
+      `FIREBASE_AUTH_EMULATOR_HOST must be the local emulator (expected ` +
+        `127.0.0.1:${AUTH_EMULATOR_PORT} or localhost:${AUTH_EMULATOR_PORT}, ` +
+        `got ${authHost ?? "(unset)"})`,
     );
   }
 

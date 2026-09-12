@@ -12,9 +12,13 @@
 /** Demo (offline-only) Firebase project id. The `demo-` prefix is required. */
 export const E2E_PROJECT_ID = "demo-saba-water-delivery";
 
+/** Local emulator ports (must match `firebase.json` emulator ports). */
+export const AUTH_EMULATOR_PORT = 9099;
+export const FIRESTORE_EMULATOR_PORT = 8080;
+
 /** Local emulator hosts (must match `firebase.json` emulator ports). */
-export const AUTH_EMULATOR_HOST = "127.0.0.1:9099";
-export const FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
+export const AUTH_EMULATOR_HOST = `127.0.0.1:${AUTH_EMULATOR_PORT}`;
+export const FIRESTORE_EMULATOR_HOST = `127.0.0.1:${FIRESTORE_EMULATOR_PORT}`;
 
 /** The app under test. */
 export const APP_PORT = 3100;
