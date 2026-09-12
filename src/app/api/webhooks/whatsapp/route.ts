@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getLogger, serializeError, withRequestLogging } from "@/lib/logging";
+import {
+  getLogger,
+  logSecurityEvent,
+  SECURITY_EVENTS,
+  serializeError,
+} from "@/lib/logging";
+import { withApiRoute } from "@/lib/http";
 import {
   getWhatsAppClientConfig,
   verifyWhatsAppWebhookChallenge,
@@ -57,7 +63,14 @@ function extractMessages(
   return messages;
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withApiRoute(
+  "webhooks.whatsapp",
+  async (request: NextRequest) => {
+    return handleWhatsAppVerification(request);
+  },
+);
+
+async function handleWhatsAppVerification(request: NextRequest) {
   const config = getWhatsAppClientConfig();
   if (!config) {
     return NextResponse.json(
@@ -82,7 +95,7 @@ export async function GET(request: NextRequest) {
   return new Response(challenge, { status: 200 });
 }
 
-export const POST = withRequestLogging(
+export const POST = withApiRoute(
   "webhooks.whatsapp",
   async (request: NextRequest) => {
     return handleWhatsAppWebhook(request);
@@ -104,7 +117,9 @@ async function handleWhatsAppWebhook(request: NextRequest) {
   const signature = request.headers.get("x-hub-signature-256");
   if (!verifyWhatsAppWebhookSignature(config, rawBody, signature)) {
     // Security signal only — never log the body, signature, or sender.
-    log.warn("whatsapp.webhook.signature_invalid");
+    logSecurityEvent(SECURITY_EVENTS.webhookSignatureInvalid, {
+      provider: "whatsapp",
+    });
     return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
   }
 

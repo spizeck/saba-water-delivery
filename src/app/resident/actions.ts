@@ -11,6 +11,13 @@ import {
 } from "@/lib/domain/waterRequests";
 import { parseRequestedLoads } from "@/lib/domain/quantity";
 import { parseWaterSituationFromFormData } from "@/lib/domain/waterSituationForm";
+import { checkRateLimit } from "@/lib/security/rateLimit";
+
+// Friendly, non-sensitive message returned when an abuse rate limit is hit.
+// This is security throttling, distinct from the authoritative business rules
+// (duplicate-request prevention, the delivery state machine) below.
+const RATE_LIMITED_MESSAGE =
+  "You're doing that too quickly. Please wait a moment and try again.";
 
 /** Shared, user-facing messages for water-situation validation errors —
  * used by both the resident and dispatcher actions. */
@@ -125,6 +132,17 @@ export async function requestWater(
   const session = await requireRole("resident");
   const { profile } = session;
 
+  // Abuse throttle (per UID) BEFORE any work, so a throttled call can never
+  // create a partial request. Duplicate active-request prevention and the
+  // Firestore transaction inside createWaterRequest remain authoritative.
+  const rate = await checkRateLimit("request-create", {
+    type: "uid",
+    value: session.uid,
+  });
+  if (!rate.allowed) {
+    return { status: "error", message: RATE_LIMITED_MESSAGE };
+  }
+
   // Server-side validation: profile must be complete.
   if (!profile.village?.trim() || !profile.deliveryDirections?.trim()) {
     return {
@@ -221,6 +239,15 @@ export async function confirmDelivery(
   formData: FormData,
 ): Promise<DeliveryResponseState> {
   const session = await requireRole("resident");
+
+  const rate = await checkRateLimit("delivery-response", {
+    type: "uid",
+    value: session.uid,
+  });
+  if (!rate.allowed) {
+    return { status: "error", message: RATE_LIMITED_MESSAGE };
+  }
+
   const requestId = String(formData.get("requestId") ?? "").trim();
 
   if (!requestId) {
@@ -264,6 +291,15 @@ export async function disputeDelivery(
   formData: FormData,
 ): Promise<DeliveryResponseState> {
   const session = await requireRole("resident");
+
+  const rate = await checkRateLimit("delivery-response", {
+    type: "uid",
+    value: session.uid,
+  });
+  if (!rate.allowed) {
+    return { status: "error", message: RATE_LIMITED_MESSAGE };
+  }
+
   const requestId = String(formData.get("requestId") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
 

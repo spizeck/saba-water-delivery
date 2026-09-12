@@ -844,6 +844,30 @@ npm run test:rules
 `check` deliberately excludes `test:rules` (heavier, emulator-backed) so
 the everyday loop stays fast; CI runs both.
 
+## End-to-end tests (Playwright)
+
+Full reference in [docs/TESTING.md](./docs/TESTING.md) "End-to-end tests
+(Playwright)" and TECHNICAL.md "End-to-end testing (Playwright)". For
+contributors:
+
+- `npm run test:e2e` runs the browser suite against **local Firebase
+  emulators** (Auth + Firestore, `demo-` project) with synthetic data — never
+  production, no real credentials, no Resend/WhatsApp. Needs a JVM (like
+  `test:rules`) and a one-time `npx playwright install chromium`.
+- It is a **separate** CI check (**`E2E / playwright`**, `.github/workflows/e2e.yml`),
+  NOT part of `npm run check` or `CI / verify`. Keep it that way — do not fold
+  Playwright into `check`.
+- Tests sign in through the **real** login form (email/password against the Auth
+  emulator) → real `POST /api/auth/session`. There is **no auth bypass**; do not
+  add one. Emulator mode is enabled only by the emulator host env vars, guarded
+  to fail closed in Vercel Production/Preview.
+- Add new specs under `e2e/tests/`; seed preconditions with the helpers in
+  `e2e/support/seed.ts` (reset with `resetToBaseline()` in `beforeEach`, use
+  unique ids). Prefer accessible selectors (`getByRole`/`getByLabel`/`getByText`);
+  no arbitrary `waitForTimeout` sleeps — use web-first assertions.
+- Never point the suite at real Firebase: `e2e/support/safety.ts` enforces a
+  `demo-` project + emulator hosts and fails loudly otherwise.
+
 ## Formatting (Prettier)
 
 Prettier is configured (`.prettierrc.json`, `.prettierignore`) with
@@ -909,10 +933,129 @@ and observability"):
 - **Stable event names**: dotted `area.subject.outcome`
   (`whatsapp.message.processing_failed`). Reuse before inventing.
 - **Errors** go through `serializeError(err)`, never a raw spread.
-- HTTP routes are wrapped with `withRequestLogging(...)`, which attaches a
-  request ID (`x-request-id`), shares it across the request's logs, and
-  returns it as a response header. The logger is fail-safe — it can never
-  throw into a caller, so it must never gate core correctness.
+- HTTP routes are wrapped with the canonical boundary `withApiRoute(...)`
+  (see below), which shares the request ID across the request's logs. The
+  logger is fail-safe — it can never throw into a caller, so it must never
+  gate core correctness.
+- Server-side application code must use the logger, never `console.*` — an
+  ESLint `no-console` rule enforces this for `src/**` (the logger itself and
+  the `scripts/` CLIs are the exceptions).
+
+---
+
+# Server error handling and security events
+
+Full reference in `TECHNICAL.md` "Server error handling". The essentials:
+
+- **One route boundary.** Wrap every API route handler with
+  `withApiRoute(name, handler)` from `@/lib/http`. It adds the request ID
+  (header + on an unexpected throw, the error body), logs completion/failure
+  once, normalizes errors into a safe response, and lets `redirect()` /
+  `notFound()` propagate. Do not stack additional error wrappers.
+- **Typed errors.** Throw an `AppError` subclass (`@/lib/errors`:
+  `AppValidationError`, `AppAuthenticationError`, `AppAuthorizationError`,
+  `AppNotFoundError`, `AppConflictError`, `AppRateLimitError`,
+  `AppExternalServiceError`, `AppInternalError`) to control status/code/message.
+  Anything else becomes a generic 500 — never leak a raw exception message,
+  stack, Firebase/Firestore internal, or provider payload to a client.
+- **Client shape** is flat: `{ error, code, requestId }`. Public messages come
+  from the `AppError`; internal errors return a generic message.
+- **Preserve HTTP semantics.** Keep the correct 400/401/403/404/409/429/500
+  distinctions; authorization fails closed; do not turn every failure into 500.
+- **Don't double-log.** If you catch a failure and return/degrade, log your own
+  specific event and do NOT also re-throw — the boundary logs unhandled throws.
+- **Preserve graceful degradation.** A non-critical integration failure (e.g. a
+  delivery-confirmation email) must never roll back valid delivery state just
+  because normalization now exists.
+- **Server actions** keep their existing return contracts (sanitized messages);
+  do not force the HTTP response abstraction onto them.
+- **Security events** use `logSecurityEvent(SECURITY_EVENTS.*, meta)` from
+  `@/lib/logging` (`security.*` names). Log genuinely noteworthy
+  authorization/validation failures (authenticated-but-denied, invalid webhook
+  signature, unauthorized cron) — not routine "not signed in" redirects — with
+  safe metadata only (opaque uid, role names, request IDs).
+
+---
+
+# Browser security headers / CSP
+
+Full reference in `TECHNICAL.md` "Browser security headers / CSP". The
+essentials for contributors:
+
+- All browser security headers (CSP, COOP, Referrer-Policy, X-Frame-Options,
+  X-Content-Type-Options, Permissions-Policy, HSTS) come from ONE place:
+  `src/lib/security/headers.ts`, applied in `next.config.ts`. Do not add
+  security headers elsewhere.
+- The CSP is **derived from what the browser actually loads.** If you add a
+  browser dependency (a new external script/style/font/image host, a client
+  fetch/websocket to a new origin, client-side Firestore, Firebase Storage in
+  the browser, an analytics tag, or a real Facebook login), you MUST add its
+  exact origin to the right directive AND re-run the preview auth/console smoke
+  test. Never widen a directive with a wildcard or add a **server-only**
+  integration (Meta/WhatsApp, Resend, Firestore Admin) to the browser CSP.
+- `'unsafe-inline'` (scripts/styles) is a documented, deliberate compromise for
+  Next's inline bootstrap scripts and inline style attributes; **never add
+  `'unsafe-eval'` to production**. Dev-only relaxations live behind the
+  `nodeEnv`/`vercelEnv` checks in `headers.ts`.
+- COOP is `same-origin-allow-popups` (Firebase `signInWithPopup` needs it);
+  do not set COEP or plain `same-origin` — either can break Google sign-in.
+
+---
+
+# Rate limiting
+
+Full reference in `TECHNICAL.md` "Rate limiting". For contributors:
+
+- Abuse rate limiting is a **security** control and is separate from **business**
+  limits (duplicate-request prevention, decline cooldowns, the state machine,
+  idempotency). The limiter never replaces those — they stay authoritative. A
+  rate-limit rejection must never create a partial write.
+- To protect an abuse-sensitive operation, use `@/lib/security/rateLimit`:
+  - **HTTP routes**: `await enforceRateLimit(policy, identifier)` — throws
+    `AppRateLimitError` → 429 via `withApiRoute` (Retry-After + request id).
+  - **Server actions**: `const d = await checkRateLimit(policy, identifier)`;
+    if `!d.allowed`, return the action's existing `{ status: "error", message }`.
+- Add thresholds ONLY in `RATE_LIMIT_POLICIES` (one place, typed). Choose
+  **generous** limits — prefer logging over locking legitimate users out.
+- Identifiers: prefer `{ type: "uid", value: session.uid }`; for pre-auth
+  routes use `{ type: "ip", value: getTrustedClientIp(request) }`. **Never** put
+  a raw email, phone, WhatsApp number, token, or cookie in an identifier, and
+  never log the raw value (the limiter hashes it and logs only the type).
+- The limiter is **fail-open** (a storage outage logs and allows) and stores
+  server-only counters in Firestore (`rateLimits`, deny-by-default). Do NOT use
+  an in-memory/module-level counter for production.
+- Do not rate limit the WhatsApp webhook (signature + idempotency), the cron
+  (`CRON_SECRET`), or ordinary authenticated staff mutations.
+
+---
+
+# Health and readiness
+
+Full reference in `TECHNICAL.md` "Health and readiness endpoints". For
+contributors:
+
+- Two public-safe endpoints (issue #33): **`GET /api/health`** (liveness) and
+  **`GET /api/readiness`**. Liveness returns a constant `{ status: "ok" }` (200)
+  with **no dependencies** — keep it that way (no Firestore, no secrets), so a
+  dependency outage never makes liveness fail. Readiness runs a Firestore probe.
+- Readiness is determined **only** by Firebase Admin / Firestore. Optional,
+  gracefully-degrading integrations (Resend, WhatsApp, Storage, PDFKit, the
+  fail-open rate limiter) are **non-blocking** and must NOT influence it.
+  Firestore reachable → 200 `ready`; unavailable → **503** `not_ready`. Use 503
+  (a known dependency-unavailable state), never 500.
+- The probe (`@/lib/health/readiness.ts`) is a single **read-only** `.get()` on
+  the dedicated non-business path `_health/probe`, bounded by a 3 s timeout.
+  **Never** add a write, a query/scan of business data, an external call, or a
+  business document used as a health sentinel. No caching.
+- Responses are **categorical only** (`ok`/`unavailable`/`ready`/`not_ready`).
+  Never add a reason, provider error, exception message, stack trace, secret,
+  project id, service-account detail, or Firestore path to the body. Log failures
+  sanitized (`serializeError`) via the existing logger as `health.readiness.failed`.
+- Both routes use `withApiRoute(..., { completionLogLevel: "debug" })` so
+  frequent probes stay quiet in production (info level) while failures still log.
+  Do **not** rate limit them, and do not weaken CSP for them.
+- Vercel does not auto-consume these; they are for operators, uptime monitors,
+  and deploy validation only.
 
 ---
 

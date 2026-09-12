@@ -352,6 +352,8 @@ describe("locked collections and catch-all", () => {
     await assertFails(getDoc(doc(db, "whatsappSessions/session-a")));
     await assertFails(getDoc(doc(db, "whatsappProcessedMessages/message-a")));
     await assertFails(getDoc(doc(db, "accountMergeEvents/merge-a")));
+    await assertFails(getDoc(doc(db, "rateLimits/bucket-a")));
+    await assertFails(setDoc(doc(db, "rateLimits/bucket-b"), { count: 1 }));
     await assertFails(getDoc(doc(db, "driverRegistryUniqueKeys/name-key")));
     await assertFails(
       getDoc(doc(db, "waterRequests/request-a/photos/photo-a")),

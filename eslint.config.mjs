@@ -19,6 +19,20 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // Application code must go through the canonical structured logger
+  // (`@/lib/logging`) rather than console.* — this keeps redaction and
+  // request-context correlation in force (see TECHNICAL.md). Scoped to `src/`
+  // so CLI scripts under `scripts/` keep their legitimate console output.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: { "no-console": "error" },
+  },
+  {
+    // The logger itself is the ONE place allowed to write to the console — it
+    // is how structured entries reach Vercel's log stream.
+    files: ["src/lib/logging/logger.ts"],
+    rules: { "no-console": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

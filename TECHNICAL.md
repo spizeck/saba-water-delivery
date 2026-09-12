@@ -2059,35 +2059,22 @@ log.error("email.delivery_confirmation.notify_failed", {
 
 Dotted, lowercase, `area.subject.outcome` — for example
 `report.continuity.generated`, `report.continuity.email_failed`,
-`auth.session.verify_failed`, `whatsapp.webhook.signature_invalid`,
-`whatsapp.message.processing_failed`, `email.delivery_confirmation.failed`,
-`dispatch.record_collection.failed`. Keep the taxonomy small; reuse an existing
-name before inventing one.
+`auth.session.verify_failed`, `whatsapp.message.processing_failed`,
+`email.delivery_confirmation.failed`, `dispatch.record_collection.failed`.
+Security events use the `security.*` namespace (see "Server error handling").
+Keep the taxonomy small; reuse an existing name before inventing one.
 
 ## Request / correlation IDs
 
-HTTP routes are wrapped with `withRequestLogging(name, handler)`
-(`src/lib/logging/requestContext.ts`), which:
-
-- adopts a safe inbound `x-request-id` header or generates a random UUID;
-- makes that ID ambient (via `AsyncLocalStorage`) so every log line for the
-  request — including downstream domain logs — shares it;
-- echoes the ID back in the `x-request-id` **response header** on every
-  response the route *returns* — successes and the handled error responses
-  routes build themselves (401/500/etc.);
-- logs completion/failure, then re-throws unchanged (it does **not** reshape
-  responses or convert errors — routes keep their own status codes).
-
-**Header coverage limitation.** If a handler *throws* instead of returning
-(an unexpected bug), the platform generates the 500 and there is no response
-object for the wrapper to set the header on. The request ID is still emitted
-on the `unhandled_error` log line, so it stays discoverable in the server
-logs (find it by matching the failing request's route and time). Attaching
-the ID to platform-generated error responses would require response reshaping
-or edge middleware that changes error semantics — that belongs to the #30
-error-normalization work, not this observability layer.
-
-IDs are always random and non-identifying — never a phone, email, or uid.
+HTTP routes are wrapped with the canonical boundary `withApiRoute(name,
+handler)` (`src/lib/http`; the request-ID primitives it uses live in
+`src/lib/logging/requestContext.ts`). It adopts a safe inbound `x-request-id`
+header or generates a random UUID, makes it ambient (via `AsyncLocalStorage`)
+so every downstream log shares it, and returns it in the `x-request-id`
+**response header**. On an unexpected throw it also returns the ID in the
+canonical error **body** — see "Server error handling" below, which fully
+describes `withApiRoute`. IDs are always random and non-identifying — never a
+phone, email, or uid.
 
 ## Redaction policy and prohibited fields
 
@@ -2132,7 +2119,428 @@ required for the app to run. See `docs/DEPLOYMENT.md`.
 ## Diagnosing with request IDs
 
 A user-reported failure can be correlated to logs via the `x-request-id`
-response header — see `docs/OPERATIONS.md`.
+response header (and, for an unexpected failure, the `requestId` field in the
+canonical error body) — see `docs/OPERATIONS.md`.
+
+---
+
+# Server error handling
+
+Three concerns are kept deliberately separate and must not be collapsed:
+
+1. **Client-facing errors** — the safe message/code/status returned to the
+   browser or API caller (`src/lib/errors`).
+2. **Operational / security logs** — structured Vercel telemetry
+   (`src/lib/logging`, above).
+3. **Business audit events** — durable Firestore history (see "Auditability").
+
+Firestore audit events remain the authoritative business history; operational
+and security logs are never written to Firestore for observability.
+
+## The application error model (`src/lib/errors`)
+
+`AppError` carries a `category`, a stable client `code`, an HTTP `statusCode`,
+an `isPublic` flag (may the message be shown to the caller?), and an optional
+`cause` (the original error, for redacted server-side logging only). Typed
+subclasses cover the taxonomy:
+
+| Category | Code | Status | Public? |
+| --- | --- | --- | --- |
+| validation | `VALIDATION_ERROR` | 400 | yes |
+| authentication | `AUTHENTICATION_REQUIRED` | 401 | yes |
+| authorization | `AUTHORIZATION_DENIED` | 403 | yes |
+| not_found | `NOT_FOUND` | 404 | yes |
+| conflict | `CONFLICT` | 409 | yes |
+| rate_limit | `RATE_LIMITED` | 429 | yes |
+| external_service | `EXTERNAL_SERVICE_ERROR` | 502 | no |
+| internal | `INTERNAL_ERROR` | 500 | no |
+
+Keep the taxonomy small; domain code may still throw meaningful existing
+string codes where they are already useful.
+
+`normalizeError(error)` returns an `AppError` for any thrown value: an existing
+`AppError` is preserved (status/code/message intact); any other error becomes a
+generic `AppInternalError` keeping the original as `cause`. The original
+exception message is **never** promoted to the client.
+
+## Canonical client error response
+
+The boundary returns a **flat** JSON body (chosen for backward compatibility —
+existing clients such as `establishSession`/`LoginForm` read `data.error` as a
+string; a nested shape would break them):
+
+```json
+{ "error": "<safe message>", "code": "<STABLE_CODE>", "requestId": "<id>" }
+```
+
+The message is the `AppError`'s own message only when it is public; otherwise a
+generic "An unexpected error occurred. Please try again later." is used, so no
+stack trace, provider payload, Firebase internal, secret, or personal data ever
+reaches the caller.
+
+## The route boundary (`withApiRoute`)
+
+`withApiRoute(name, handler)` (`src/lib/http`) is the **one** canonical route
+mechanism. For a handler's whole execution it:
+
+- resolves and shares the request ID (see "Request / correlation IDs");
+- returns the handler's own response with the `x-request-id` header + a
+  completion log;
+- on an unexpected throw, normalizes the error, logs it **once**, and returns
+  the canonical safe response whose `x-request-id` header **and** body both
+  carry the request ID — this closes the earlier gap where a thrown route
+  produced a platform 500 with no correlation ID;
+- lets framework control-flow (`redirect()`, `notFound()`) propagate unchanged
+  via `unstable_rethrow`, so `requireRole` redirects keep working.
+
+**Boundary logging ownership (no double logging).** The boundary owns logging
+of *unhandled* throws. Handlers and domain/integration code that catch a
+failure and **return** a response (or degrade gracefully — e.g. a
+delivery-confirmation email that fails after delivery is committed) log their
+own distinct operational events and must **not** also re-throw the same error,
+so one failure is never logged three times.
+
+Existing endpoints keep their current handled response shapes for
+compatibility (the session route's `{ error: "DRIVER_ACCESS_DENIED" }` is a
+client contract). The canonical shape applies to the boundary's normalized
+responses; routes may additionally `throw` an `AppError` to get a typed
+response.
+
+## Security events (`security.*`)
+
+Security-relevant failures are logged on the same structured logger via
+`logSecurityEvent(event, metadata)` (`src/lib/logging`), **not** a separate
+backend. Stable names:
+
+- `security.authorization.denied` — an authenticated user attempted an action
+  their roles do not allow (`requireRole`, and the session route's driver
+  check). Routine "not signed in → /login" is **not** logged as security.
+- `security.webhook.signature_invalid` — inbound WhatsApp HMAC failed.
+- `security.cron.unauthorized` — the continuity-report cron was hit without the
+  correct `CRON_SECRET`.
+
+Security logs obey the same redaction policy: safe metadata only (opaque
+`uid`, role names, request IDs) — never tokens, cookies, signatures, request
+bodies, phone numbers, emails, or other personal data. They are operational
+telemetry, distinct from the durable Firestore audit trail.
+
+---
+
+# Browser security headers / CSP
+
+Every route is served with a hardened set of browser security headers. This is
+defense in depth against injected/cross-site scripts, clickjacking, MIME
+sniffing, and resource exfiltration to unapproved origins — it does **not** make
+the app immune to XSS.
+
+## Where they are defined
+
+`src/lib/security/headers.ts` (`buildSecurityHeaders()`) is the **single source
+of truth**. `next.config.ts` applies it for `source: "/:path*"` via
+`async headers()`. Do not set security headers anywhere else (API routes, other
+config layers). A static header set is used deliberately — a nonce-based CSP
+would require per-request middleware that forces every page to render
+dynamically, degrading this app's static rendering, caching, and PWA behavior.
+
+## Content-Security-Policy
+
+The policy is derived from what the browser actually loads (audited for #31),
+not a generic template. Production directives:
+
+- `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
+  `frame-ancestors 'none'`, `form-action 'self'`, `worker-src 'self'`,
+  `manifest-src 'self'`, `upgrade-insecure-requests`.
+- `script-src 'self' 'unsafe-inline' https://apis.google.com`.
+  `'unsafe-inline'` is required because Next.js App Router injects per-render
+  inline bootstrap/streaming scripts that cannot be hashed; a nonce is out of
+  scope (see above). **No `'unsafe-eval'` in production** (dev only, for React
+  Fast Refresh). `https://apis.google.com` is loaded by the Firebase Google
+  sign-in popup.
+- `style-src 'self' 'unsafe-inline'` — inline `style={{…}}` attributes and
+  Next.js require it.
+- `img-src 'self' data:` — `data:` covers `next/image` blur placeholders. (QR
+  codes are inline SVG markup, not images; no `blob:` is used.)
+- `font-src 'self'` — `next/font` self-hosts the Geist font.
+- `connect-src 'self' https://<authDomain> https://identitytoolkit.googleapis.com https://securetoken.googleapis.com`
+  — the exact Firebase **Auth** endpoints. There is **no client-side
+  Firestore** in this app, so `firestore.googleapis.com` is intentionally
+  absent.
+- `frame-src 'self' https://<authDomain> https://apis.google.com` — the
+  Firebase auth helper iframe.
+
+`<authDomain>` is `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`; when it is unset (e.g. a
+CI build), that origin is omitted and the CSP stays valid.
+
+**Deliberately absent from the browser CSP:** Meta/WhatsApp (`graph.facebook.com`)
+and Resend are **server-side** integrations — the browser never contacts them,
+so adding them would only widen the attack surface. GA4 is not loaded in the
+browser today. Facebook Login is a disabled "Coming Soon" button that loads no
+browser resources.
+
+Environment differences (all scoped, none leak into production):
+
+- **Development** (`next dev`): adds `'unsafe-eval'` (Fast Refresh) and
+  `ws://localhost:*` (HMR); omits `upgrade-insecure-requests`.
+- **Preview** (Vercel): adds `https://vercel.live` (script/frame/connect) and a
+  Pusher websocket for the Vercel preview toolbar.
+- **Production**: none of the above.
+
+## COOP / COEP
+
+`Cross-Origin-Opener-Policy: same-origin-allow-popups`. The Firebase Google
+sign-in uses `signInWithPopup`, which needs the opener→popup relationship;
+plain `same-origin` **breaks** it (a COOP popup failure has bitten a prior
+Firebase app). **COEP is deliberately not set** — `require-corp` would block
+cross-origin resources (e.g. `apis.google.com`) and is not needed. Because the
+popup is auth-critical and cannot be fully verified in CI, the Vercel preview
+smoke test (below) must confirm Google sign-in completes.
+
+## Other headers
+
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` (production
+  only; HSTS is ignored over local http). **No `preload`** — it is effectively
+  irreversible and `vercel.app` is not ours to submit; revisit when a custom
+  government domain is configured.
+- `X-Frame-Options: DENY` — defense in depth alongside `frame-ancestors 'none'`
+  for legacy clients.
+- `Referrer-Policy: strict-origin-when-cross-origin`,
+  `X-Content-Type-Options: nosniff`.
+- `Permissions-Policy` disables every browser capability the app does not use
+  (camera, microphone, geolocation, payment, usb, sensors, clipboard, …). When
+  a future feature needs one (e.g. `camera` for photo capture), remove that
+  entry with an explicit review.
+
+## Enforcement vs. Report-Only
+
+The CSP is **enforced** by default. The optional `CSP_REPORT_ONLY` env var (read
+at build time) switches the header to `Content-Security-Policy-Report-Only` for
+a cautious rollout — violations are then reported to the browser console
+without blocking anything, and no external reporting vendor is involved. See
+`docs/DEPLOYMENT.md`. Diagnosing a violation: see `docs/OPERATIONS.md`.
+
+## Future Facebook Login
+
+When Facebook Login is enabled, add its browser origins (typically
+`https://connect.facebook.net` to `script-src` and `https://www.facebook.com`
+to `frame-src`) and re-run the preview auth smoke test. They are omitted today
+because no Facebook browser resource is loaded.
+
+---
+
+# Rate limiting
+
+`src/lib/security/rateLimit.ts` is a centralized, server-side rate limiter for
+abuse-sensitive operations. It is a **security** control, deliberately separate
+from the app's **business** limits — driver decline cooldowns, duplicate
+active-request prevention, the delivery state machine, Firestore transaction
+guards, and WhatsApp webhook idempotency remain the authoritative rules and are
+NOT replaced by it.
+
+## Algorithm, time, and storage
+
+- **Fixed window**, the simplest correct model at Saba's scale. Time is the
+  **server's** `Date.now()` — never a client value.
+- **Storage: Firestore** (the app's existing infrastructure), one small
+  document per bucket in the server-only `rateLimits` collection, incremented
+  inside a **transaction** so simultaneous requests cannot all read a stale
+  count and bypass the limit (proven by an emulator concurrency test). No new
+  external service (Redis/Upstash/KV) was added.
+- **Keys are HMAC-SHA256 hashes** of `policy:type:identifier`, so a raw
+  identifier — especially a small-space value like an IP — is never stored and
+  cannot be reversed from the document id. The HMAC secret,
+  **`RATE_LIMIT_HASH_SECRET`, is REQUIRED in deployed Vercel environments**
+  (Production and Preview). Because this repository is public, there is no
+  built-in salt that could protect a small-space value; if the secret is missing
+  in a deployed environment the limiter treats itself as **unavailable** — it
+  logs a high-severity `rate_limit.secret_missing` event and **fails open**
+  (allows the request) rather than hashing with a repo-known salt or blocking
+  availability. Local development and tests use a deterministic, dev-only
+  fallback (no secret needed) that is **not** a production privacy control.
+
+## Policies and thresholds
+
+Defined once, in `RATE_LIMIT_POLICIES` (adjust there; no route changes needed):
+
+| Policy | Limit / window | Identifier | Protects |
+| --- | --- | --- | --- |
+| `auth-session` | 50 / 5 min | IP | `POST /api/auth/session` (pre-auth, public) |
+| `request-create` | 10 / 10 min | UID | Resident water-request submission |
+| `delivery-response` | 20 / 10 min | UID | Delivery confirm/dispute |
+
+Thresholds are intentionally **generous** — enough to stop automated abuse,
+loose enough not to lock out legitimate Saba users (including several people
+behind one shared island ISP IP for `auth-session`).
+
+## Identifiers and IP trust
+
+`uid` is preferred where the caller is authenticated. For the pre-auth session
+route the only identifier is the client IP, taken from the leftmost
+`x-forwarded-for` (fallback `x-real-ip`) **only when running behind Vercel**
+(`VERCEL_ENV` set) so a spoofed forwarding header cannot mint identities;
+locally the IP is `null` and IP limiting is simply inactive. The raw IP is used
+only to build the HMAC key — never stored or logged.
+
+## Fail-open
+
+If the Firestore transaction fails, the limiter **fails open**: it logs an
+operational `rate_limit.storage_unavailable` event (via the #29 logger) and
+ALLOWS the request. The limiter must never turn a Firestore blip into a
+water-delivery outage — it is defense in depth, not an availability dependency.
+
+## Rejection behavior and events
+
+- HTTP routes use `enforceRateLimit(...)`, which throws `AppRateLimitError`
+  (#30) → **429**, code **`RATE_LIMITED`**, a safe message, a **`Retry-After`**
+  header, and the correlated request id (all via `withApiRoute`).
+- Server actions use `checkRateLimit(...)` and return their existing
+  `{ status: "error", message }` shape (no HTTP response to reshape).
+- Every rejection logs a **`security.rate_limit.exceeded`** event with safe
+  metadata only — policy, identifier **type** (`uid`/`ip`), `retryAfterSeconds`,
+  and the opaque `uid` for uid-keyed policies. The raw IP/value is never logged,
+  and a rate-limit rejection is NOT written as a Firestore business-audit event.
+
+## Retention / TTL
+
+Each document carries an `expiresAt` (`resetAt + 24h`) for a **Firestore TTL
+policy** to reclaim it. TTL is a **manual, one-time** Firebase setup step (see
+docs/DEPLOYMENT.md) — but **correctness never depends on it**: an elapsed window
+is treated as fresh on the next read regardless of whether the document has been
+physically deleted, so an expired record can never keep blocking a user, and the
+collection is bounded by the number of recently-active identifiers (tiny for
+Saba).
+
+## Endpoints deliberately NOT rate limited
+
+- **WhatsApp webhook** — HMAC signature verification and message idempotency are
+  the correct, stronger controls; a naive per-IP limit would reject legitimate
+  Meta retries from shared infrastructure.
+- **Continuity cron** — `CRON_SECRET` is the control.
+- **PDF/report routes** — staff-only (`requireRole`); already sufficiently
+  protected.
+- **Dispatcher/admin mutations** — authenticated staff performing legitimate
+  repeated work must not be throttled.
+- **Account setup/recovery** — dispatcher-initiated (staff-only) with existing
+  idempotency; Firebase handles password reset client-side, so there is no
+  public server surface to protect.
+- **Health / readiness** (`/api/health`, `/api/readiness`) — intentionally
+  cheap and meant to be polled frequently by uptime monitors; a rate limit
+  would make the operational signal unreliable. See "Health and readiness
+  endpoints" below.
+
+---
+
+# Health and readiness endpoints
+
+Two small, public-safe endpoints (`src/app/api/health/route.ts`,
+`src/app/api/readiness/route.ts`) give operators, uptime monitors, and
+deployment tooling a clear answer to _"is the app up, and can it serve?"_ — with
+no secrets, personal data, or infrastructure detail exposed (issue #33). They are
+built on the existing #29/#30 request boundary, not a parallel monitoring stack.
+
+## Liveness vs. readiness
+
+The two concepts are kept deliberately separate:
+
+- **Liveness — `GET /api/health`.** _Is the Next.js route runtime responding?_
+  It has NO dependencies (no Firestore, no external APIs, no secrets) and returns
+  a constant `{ "status": "ok" }` with **200**. A Firestore, Resend, or Meta
+  outage must never make liveness fail — that is what lets an operator tell "the
+  app is down" apart from "a dependency is degraded".
+- **Readiness — `GET /api/readiness`.** _Can the app perform its core
+  water-delivery service right now?_ That core depends on Firebase Admin /
+  Firestore, so readiness runs a minimal Firestore probe. Ready → **200**
+  `{ "status": "ready", "checks": { "app": "ok", "firestore": "ok" } }`;
+  Firestore unavailable → **503** `{ "status": "not_ready", "checks": { "app":
+  "ok", "firestore": "unavailable" } }`.
+
+**503, not 500,** is used for a known dependency-unavailable readiness condition,
+so a Firestore outage reads as "healthy app, not ready" rather than a server
+crash. A genuinely unexpected throw is still normalized by `withApiRoute` to the
+canonical safe error response.
+
+## Firestore readiness probe
+
+`evaluateReadiness()` (`src/lib/health/readiness.ts`) performs a single,
+read-only Firestore access and nothing more:
+
+- It reads one document at the dedicated **non-business** path `_health/probe`
+  via the Admin SDK. The document is not expected to exist — a successful "not
+  found" read still proves Admin credentials are valid and Firestore is
+  reachable. Because nothing is ever written, that collection never materializes,
+  carries no domain data, and creates no coupling to any resident/request
+  collection.
+- **No writes, ever.** The probe issues only `.get()` — never
+  `set`/`add`/`update`/`delete`. A readiness check can never create or mutate
+  production data. This is asserted by a test.
+- **No scans or queries** of business data, no external HTTP, no email/WhatsApp
+  calls, no PDF generation, no Storage reads.
+- The probe is bounded by a 3 s timeout (`withTimeout`) so an unreachable or slow
+  Firestore yields `not_ready` quickly instead of hanging the request (and any
+  monitor behind it). Trade-off: a Firestore that is merely very slow (> 3 s)
+  reports `not_ready`; for a health signal, failing fast is the right default.
+- A missing or malformed Firebase Admin configuration surfaces here as a caught
+  failure (`getAdminDb()` throws) → `not_ready`. The raw initialization error is
+  **never** returned to the caller; it is logged sanitized.
+
+There is **no cache**: the probe is a single indexed document read, so it is
+cheap enough to run on every request. This avoids any risk of a short-lived cache
+hiding an outage, and sidesteps the fact that Vercel instances are ephemeral and
+distributed (a per-instance cache would be inconsistent anyway).
+
+## Readiness-critical vs. non-blocking dependencies
+
+Only **Firebase Admin / Firestore** determines readiness — it is core to every
+request/dispatch/delivery operation. Everything else is intentionally
+**non-blocking**, so its outage must not make a still-serving app look unready
+(each decision confirmed against the current code):
+
+| Dependency        | Readiness? | Why                                                                                             |
+| ----------------- | ---------- | ----------------------------------------------------------------------------------------------- |
+| Firestore/Admin   | **Yes**    | Core datastore for all requests, dispatch, and delivery state.                                  |
+| Resend (email)    | No         | Delivery/account emails already degrade gracefully; a send failure never changes recorded state. |
+| WhatsApp / Meta   | No         | An inbound-ordering convenience; the web/dispatcher intake path serves the core contract.        |
+| Firebase Storage  | No         | Property photos are optional; core request/dispatch does not require an object read.             |
+| PDFKit / reports  | No         | An isolated report/PDF problem does not stop the request/dispatch service.                       |
+| Rate limiter      | No         | Fail-open by design (see "Rate limiting"); it must never become an availability dependency.      |
+
+The public body stays intentionally boring: it reports only `app` and
+`firestore`. Integration configuration status is documented here rather than
+exposed on a public endpoint, keeping deployment posture out of an unauthenticated
+response.
+
+## Request IDs, logging, and quiet probes
+
+Both routes go through the canonical `withApiRoute` boundary, so every response
+carries a correlated `x-request-id` header (echoing a safe inbound one) and any
+unexpected throw is normalized safely. Two things keep frequent probing from
+flooding Vercel logs:
+
+- The routine `api.<name>.completed` line is emitted at **debug** for these
+  routes (`withApiRoute(..., { completionLogLevel: "debug" })`), so a successful
+  probe is silent under production's `info` log level.
+- The readiness evaluation logs **only on failure** — a single sanitized
+  `health.readiness.failed` event (check name + `serializeError`d cause) at
+  `error`, visible in production. Successful probes emit no error/warn logs.
+
+## Security / privacy
+
+The responses are stable and categorical (`ok` / `unavailable` / `ready` /
+`not_ready`) and never contain a reason string, provider error, exception
+message, stack trace, secret, `FIREBASE_ADMIN_PRIVATE_KEY`, project id,
+service-account email, Firestore path, internal hostname, Vercel deployment id,
+or any resident data. Tests assert the client response contains none of these.
+The endpoints still receive the canonical #31 security headers (applied to
+`/:path*` in `next.config.ts`); nothing about CSP is weakened for them.
+
+## Vercel and external monitoring
+
+Vercel does **not** automatically consume a custom application health endpoint
+for routing or deploy gating, and this issue adds no such configuration. The
+endpoints are for **operators, uptime monitors, and deployment validation** —
+e.g. point an external monitor at `/api/health` (liveness) and, where a
+readiness distinction is wanted, `/api/readiness` (a 503 there means "app up,
+Firestore not reachable"). They are not a replacement for the full application
+smoke test in docs/TESTING.md.
 
 ---
 
@@ -2718,6 +3126,63 @@ web portal (`getNextOfferForDriver`, `acceptDriverOffer`,
 implementation. Continue to never store authoritative application state
 inside a WhatsApp conversation session; `whatsappSessions` remains
 conversation scratch state only.
+
+---
+
+# End-to-end testing (Playwright)
+
+Browser-level regression coverage for the critical resident/dispatcher/driver
+journeys (issue #34). The operational details — how to run it, what is covered,
+CI — live in [docs/TESTING.md](./docs/TESTING.md) "End-to-end tests
+(Playwright)". This section records the architectural decisions.
+
+## Emulator-backed, never production
+
+The suite runs entirely against **local Firebase emulators** (Auth + Firestore)
+backed by a disposable `demo-saba-water-delivery` project, launched by
+`npm run test:e2e` (`firebase emulators:exec … "playwright test"`). It uses no
+production Firebase, no real credentials, and no external providers (Resend,
+WhatsApp/Meta). A mandatory safety guard (`e2e/support/safety.ts`) asserts the
+emulator hosts are set, the project id is a `demo-` project, and we are not in a
+deployed Vercel environment — every seed/reset fails closed otherwise.
+
+## Emulator mode in the Firebase clients
+
+Two small, guarded additions let the existing app talk to the emulators without
+weakening production:
+
+- **Admin SDK** (`src/lib/firebase/admin.ts`): when
+  `FIREBASE_AUTH_EMULATOR_HOST`/`FIRESTORE_EMULATOR_HOST` are set (the standard
+  Firebase convention, set only by `emulators:exec`), it initializes with just a
+  project id — the emulators ignore credentials — and treats itself as
+  configured. `assertNotDeployedEmulatorMode()` throws if emulator mode is ever
+  seen in Vercel Production/Preview, so a misconfiguration can never point the
+  trusted server at a local emulator.
+- **Client SDK** (`src/lib/firebase/client.ts`): when
+  `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` is present (build-time inlined, never
+  in a production build) it calls `connectAuthEmulator`/`connectFirestoreEmulator`
+  once. A production bundle contains no emulator connection.
+
+## Real auth, no bypass
+
+There is deliberately **no test-only authentication bypass**. Tests sign in
+through the real login form using the app's email/password provider against the
+Auth emulator, then the real `POST /api/auth/session` mints the session cookie
+that every server request re-verifies. Only the identity provider is swapped
+(emulator instead of live Google), so the suite gives genuine confidence in
+auth/session/routing changes. Live Google OAuth stays a manual smoke test.
+
+## Seeding and isolation
+
+Seed helpers (`e2e/support/seed.ts`) write plain documents in the shapes
+documented above (users, driverRegistry + meters, fillStations, waterRequests,
+dispatchBatches) via the Admin SDK against the emulator — they do not re-run
+business logic. Preconditions for the deeper flows (a claimed request, a
+delivered request, a delivery run) are seeded directly so each test drives only
+the specific UI under test. Global setup seeds a baseline once; specs reset to
+baseline between tests and use unique ids, so tests are independent and
+order-free. The suite runs serially (one worker) because it shares emulator
+state and the real session flow.
 
 ---
 
