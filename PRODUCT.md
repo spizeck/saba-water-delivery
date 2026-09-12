@@ -3,7 +3,7 @@
 This document describes the product rules and behavior of Saba Water
 Delivery, developed for the Public Entity Saba. For project provenance,
 volunteer basis, and intended handover, see
-[`README.md`](../README.md).
+[`README.md`](./README.md).
 
 ## Purpose
 

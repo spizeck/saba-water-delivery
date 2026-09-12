@@ -68,13 +68,11 @@ displays it as **`CI / verify`**), which:
 2. sets up a Temurin JVM for the Firebase emulators;
 3. runs `npm ci`;
 4. runs `lint` → `typecheck` → `test` → `build` (with the PDFKit trace
-   verification) → `test:rules`.
+   verification) → `test:rules` → `format:check` — all **blocking**.
 
-Two steps are **informational only** (they run with
-`continue-on-error`, so they never block a merge):
+One step is **informational only** (it runs with `continue-on-error`, so
+it never blocks a merge):
 
-- `format:check` — the repo has not yet had its one-time Prettier pass,
-  so formatting is not enforced yet (tracked in issue #37).
 - `npm audit --audit-level=high` — the only outstanding advisories are
   transitive (`firebase-admin`/`@google-cloud/*` and Next's `sharp`) and
   need breaking upstream bumps; Dependabot handles dependency updates.

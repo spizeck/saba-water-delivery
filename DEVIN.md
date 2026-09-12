@@ -887,9 +887,9 @@ runs on every pull request and every push to `main`. The job:
 2. sets up a Temurin JVM for the Firebase emulators;
 3. `npm ci`;
 4. `lint` → `typecheck` → `test` → `build` (with PDFKit trace
-   verification) → `test:rules`;
-5. runs `format:check` and `npm audit --audit-level=high` as
-   **informational, non-blocking** steps.
+   verification) → `test:rules` → `format:check` — all **blocking**;
+5. runs `npm audit --audit-level=high` as an **informational,
+   non-blocking** step (`continue-on-error`).
 
 What CI does **not** do: it uses no production secrets, never touches
 production Firebase (rules tests run against local emulators only), and
@@ -897,9 +897,12 @@ does not deploy — Vercel's Git integration owns Preview and production
 deploys. The build runs with no Firebase configuration and still
 succeeds (the app renders its "not configured" state).
 
-The required status check for branch protection is **`CI / verify`**.
-See `docs/DEPLOYMENT.md` for the recommended ruleset and the release
-flow, and `docs/TESTING.md` for the full command reference.
+Branch protection on `main` requires two GitHub Actions status-check
+**contexts** — the bare job names **`verify`** (workflow `CI`) and
+**`playwright`** (workflow `E2E`); the PR "Checks" UI displays them as
+`CI / verify` and `E2E / playwright`. See `docs/DEPLOYMENT.md` for the
+recommended ruleset and the release flow, and `docs/TESTING.md` for the
+full command reference.
 
 ---
 

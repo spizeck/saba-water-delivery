@@ -11,7 +11,7 @@ Changes reach production through this path:
 ```
 feature branch
   → pull request
-  → automated checks (GitHub Actions: CI / verify)
+  → automated checks (GitHub Actions: CI / verify and E2E / playwright)
   → Vercel Preview deployment
   → human review
   → merge to main
@@ -21,10 +21,13 @@ feature branch
 The two automated layers verify different things and are both required
 in practice:
 
-- **GitHub Actions (`CI / verify`)** verifies code correctness — lint,
-  typecheck, unit/domain tests, the production build (including the
-  PDFKit trace verification), and the Firestore/Storage rules tests. It
-  uses no production secrets and does not deploy.
+- **GitHub Actions** runs two required status checks (see "Continuous
+  integration and branch protection" below): **`verify`** (workflow `CI`) —
+  lint, typecheck, unit/domain tests, the production build including the
+  PDFKit trace verification, the Firestore/Storage rules tests, and
+  `format:check` — and **`playwright`** (workflow `E2E`) — the browser
+  end-to-end suite against local emulators. Neither uses production secrets
+  or deploys.
 - **Vercel Preview** verifies deployment and render behavior in a real
   serverless build for each pull request, using the Preview
   environment's own configuration. Do not put production credentials
@@ -121,6 +124,7 @@ Settings → Environment Variables) for production.
 | `CONTINUITY_REPORT_EMAIL_FROM` | Sender address for the continuity report | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
 | `CONTINUITY_REPORT_EMAIL_TO` | Recipient list for the continuity report (comma-separated) | No | Government distribution list or shared operational inbox | Vercel + `.env.local` |
 | `DELIVERY_CONFIRMATION_EMAIL_FROM` | Optional sender for resident delivery-review messages; falls back to `CONTINUITY_REPORT_EMAIL_FROM` | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
+| `ACCOUNT_SETUP_EMAIL_FROM` | Optional sender for dispatcher-sent account-setup invitations; falls back to `CONTINUITY_REPORT_EMAIL_FROM` | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
 | `WHATSAPP_ACCESS_TOKEN` | Authorizes outbound Meta Graph API calls | **Yes** | Meta App Dashboard → WhatsApp → API Setup (or a System User token) | Vercel + `.env.local` |
 | `WHATSAPP_PHONE_NUMBER_ID` | Identifies which Cloud API number sends/receives messages | No | Meta App Dashboard → WhatsApp → API Setup | Vercel + `.env.local` |
 | `WHATSAPP_APP_SECRET` | Verifies inbound webhook signatures | **Yes** | Meta App Dashboard → App Settings → Basic | Vercel + `.env.local` |
