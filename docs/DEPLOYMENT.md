@@ -266,9 +266,9 @@ Deployment-relevant points:
 ### Manual preview smoke test (required before merging a header change)
 
 CSP failures are runtime/browser failures, so verify on a Vercel **Preview**
-deployment (open the browser devtools Console + Network) — there is no
-automated browser test in CI yet (that arrives with the Playwright work in
-issue #34):
+deployment (open the browser devtools Console + Network). The separate
+Playwright CI suite exists (see TESTING.md), but its emulator-based login
+does not verify live Google OAuth or deployment-specific CSP behavior:
 
 1. Homepage loads; **no CSP violations** in the console.
 2. Resident login page loads; the Google sign-in **popup opens and completes**
@@ -420,6 +420,10 @@ so email sending can be tested end-to-end.
 
 ## Meta/Facebook Login
 
+Facebook is currently disabled in the login UI. The steps below describe
+provider setup; a reviewed application change is also needed before users can
+sign in with it. See [INTEGRATIONS.md](./INTEGRATIONS.md).
+
 Facebook Login is configured as a Firebase Authentication provider
 (Firebase Console → Authentication → Sign-in method → Facebook), which
 requires a Meta App with the Facebook Login product added and its App
@@ -428,6 +432,10 @@ in this application satisfies Meta's required "Data Deletion
 Instructions URL" field in the Meta App's Facebook Login settings.
 
 ## WhatsApp
+
+WhatsApp ordering is a future resident feature. The code and webhook exist,
+but the configuration below is a launch prerequisite, not proof of current
+production activation. See [INTEGRATIONS.md](./INTEGRATIONS.md) for status.
 
 1. In the same or a separate Meta App, add the WhatsApp product.
 2. Under WhatsApp → API Setup, obtain a Phone Number ID and an access

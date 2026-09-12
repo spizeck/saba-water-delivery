@@ -249,7 +249,8 @@ Role management safeguards:
   to a user automatically grants the `driver` role; unlinking it
   automatically removes the `driver` role.
 - Admins cannot remove their own admin role (self-lockout protection).
-- The last system admin cannot be removed (system lockout protection).
+- The last-admin check protects sequential removals, but concurrent removals
+  can leave zero admins; see [#48](https://github.com/spizeck/saba-water-delivery/issues/48).
 - Unlinking a Driver Registry account is blocked while the driver has
   active claimed deliveries.
 - Role changes are audited with actor and timestamp.
@@ -443,13 +444,19 @@ back to Normal — with a required reason; every override is audited
 
 ## Priority-based dispatch
 
-Requests are offered to drivers **highest priority first, oldest
-request first within that priority** — critical, then urgent, then
-normal, and within each level, fairness by request age exactly as
-before. A resident's request never loses its place in the queue due to
-a decline, hold expiration, or dispatcher reassignment — its original
-request time is always preserved (see "Request Age Still Matters" in
-TECHNICAL.md).
+The intended queue order is Critical, then Urgent, then Normal; within each
+priority, staff escalation rank precedes original request age. Equal ranks and
+unranked requests remain oldest-first. Decline, hold expiration, and
+reassignment preserve the original request time.
+
+Current automatic offers do not guarantee that ordering across the complete
+queue: only the first 100 available requests by priority and original age are
+fetched before escalation ordering is applied. A newer escalated request outside
+that set can be delayed behind older same-priority work. Valid pending offers
+are retained and preferred-driver holds are selected separately. See
+[TECHNICAL.md](./TECHNICAL.md#dispatch-offer-selection) for the implementation
+boundary and [#66](https://github.com/spizeck/saba-water-delivery/issues/66) for
+the runtime follow-up.
 
 Drivers still receive only ONE offer at a time — priority changes which
 request that is, never how many they see.
@@ -770,8 +777,9 @@ anything.
    hidden.
 3. The dispatcher sees every outstanding request still waiting for a
    driver (not yet claimed by anyone), by default in the same
-   fairness order used everywhere else — highest priority first,
-   oldest first within a priority level. The dispatcher may select any
+   canonical comparator order — priority, then staff override rank, then
+   original age. Unlike automatic offers, this selection fetch has no
+   corresponding 100-request candidate limit. The dispatcher may select any
    subset, in any order, for genuine operational reasons.
 4. If a selected request is currently held for a **different**
    resident's preferred driver, this is shown clearly and the
@@ -830,9 +838,9 @@ mark it delivered exactly as they would any claimed delivery. If the
 driver genuinely cannot use the app, a dispatcher can record that a
 specific load was delivered on the driver's behalf, after verifying
 with the driver — see TECHNICAL.md "Batch Dispatch" "Staff delivery
-reconciliation." This is deliberately scoped to batch-assigned loads
-only; it is not a general way for staff to mark any delivery delivered
-on a driver's behalf.
+reconciliation." Staff can also record delivery for an ordinary claimed
+request. Both paths require all load collections to be recorded and preserve
+a distinct staff-delivery audit event.
 
 ## Reassignment and cancellation
 
@@ -1282,6 +1290,13 @@ Preserve raw events and timestamps rather than only storing aggregate statistics
 ---
 
 # WhatsApp Resident Ordering
+
+> **Lifecycle status (12 September 2026):** resident ordering and webhook code
+> are implemented, but WhatsApp ordering is a future feature and is not
+> available to live residents. Production credentials, number provisioning,
+> and Meta activation are not established by repository code. The following
+> describes supported behavior for future activation; see
+> [INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
 WhatsApp is a **front end to the existing application**, not a
 parallel system. A resident can message the government Water Delivery

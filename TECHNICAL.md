@@ -69,11 +69,13 @@ used in the browser.
 
 Use Firebase Authentication.
 
-Supported sign-in providers:
+Available login paths in the application:
 
 - Google
-- Facebook
 - Email/password
+
+Facebook provider scaffolding exists, but the login button is hard-disabled
+and marked Coming Soon. Provider setup alone does not enable it.
 
 Authentication identifies the user.
 
@@ -645,9 +647,9 @@ cherry-picking (see PRODUCT.md "Dispatch Offers").
    queue stays healthy without a scheduled job).
 4. Select a candidate:
    - A `preferred_driver_hold` addressed to this driver, if not expired.
-   - Otherwise, the oldest `available` request this driver has not
-     already declined (`getDeclinedRequestIdsForDriver()`), preserving
-     fairness by request age.
+   - Otherwise, select from the bounded `available` candidate query described
+     below, skipping recently declined requests. Comparator ordering applies
+     only to retrieved candidates, not the complete queue.
 5. Create a `driverOffers` document for the candidate and return it.
 
 ## Accept / decline
@@ -758,8 +760,8 @@ themselves.
 ## Domain logic
 
 - `src/lib/domain/dispatchBatchSelection.ts` — **pure**, no Firestore:
-  `sortForBatchSelection()` (priority-then-age ordering, same
-  convention as `dispatchSelection.ts`/continuity report),
+  `sortForBatchSelection()` (priority, then staff override rank, then
+  original request age, through `dispatchQueueCompare`),
   `validateBatchSelection()` (every validation rule, reusable by both
   the live transaction and unit tests), `computeDispatchBatchStatus()`,
   and the `MAX_BATCH_SIZE` constant.
@@ -964,24 +966,16 @@ appears — there is no product reason for the current number.
 
 ## Staff delivery reconciliation
 
-`recordBatchDeliveryByStaff()` lets dispatcher/admin staff record a
-batch-assigned load as delivered when the driver cannot (or did not)
-mark it delivered themselves — the entire premise of Batch Dispatch is
-supporting drivers whose phone/data access may be unreliable, so this
-capability is required for the feature to be operationally usable, not
-optional polish. It closes a previously identified gap (see
-docs/INCIDENT_RECOVERY.md "Recovery: reconciling manually handled
-deliveries") for exactly this scenario. It is deliberately scoped
-server-side to `dispatchBatchId != null` requests only — it throws
-`NOT_BATCH_ASSIGNED` for anything else — so it is not a general
-"staff can mark any delivery delivered" shortcut that would undermine
-the normal driver-completion audit trail. It records a distinct
-`marked_delivered_by_dispatcher_batch` event, never `marked_delivered`,
-so the audit trail never misrepresents a staff paper-reconciliation
-entry as the driver's own action (same principle as
-`delivery_confirmed_by_dispatcher` vs `customer_confirmed`). Each load
-is still recorded individually — there is no bulk "mark entire batch
-delivered" action (see DEVIN.md "Batch Dispatch" "Do Not Implement").
+`recordBatchDeliveryByStaff()` is a compatibility alias for
+`markWaterDeliveredByStaff()`. Authorized dispatcher/admin actions can record
+any claimed request as delivered after all requested load collections are
+recorded, including ordinary assignments and Delivery Runs. Staff must verify
+physical delivery of the full quantity before recording it.
+
+Run members record `marked_delivered_by_dispatcher_batch`; ordinary requests
+record `marked_delivered_by_dispatcher`. Neither is presented as the driver's
+own action. Each request is completed individually, with its normal receipt
+review window; there is no whole-run delivery action.
 
 ## Reassignment and cancellation
 
@@ -1145,20 +1139,43 @@ the composite indexes this requires.
 
 ## Dispatch offer selection
 
-`getNextOfferForDriver()` (`src/lib/domain/dispatch.ts`) selects, in
-order:
+The intended/canonical queue comparator, `dispatchQueueCompare`, orders by
+priority category, then `dispatchOverrideRank` (lower first, null last), then
+original `requestedAt`. This is an ordering function over the records supplied
+to it, not proof that the driver-offer query retrieves the complete ranked queue.
 
-1. A `preferred_driver_hold` addressed to this driver, not yet expired
-   (ordered by `priorityRank` then `requestedAt` in case more than one
-   is ever addressed to the same driver — practically always at most
-   one).
-2. Otherwise, the oldest `available` request this driver has not
-   already declined, ordered by `priorityRank` then `requestedAt` —
-   i.e. highest priority first, oldest first within a priority level.
+`getNextOfferForDriver()` (`src/lib/domain/dispatch.ts`) currently:
 
-This preserves the existing decline/cooldown and atomic-claim guarantees
-unchanged — priority only changes WHICH request is selected, never how
-selection or claiming works mechanically.
+1. Rejects new work while claimed work exists and retains a still-valid pending
+   offer (subject to decline exclusion); pending offers are not preempted by
+   later escalation.
+2. Queries holds addressed to the driver, ordered by `priorityRank` then
+   `requestedAt`, with `limit(1)`. Re-sorting this single result cannot rank all
+   holds. The current escalation action releases a held request to available.
+3. Queries `status == available`, ordered by `priorityRank` then
+   `requestedAt`, with **`limit(100)` before retrieval**. Only then does it map
+   results and sort by `dispatchQueueCompare` in memory.
+4. The selector prefers the retained pending offer, then a valid fetched hold,
+   then the first non-declined fetched available candidate. It does not fetch
+   another page after decline filtering.
+
+**Current limitation ([#66](https://github.com/spizeck/saba-water-delivery/issues/66)):**
+with 100 older, unranked available requests and a newer rank-0 request at the
+same priority, the newer escalation is excluded before sorting. An older
+unranked request can be offered first despite the comparator's intended order.
+If all fetched candidates are declined, selection can also return no new offer
+while work exists beyond the window. A larger fixed limit alone would only
+move the boundary, not establish complete-queue ordering.
+
+Delivery Run selection is a separate path: `getBatchEligibleRequests()` has no
+corresponding 100-result limit, and the new-run page sorts its fetched eligible
+list with `sortForBatchSelection`. Its list order must not be used as evidence
+that automatic driver offers have the same candidate coverage.
+
+These are candidate-selection limits, not a relaxation of the atomic claim
+transaction. Offers remain non-reservations; acceptance revalidates current
+claimability and driver workload. PR #65 documents this behavior without changing
+queries, indexes, business rules, or runtime code.
 
 ## Preferred driver vs. priority
 
@@ -1308,7 +1325,8 @@ over a live profile lookup.
 ## Same dispatch workflow
 
 A dispatcher-created request is a normal `waterRequests` document like
-any other — preferred-driver hold/decline, oldest-first offer selection,
+any other — preferred-driver hold/decline, the bounded candidate selection
+described in [Dispatch offer selection](#dispatch-offer-selection),
 one-offer-at-a-time driver dispatch, atomic claiming, delivery, dispute,
 reassignment, cancellation, and statistics all operate on it identically.
 No driver-facing code branches on `source`.
@@ -2924,6 +2942,13 @@ production test results.
 ---
 
 # WhatsApp Resident Ordering
+
+> **Lifecycle status (12 September 2026):** resident ordering and webhook code
+> are implemented, but WhatsApp ordering is a future feature and is not
+> available to live residents. Production credentials, number provisioning,
+> and Meta activation are not established by repository code. The following
+> describes supported behavior for future activation; see
+> [INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
 See PRODUCT.md "WhatsApp Resident Ordering" for the product rationale.
 This is the implementation reference. **Resident** ordering is

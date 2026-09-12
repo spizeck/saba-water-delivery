@@ -163,8 +163,10 @@ where it originated. This is the operational core of the system.
   Both null for the vast majority of requests, which are self-claimed
   or singly assigned as before.
 - `dispatchOverrideRank` — null by default; set to `0` by a dispatcher
-  escalation so the request sorts ahead within its priority without
-  changing `requestedAt`.
+  escalation to rank it ahead within its priority without changing
+  `requestedAt`. Automatic offers apply that rank only after fetching up to
+  100 available requests by priority/age, so it is not a complete-queue
+  guarantee; see [offer selection](../TECHNICAL.md#dispatch-offer-selection).
 - Timestamps: `requestedAt`, `availableAt`, `claimedAt`, `deliveredAt`,
   `confirmedAt`, `createdAt`, `updatedAt`.
 

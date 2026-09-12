@@ -14,6 +14,18 @@ convenience.
 
 ## Decision
 
+> **Implementation qualification recorded 2026-09-12 (PR #65 review):** the
+> ordering below remains the intended policy and canonical comparator. It is
+> not an unconditional guarantee across the live automatic-offer queue.
+> `dispatch.ts` fetches at most 100 available requests ordered by `priorityRank`
+> and `requestedAt` before applying `dispatchQueueCompare`; an escalated request
+> outside that set cannot outrank fetched work. Valid pending offers are reused;
+> the separate preferred-hold query is limited to one result. See
+> [current mechanics](../../TECHNICAL.md#dispatch-offer-selection) and
+> [#66](https://github.com/spizeck/saba-water-delivery/issues/66). This dated
+> qualification preserves the decision and records its implementation gap; it
+> does not supersede the policy or change runtime behavior.
+
 - **Priority ordering.** The dispatch queue comparator
   (`dispatchQueueCompare`) sorts by three keys, in this order:
   1. **Priority bucket:** `critical` > `urgent` > `normal`. The bucket is

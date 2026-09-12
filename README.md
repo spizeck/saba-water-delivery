@@ -40,9 +40,10 @@ dependence on the original volunteer developer.
   settings.
 - **Viewer** (`/viewer`) — read-only operational oversight for
   government staff who do not need operational control.
-- **WhatsApp** — residents can also request water and manage an
-  existing request by messaging the government WhatsApp number; it is
-  a front end to the same request system, not a separate one.
+- **WhatsApp (future resident feature)** — ordering and webhook code exist,
+  but automated ordering is not available to live residents. Production Meta
+  provisioning/configuration must be verified before launch; an office contact
+  number is not evidence that automated ordering is enabled.
 
 ## Technology
 
