@@ -319,10 +319,40 @@ Vitest covers the pure domain logic extensively, including:
   exactly one sanitized `health.readiness.failed` event; and `withTimeout` bounds
   a hung probe. These run in the plain `vitest` suite — no Firebase emulator,
   network, or production project is used.
+- Disaster-recovery validation (`scripts/lib/__tests__/recovery-checks.test.ts`):
+  the read-only cross-document consistency checks used after a restore (logic in
+  `scripts/lib/recovery-checks.mjs`). Covers representative inconsistent states —
+  a stale driver `activeRequestId` (missing/reassigned/delivered), a claimed
+  request assigned to the wrong or a non-existent driver, a delivery run pointing
+  at a missing request (and a request pointing at a missing run), and an orphaned
+  registered-request owner — plus the per-category summary. Pure and synthetic:
+  no Firestore, no production data, no PII.
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently
 covered by a Firestore emulator in this project's test setup.
+
+## Disaster-recovery validation drill
+
+Beyond the unit tests above, the read-only recovery validator can be run against
+a live database (a restored copy, an isolated/test project, or the emulator) —
+never against production as a mutation, since it only reads:
+
+```bash
+# Local, no cloud cost: run against the Firestore emulator (empty → 0 findings).
+firebase emulators:exec --only firestore "node scripts/verify-recovery.mjs"
+
+# Against a restored named database in an isolated/test project. Credentials come
+# from a key FILE (never inline the JSON on the command line). Pass the database
+# name so you validate the restore, not (default).
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
+  node scripts/verify-recovery.mjs --database=recovery-<YYYYMMDD>
+```
+
+It exits non-zero when it finds inconsistencies, so a restore drill can gate on
+it. See [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) for the full restore
+drill and post-restore validation checklist. Do **not** add browser (Playwright)
+tests for backups — E2E is unrelated to backup/restore mechanics.
 
 ## Manual smoke test
 

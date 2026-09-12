@@ -162,6 +162,38 @@ and `storage.rules` in the repository root. Index changes can take
 several minutes to build in Firestore after deploying; a query that
 needs a not-yet-built index will fail until the build completes.
 
+## Backup and disaster recovery
+
+The full backup/restore strategy, runbook, RPO/RTO, and drills live in
+[`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md). Key deployment-time points:
+
+- **Backups are not enabled by the application.** A project administrator must
+  enable the recommended managed protections once, in the Google Cloud/Firebase
+  console or with `gcloud`, after reviewing cost (**[OPERATOR ACTION REQUIRED]**):
+
+  ```bash
+  # Point-in-time recovery (7-day window)
+  gcloud firestore databases update --database='(default)' --enable-pitr \
+    --project=saba-water-delivery
+  # Daily scheduled backup, 14-day retention
+  gcloud firestore backups schedules create --database='(default)' \
+    --recurrence=daily --retention=14d --project=saba-water-delivery
+  ```
+
+- **Firebase Auth is backed up separately** from Firestore
+  (`firebase auth:export`/`auth:import`). Auth exports contain password hashes
+  and PII — never commit them, log them, or put them in CI artifacts.
+- **Firebase Storage** carries no production data yet (deny-by-default rules, no
+  Storage code); enable object versioning when property/proof photos ship.
+- **Environment variables are the recovery gap not covered by any Firestore
+  backup.** Their authoritative copies live in Vercel and the vendor consoles;
+  the required names and their recovery/rotation notes are in the
+  "Environment variables" section above and in `DISASTER_RECOVERY.md` §10. Do
+  not build a secrets-backup file.
+- Verify a restore works with the read-only validator (`npm run verify:recovery`)
+  and a quarterly restore drill into an emulator or isolated/test project —
+  **never** against production in place.
+
 ## Vercel
 
 The live production pilot uses

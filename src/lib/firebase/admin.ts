@@ -17,6 +17,19 @@ import { type Firestore, getFirestore } from "firebase-admin/firestore";
  */
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+
+/**
+ * Which Firestore database the trusted server reads and writes. Defaults to the
+ * project's `(default)` database. It exists as an env override for
+ * disaster-recovery: after a managed restore into a differently-named database
+ * (e.g. `recovery-YYYYMMDD`), an operator can point the deployed app at the
+ * validated restore by setting `FIREBASE_DATABASE_ID` in Vercel — without a code
+ * change — instead of only being able to address `(default)`. Client-side
+ * Firestore is not used for data access (see TECHNICAL.md "Server vs Client"),
+ * so this server-side selection governs which database the app actually serves.
+ * See docs/DISASTER_RECOVERY.md.
+ */
+const databaseId = process.env.FIREBASE_DATABASE_ID?.trim() || undefined;
 // Private keys are typically stored with literal "\n" sequences in
 // environment variables; convert them back to real newlines.
 const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
@@ -102,5 +115,7 @@ export function getAdminAuth(): Auth {
 }
 
 export function getAdminDb(): Firestore {
-  return getFirestore(getAdminApp());
+  return databaseId
+    ? getFirestore(getAdminApp(), databaseId)
+    : getFirestore(getAdminApp());
 }

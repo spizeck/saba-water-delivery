@@ -3186,6 +3186,50 @@ state and the real session flow.
 
 ---
 
+# Backup and disaster recovery
+
+The full strategy, runbook, and drills live in
+[docs/DISASTER_RECOVERY.md](./docs/DISASTER_RECOVERY.md) (the canonical backup
+and data-recovery document, distinct from
+[docs/INCIDENT_RECOVERY.md](./docs/INCIDENT_RECOVERY.md), which covers
+availability outages). This section records the architectural decisions.
+
+## Managed platform, not a custom backup system
+
+Authoritative data lives in Firebase/Google Cloud (Firestore + Firebase Auth;
+Firebase Storage is not used in production yet — `storage.rules` is
+deny-by-default and no code reads/writes Storage). Recovery relies on **managed
+Firestore capabilities** — point-in-time recovery (7-day window), scheduled
+backups, and on-demand exports — rather than a custom script that iterates
+documents into JSON. The three protections solve different problems (recent
+mistakes vs. dependable daily points vs. operator-controlled long-term/offline
+copies) and are meant to be enabled together. Firebase Auth is recovered
+**separately** (`firebase auth:export`/`auth:import`) — a Firestore backup does
+NOT include Auth users, and Auth exports (password hashes + PII) are never
+committed, logged, or placed in CI artifacts.
+
+**None of these managed protections are enabled by application code** — they
+require a project administrator to enable them in the Google Cloud/Firebase
+console or via `gcloud`/`firebase` (and to review cost). The repository provides
+the strategy, the runbook, and validation tooling only.
+
+## Read-only recovery validator
+
+`scripts/verify-recovery.mjs` (pure logic in `scripts/lib/recovery-checks.mjs`,
+unit-tested in `scripts/lib/__tests__/`) inspects a Firestore database — a
+restored copy, an isolated/test project, or the emulator — and reports
+cross-document inconsistencies a restore can introduce: stale driver
+`activeRequestId` locks (mirroring `activeRequestValidation.ts`), claimed
+requests with a broken driver assignment, delivery-run membership pointing at
+missing requests, and orphaned request ownership. It is strictly **read-only**
+(no mutation, no "fix everything"), prints only opaque IDs and categorical
+reasons (never names/emails/phones), and exits non-zero when it finds anything
+so a restore drill can gate on it. Remediation uses the existing targeted tools
+(e.g. `scripts/reconcile-stale-driver-locks.mjs`, dispatcher/admin actions), not
+this validator.
+
+---
+
 # Out of Scope for Initial Build
 
 Do not implement:
