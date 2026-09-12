@@ -60,8 +60,9 @@ run entirely locally against a throwaway test project id.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and every push to
-`main`. It has a single job, **verify** (so the required status check is
-**`CI / verify`**), which:
+`main`. It has a single job, **verify** — the required branch-protection
+status-check context is the bare job name **`verify`** (the PR "Checks" UI
+displays it as **`CI / verify`**), which:
 
 1. checks out the repo and sets up Node from `.nvmrc` with npm caching;
 2. sets up a Temurin JVM for the Firebase emulators;
@@ -207,15 +208,15 @@ retry never excuses a genuinely flaky test); `trace: retain-on-failure`,
 
 ### CI
 
-`.github/workflows/e2e.yml` runs a single job, **playwright** (required status
-check name **`E2E / playwright`**). It sets up Node 24 + Temurin JVM, installs
-Playwright Chromium (`--with-deps`), and runs `npm run test:e2e`; the HTML
-report is uploaded as an artifact. It is a **separate** check from
-`CI / verify`, which stays unchanged, so an E2E failure is easy to isolate.
-Whether `E2E / playwright` becomes a **required** check in branch protection is
-a deliberate follow-up decision once it has proven stable on `main` — this
-workflow does not change branch-protection expectations on its own. CI uses no
-production secrets and never contacts a live Google account.
+`.github/workflows/e2e.yml` runs a single job, **playwright** — its
+branch-protection status-check context is the bare job name **`playwright`**
+(displayed in the PR "Checks" UI as **`E2E / playwright`**). It sets up Node 24
++ Temurin JVM, installs Playwright Chromium (`--with-deps`), and runs
+`npm run test:e2e`; the HTML report is uploaded as an artifact. It is a
+**separate** check from `verify`, so an E2E failure is easy to isolate.
+Both `verify` and `playwright` are **required** status-check contexts in the
+current "Protect Main" ruleset (see [`DEPLOYMENT.md`](./DEPLOYMENT.md)). CI uses
+no production secrets and never contacts a live Google account.
 
 ### What this suite protects (and what it does not)
 
