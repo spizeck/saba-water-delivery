@@ -604,7 +604,8 @@ The `/admin` portal provides user and role management. Only users with the
 - Removing `driver` role forces the linked Driver Registry entry (if
   any) to unlink and go offline, but preserves all history.
 - Admin cannot remove their own `admin` role (self-lockout protection).
-- The last system admin cannot be removed (system lockout protection).
+- The last-admin check protects sequential removals, but concurrent removals
+  can leave zero admins; see [#48](https://github.com/spizeck/saba-water-delivery/issues/48).
 - All role mutations happen server-side via Admin SDK.
 - Driver role removal is BLOCKED when active claimed deliveries exist.
   The admin must resolve/reassign deliveries through the dispatcher workflow first.
@@ -703,7 +704,8 @@ staff. Accessible via "View Statistics" links in both portals.
 
 ## Key methodology
 
-- Gallons delivered = count of requests reaching delivered status × 1,000.
+- Gallons delivered = sum of stored `gallons` for requests currently in
+  delivered, confirmed, or disputed status, including two-load requests.
 - Driver attribution uses current `assignedDriverId` (reflects final delivering driver).
 - Dispute rate = disputes created / requests reaching delivered status.
 - Preferred-driver expiration detected from `preferred_driver_expired` events.

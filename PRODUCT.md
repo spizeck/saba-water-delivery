@@ -249,7 +249,8 @@ Role management safeguards:
   to a user automatically grants the `driver` role; unlinking it
   automatically removes the `driver` role.
 - Admins cannot remove their own admin role (self-lockout protection).
-- The last system admin cannot be removed (system lockout protection).
+- The last-admin check protects sequential removals, but concurrent removals
+  can leave zero admins; see [#48](https://github.com/spizeck/saba-water-delivery/issues/48).
 - Unlinking a Driver Registry account is blocked while the driver has
   active claimed deliveries.
 - Role changes are audited with actor and timestamp.
@@ -830,9 +831,9 @@ mark it delivered exactly as they would any claimed delivery. If the
 driver genuinely cannot use the app, a dispatcher can record that a
 specific load was delivered on the driver's behalf, after verifying
 with the driver — see TECHNICAL.md "Batch Dispatch" "Staff delivery
-reconciliation." This is deliberately scoped to batch-assigned loads
-only; it is not a general way for staff to mark any delivery delivered
-on a driver's behalf.
+reconciliation." Staff can also record delivery for an ordinary claimed
+request. Both paths require all load collections to be recorded and preserve
+a distinct staff-delivery audit event.
 
 ## Reassignment and cancellation
 
@@ -1282,6 +1283,13 @@ Preserve raw events and timestamps rather than only storing aggregate statistics
 ---
 
 # WhatsApp Resident Ordering
+
+> **Lifecycle status (12 September 2026):** resident ordering and webhook code
+> are implemented, but WhatsApp ordering is a future feature and is not
+> available to live residents. Production credentials, number provisioning,
+> and Meta activation are not established by repository code. The following
+> describes supported behavior for future activation; see
+> [INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
 WhatsApp is a **front end to the existing application**, not a
 parallel system. A resident can message the government Water Delivery

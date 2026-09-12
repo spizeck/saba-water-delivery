@@ -69,11 +69,13 @@ used in the browser.
 
 Use Firebase Authentication.
 
-Supported sign-in providers:
+Available login paths in the application:
 
 - Google
-- Facebook
 - Email/password
+
+Facebook provider scaffolding exists, but the login button is hard-disabled
+and marked Coming Soon. Provider setup alone does not enable it.
 
 Authentication identifies the user.
 
@@ -758,8 +760,8 @@ themselves.
 ## Domain logic
 
 - `src/lib/domain/dispatchBatchSelection.ts` — **pure**, no Firestore:
-  `sortForBatchSelection()` (priority-then-age ordering, same
-  convention as `dispatchSelection.ts`/continuity report),
+  `sortForBatchSelection()` (priority, then staff override rank, then
+  original request age, through `dispatchQueueCompare`),
   `validateBatchSelection()` (every validation rule, reusable by both
   the live transaction and unit tests), `computeDispatchBatchStatus()`,
   and the `MAX_BATCH_SIZE` constant.
@@ -964,24 +966,16 @@ appears — there is no product reason for the current number.
 
 ## Staff delivery reconciliation
 
-`recordBatchDeliveryByStaff()` lets dispatcher/admin staff record a
-batch-assigned load as delivered when the driver cannot (or did not)
-mark it delivered themselves — the entire premise of Batch Dispatch is
-supporting drivers whose phone/data access may be unreliable, so this
-capability is required for the feature to be operationally usable, not
-optional polish. It closes a previously identified gap (see
-docs/INCIDENT_RECOVERY.md "Recovery: reconciling manually handled
-deliveries") for exactly this scenario. It is deliberately scoped
-server-side to `dispatchBatchId != null` requests only — it throws
-`NOT_BATCH_ASSIGNED` for anything else — so it is not a general
-"staff can mark any delivery delivered" shortcut that would undermine
-the normal driver-completion audit trail. It records a distinct
-`marked_delivered_by_dispatcher_batch` event, never `marked_delivered`,
-so the audit trail never misrepresents a staff paper-reconciliation
-entry as the driver's own action (same principle as
-`delivery_confirmed_by_dispatcher` vs `customer_confirmed`). Each load
-is still recorded individually — there is no bulk "mark entire batch
-delivered" action (see DEVIN.md "Batch Dispatch" "Do Not Implement").
+`recordBatchDeliveryByStaff()` is a compatibility alias for
+`markWaterDeliveredByStaff()`. Authorized dispatcher/admin actions can record
+any claimed request as delivered after all requested load collections are
+recorded, including ordinary assignments and Delivery Runs. Staff must verify
+physical delivery of the full quantity before recording it.
+
+Run members record `marked_delivered_by_dispatcher_batch`; ordinary requests
+record `marked_delivered_by_dispatcher`. Neither is presented as the driver's
+own action. Each request is completed individually, with its normal receipt
+review window; there is no whole-run delivery action.
 
 ## Reassignment and cancellation
 
@@ -2924,6 +2918,13 @@ production test results.
 ---
 
 # WhatsApp Resident Ordering
+
+> **Lifecycle status (12 September 2026):** resident ordering and webhook code
+> are implemented, but WhatsApp ordering is a future feature and is not
+> available to live residents. Production credentials, number provisioning,
+> and Meta activation are not established by repository code. The following
+> describes supported behavior for future activation; see
+> [INTEGRATIONS.md](./docs/INTEGRATIONS.md).
 
 See PRODUCT.md "WhatsApp Resident Ordering" for the product rationale.
 This is the implementation reference. **Resident** ordering is

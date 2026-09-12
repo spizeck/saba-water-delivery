@@ -20,9 +20,9 @@ and [`ADMIN_GUIDE.md`](./ADMIN_GUIDE.md).
 
 In plain terms, a request moves through the system like this:
 
-1. **Request** — a resident submits a request (on the website, over
-   WhatsApp, or a dispatcher enters it for someone who called or
-   visited the office).
+1. **Request** — a resident submits on the website, or a dispatcher enters
+   a request for someone who called or visited the office. WhatsApp ordering
+   remains a future resident feature.
 2. **Preferred-driver hold** (if the resident chose a preferred
    driver) — that driver has first access to the request for a limited
    time.
@@ -145,11 +145,11 @@ silently mapped.
 
 ## WhatsApp requests
 
-Residents can also request water by messaging the government WhatsApp
-number. These requests enter the same system and the same queue as
-website and dispatcher-created requests — there is nothing different
-for staff or drivers to do with a WhatsApp request. The request detail
-page shows "Submitted via WhatsApp" so staff know how it arrived.
+WhatsApp ordering is a future resident feature, not currently available to
+live residents. Ordering and webhook code exist; their presence does not prove
+production Meta credentials or activation. Once enabled, requests will use the
+same system and queue as website and dispatcher requests. See
+[INTEGRATIONS.md](./INTEGRATIONS.md) for the lifecycle distinction.
 
 WhatsApp is a front end to the same underlying system, not an
 independent backup channel — it depends on the same Firestore database
@@ -238,8 +238,9 @@ curl -i https://<deployment>/api/readiness
 
 What the results mean:
 
-- **Both 200** — the app is up and able to serve. If users still report
-  problems, it is not a whole-app outage; use the request-ID steps above.
+- **Both 200** — the runtime and Firestore probe respond. This does not test
+  Firebase Auth, email, or every business operation. If users still report
+  problems, use the request-ID steps above.
 - **`/api/health` 200 but `/api/readiness` 503** — the app is running but
   cannot reach the database. This is a **Firebase/Firestore** problem (or a
   missing/incorrect `FIREBASE_ADMIN_*` configuration), not a crash of the

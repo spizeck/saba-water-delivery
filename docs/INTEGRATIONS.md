@@ -12,12 +12,17 @@ operation does not depend on an individual developer.
 
 ## Firebase
 
+**Current availability:** Google and email/password are implemented login
+paths. Facebook is scaffolded but disabled in the login UI. Firebase/GCP is
+described as developer-owned pilot infrastructure in [#56](https://github.com/spizeck/saba-water-delivery/issues/56);
+government ownership has not been established by the existence of this guide.
+
 - **Purpose:** authentication, Firestore (the application's source of
   truth for all data), and Firebase Storage (planned use for photo
   uploads).
 - **Provider:** Google Firebase.
 - **Authentication mechanism:** the client SDK handles resident/staff
-  sign-in (Google, Facebook, email/password); the Admin SDK (a service
+  sign-in (Google and email/password; Facebook is disabled in the UI); the Admin SDK (a service
   account) performs all trusted server-side reads/writes and bypasses
   Firestore Security Rules by design.
 - **Application endpoint:** Firebase client SDK
@@ -30,6 +35,11 @@ operation does not depend on an individual developer.
   [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "Firebase outage."
 
 ## Vercel
+
+**Ownership:** [#57](https://github.com/spizeck/saba-water-delivery/issues/57)
+tracks transfer from developer-controlled pilot hosting to government control.
+The public pilot hostname is not an official government custom domain;
+[#59](https://github.com/spizeck/saba-water-delivery/issues/59) tracks that work.
 
 - **Purpose:** hosting the Next.js application and running the nightly
   continuity-report cron job.
@@ -46,6 +56,12 @@ operation does not depend on an individual developer.
   [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "Vercel outage."
 
 ## Resend
+
+**Lifecycle status:** email sending is implemented; [#58](https://github.com/spizeck/saba-water-delivery/issues/58)
+describes the configured developer-owned pilot setup. Government account,
+sender-domain, and credential ownership remain transition work. This document
+does not verify current secret values, provider health, or successful receipt
+of each message.
 
 - **Purpose:** sending the continuity-report email (nightly and on-demand),
   account setup invitations, and post-delivery confirmation requests for
@@ -67,6 +83,11 @@ operation does not depend on an individual developer.
 
 ## Facebook Login
 
+**Not enabled for users:** `src/app/login/LoginForm.tsx` renders a disabled
+**Coming Soon** button without an OAuth click handler. Provider scaffolding
+does not make Facebook available. Enabling it requires a reviewed application
+change as well as the provider configuration below.
+
 - **Purpose:** an optional sign-in method for residents and staff.
 - **Provider:** Meta, via Firebase Authentication's Facebook provider.
 - **Authentication mechanism:** OAuth through Firebase Authentication;
@@ -84,6 +105,16 @@ operation does not depend on an individual developer.
 company but not a configuration, credentials, or purpose.
 
 ## WhatsApp Business Platform (Cloud API)
+
+**Future resident feature:** ordering logic, outbound transport, and GET/POST
+webhook infrastructure exist in code, but automated ordering is not available
+to live residents (project-owner clarification, 12 September 2026). The four
+`WHATSAPP_*` values below are expected configuration, not evidence that
+production credentials are present. The webhook returns 503 when configuration
+is incomplete. Meta number provisioning, webhook subscription, and Live-mode
+activation must be verified before launch; this repository review did not
+inspect private deployment configuration. The following describes the supported
+integration and its future operating requirements, not an active public channel.
 
 - **Purpose:** resident water-request ordering over WhatsApp — a
   front end to the same request system used by the website, not a

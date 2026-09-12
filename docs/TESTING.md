@@ -13,7 +13,7 @@ complete:
 npm run check
 ```
 
-`check` runs, in order: `lint` (ESLint) → `typecheck` (`next typegen`
+`check` runs, in order: `format:check` (Prettier) → `lint` (ESLint) → `typecheck` (`next typegen`
 then `tsc --noEmit`) → `test` (Vitest) → `build` (`next build
 --webpack`). It requires no credentials, no live Firebase, and no
 network services. The equivalent individual commands are still available
@@ -518,6 +518,11 @@ any of these areas.
   shown.
 
 ### WhatsApp
+
+These are future-activation checks for a deliberately configured test context.
+WhatsApp ordering is not available to live residents; see
+[INTEGRATIONS.md](./INTEGRATIONS.md). Do not interpret this checklist as
+production activation evidence.
 
 - Send a message to the webhook (or trigger the real Meta webhook) and
   confirm the verify-token handshake succeeds.

@@ -46,9 +46,10 @@ section.
   under "Driver Registry" — attempting to add it from this screen is
   not offered, because becoming an operational driver is a government
   decision made through the Driver Registry, not a generic role grant.
-- An admin cannot remove their own admin role, and the system will not
-  let you remove the last remaining admin account. This prevents
-  accidentally locking everyone out of administration.
+- An admin cannot remove their own admin role. The last-admin check protects
+  ordinary sequential removals, but concurrent removals of different admins
+  can bypass that count: see [#48](https://github.com/spizeck/saba-water-delivery/issues/48).
+  Coordinate removals one at a time and verify remaining administrator access.
 - Every role change is recorded with who made it and when.
 
 ## Linking historical requests
@@ -173,7 +174,7 @@ assignment for the fill station they are using. Historical collection records
 store a snapshot of the meter at the time of collection, so changing an
 assignment does not alter past records.
 
-### A driver can receive work only when all of the following are true
+### A driver can receive normal offers only when all of the following are true
 
 - A Driver Registry entry exists for them.
 - Their account is linked to that entry.
@@ -181,6 +182,11 @@ assignment does not alter past records.
 - Government has marked them eligible.
 - They are online.
 - They are not in a decline cooldown.
+- They have no outstanding claimed delivery work.
+
+Staff-created Delivery Runs deliberately allow an otherwise eligible linked
+driver to receive a run while offline or in cooldown. See
+[`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) for that separate assignment flow.
 
 ## Dispatch settings
 

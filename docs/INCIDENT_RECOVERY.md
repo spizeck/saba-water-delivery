@@ -71,6 +71,11 @@ but nothing can reach it until Vercel recovers.
 
 ## WhatsApp outage
 
+WhatsApp ordering is a future resident feature. This section describes a
+scenario after activation, not a current public service. Its shared Firebase
+and Vercel dependencies exist in code; provider configuration/activation must
+be verified separately. See [INTEGRATIONS.md](./INTEGRATIONS.md).
+
 If specifically the WhatsApp side is affected — a Meta-side outage, an
 expired access token, or a webhook misconfiguration — while the website
 and Firebase remain healthy, residents can still request and manage
@@ -98,9 +103,9 @@ the issue is resolved.
 
 Facebook Login is currently shown as **Coming Soon** on the login page
 while Meta business verification is pending. No OAuth attempt is
-possible. Once verification is complete, the provider will be
-re-enabled without a code change (the underlying Firebase integration
-is preserved).
+possible from that button. Provider scaffolding is preserved, but the button
+is hard-disabled in `src/app/login/LoginForm.tsx`: enabling it requires a
+reviewed application change as well as provider verification/configuration.
 
 If Facebook sign-in is enabled and later becomes unavailable, residents
 and staff can still sign in with Google or email/password, whichever
@@ -166,58 +171,28 @@ lock or one bad request is a **targeted repair**, not a restore — see the
 
 ## Recovery: reconciling manually handled deliveries
 
-If deliveries were coordinated manually during an outage (by phone,
-radio, or in person), reconcile them in the application once service is
-restored. **Marking a request "delivered" is a driver action, not a
-general dispatcher/admin action** — dispatcher/admin tools can
-reassign, cancel, override priority, and resolve disputes, but there is
-no general-purpose dispatcher/admin control that directly sets an
-ordinary request to "delivered." Reconciliation therefore depends on
-how the request was assigned and whether the delivering driver has an
-account in the system:
+If deliveries were coordinated manually during an outage, reconcile verified
+work through the application once service returns. Drivers can record their
+claimed deliveries; dispatchers/admins can also use **Mark Delivered** on any
+claimed request, including ordinary assignments and Delivery Run members.
 
-- **A request that already existed in the system, claimed by a driver
-  who has an account (normal assignment):** once the driver is back
-  online, have them open their claimed delivery and use "Mark
-  Delivered" for the delivery they already completed manually, exactly
-  as they would for a normal delivery. This puts the request into the
-  correct state and starts the resident's normal 24-hour confirmation
-  window (or, for an unregistered customer, allows a dispatcher to use
-  "Confirm Delivery" on their behalf once it shows as delivered).
-- **A request assigned through Batch Dispatch:** if the driver used the
-  app, the same "Mark Delivered" path above applies. If the driver
-  could not use the app (exactly the unreliable-phone scenario Batch
-  Dispatch is designed for), a dispatcher can open the batch and use
-  **Record Delivery (paper reconciliation)** on that specific load
-  after verifying with the driver that it was physically delivered —
-  see [`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) "Batch Dispatch."
-  This is the one case where staff CAN directly record a delivery on a
-  driver's behalf, and it only applies to batch-assigned loads.
-- **A request that already existed in the system but is not
-  batch-assigned and cannot be marked delivered by a driver** (for
-  example, the assigned driver is unavailable, or the delivery was
-  completed by someone without an account): a dispatcher can still
-  cancel the request so it does not remain open indefinitely, and
-  should record what actually happened outside the system (for
-  example, in the reason given for cancellation). This does not
-  produce an accurate "delivered/confirmed" record for statistics —
-  see the gap noted below.
-- **A delivery that was arranged entirely outside the system during the
-  outage** (for example, a brand-new request that was never entered
-  because the website was down): a dispatcher can enter it as a manual
-  request after the fact so the demand is captured, but the same
-  limitation applies — there is no dispatcher/admin action to record it
-  as already delivered.
+Record all load collections first. Staff collection entries require a
+verification note. Mark delivered only after verifying the full requested
+quantity physically reached the customer. Staff-recorded delivery has a
+distinct audit event and starts the usual confirmation/dispute workflow.
 
-Staff can now mark any `claimed` request as delivered, whether or not
-it is part of a batch. Use the dispatcher request detail "Mark
-Delivered" action (or the batch detail "Mark Delivered" button for a
-batch-assigned load). Each records a distinct staff audit event
-(`marked_delivered_by_dispatcher` or `marked_delivered_by_dispatcher_batch`)
-so it is never misrepresented as the driver's own "Mark Delivered".
-From that point the request follows the same `delivered` ->
-confirmed/disputed/auto-confirmed workflow as any other delivery.
+For an unregistered customer, staff can confirm receipt after delivery is
+recorded. Staff cannot yet create that customer's formal dispute; see
+[#50](https://github.com/spizeck/saba-water-delivery/issues/50). Do not cancel a
+completed delivery merely to clear the queue when the supported delivery
+reconciliation path applies.
 
-There is no automated reconciliation feature — this is a manual staff
-process using the existing dispatcher and driver tools. Do not assume
-any automatic matching or backfilling happens on its own.
+For requests arranged entirely outside the system, first review the paper
+record for duplicates, then enter and assign the request through supported
+staff tools before recording collection and delivery. If the actual delivering
+person cannot be represented by an eligible linked driver, escalate the record
+reconciliation rather than assigning it to an unrelated driver.
+
+There is no automatic matching or backfilling. Use the
+[Dispatcher Guide](./DISPATCHER_GUIDE.md) for the screen procedures and retain
+the outage record needed to explain after-the-fact entries.

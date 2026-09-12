@@ -87,8 +87,8 @@ gallons)**. A two-load request is still a single request — it gets one
 priority, one assignment, and one confirmation/dispute record.
 
 Either way, review the details and click **Create Request** — this
-enters the exact same queue as a request submitted from the website or
-WhatsApp.
+enters the same queue as a request submitted from the website. WhatsApp ordering
+is a future resident feature; implemented integration code does not imply launch.
 
 ### Duplicate and frequent-request warnings
 
@@ -138,9 +138,12 @@ You can move an open request ahead in the dispatch queue without
 changing its priority or its original request time. Use **Escalate** on
 a request when operational circumstances require it (for example, a
 vulnerable resident or an urgent follow-up). You must provide a reason;
-the action is recorded in the audit trail. Multiple escalated requests
-at the same priority remain oldest-first, so escalation does not
-randomize the queue or make newer requests jump ahead of older ones.
+the action is recorded in the audit trail. Within the same priority,
+staff override rank is considered before original request age; age resolves
+remaining ties and orders requests without overrides. The current Escalate
+action assigns rank 0, so requests escalated by that action share a rank and
+remain oldest-first among themselves. Escalation never moves
+a request ahead of a higher priority category.
 
 ## Assignment and reassignment
 
@@ -201,8 +204,8 @@ receive one offer at a time.
    and cooldown status, and whether they already have an active
    delivery, are shown so you can decide with full information.
 3. **Choose requests.** The list shows every outstanding request not yet
-   claimed by anyone, in the normal fairness order (highest priority
-   first, oldest first within a priority). Check as many as you need —
+   claimed by anyone, in the normal fairness order (priority, then staff
+   override rank, then original request age). Check as many as you need —
    there is a generous maximum per run, shown on screen. Each request
    displays its quantity (e.g., 2 loads / 2,000 gallons) as one entry.
 4. If a request is held for a **different** resident's preferred driver,
