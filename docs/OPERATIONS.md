@@ -213,6 +213,45 @@ any secret or access token. If you need the full business detail of a
 request (who, what, when), use the in-app request history / audit trail,
 not the logs.
 
+### Checking whether the app is up (health & readiness)
+
+Before digging into logs, you can confirm at a glance whether the
+deployment is up and able to serve. Two endpoints answer this and expose
+nothing sensitive:
+
+- **`/api/health`** — _is the app running?_ A healthy deployment returns
+  HTTP **200** with `{"status":"ok"}`. This stays 200 even if email,
+  WhatsApp, or the database is having trouble — it only tells you the app
+  itself is responding.
+- **`/api/readiness`** — _can the app actually serve requests?_ It checks
+  the database (Firebase/Firestore) the system depends on. A ready app
+  returns **200** with `{"status":"ready","checks":{"app":"ok","firestore":"ok"}}`.
+  If the app is running but cannot reach the database, it returns **503**
+  with `"firestore":"unavailable"`.
+
+You can check them from any browser or terminal:
+
+```bash
+curl -i https://<deployment>/api/health
+curl -i https://<deployment>/api/readiness
+```
+
+What the results mean:
+
+- **Both 200** — the app is up and able to serve. If users still report
+  problems, it is not a whole-app outage; use the request-ID steps above.
+- **`/api/health` 200 but `/api/readiness` 503** — the app is running but
+  cannot reach the database. This is a **Firebase/Firestore** problem (or a
+  missing/incorrect `FIREBASE_ADMIN_*` configuration), not a crash of the
+  app itself. Check Firebase status and the deployment's environment
+  variables.
+- **`/api/health` not returning 200** — the deployment itself is down or
+  mid-deploy. Check Vercel's deployment status.
+
+These endpoints are safe to point an external uptime monitor at. They are
+a quick up/down signal only — they are **not** a substitute for the full
+manual smoke test in [`TESTING.md`](./TESTING.md) after a release.
+
 ### Security events
 
 A few log lines use the `security.*` prefix and flag noteworthy access

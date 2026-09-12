@@ -282,6 +282,51 @@ configured** — an elapsed window is always treated as fresh on read, so no use
 is ever blocked by a stale document; the collection would just retain a small
 number of inactive counters (negligible at Saba's scale).
 
+## Health and readiness endpoints
+
+Two lightweight, public-safe endpoints let operators, uptime monitors, and
+deployment checks verify a deployment without exposing anything sensitive. Full
+architecture in `TECHNICAL.md` "Health and readiness endpoints".
+
+| Endpoint         | Question it answers                          | Healthy | Unhealthy                       |
+| ---------------- | -------------------------------------------- | ------- | ------------------------------- |
+| `/api/health`    | Is the app process/runtime responding?       | **200** | (only if the runtime is down)   |
+| `/api/readiness` | Can the app serve (Firebase/Firestore up)?   | **200** | **503** when Firestore is down  |
+
+- **Liveness** (`/api/health`) has no dependencies and returns `{ "status":
+  "ok" }`. It stays 200 even if Firestore/Resend/WhatsApp are down — that is how
+  you tell "the app is down" apart from "a dependency is degraded".
+- **Readiness** (`/api/readiness`) returns `{ "status": "ready", "checks": {
+  "app": "ok", "firestore": "ok" } }` (200) or, when the app cannot reach
+  Firestore, `{ "status": "not_ready", "checks": { "app": "ok", "firestore":
+  "unavailable" } }` (**503**). A **503 here means "the app is up but cannot
+  reach Firestore"** — investigate Firebase Admin configuration
+  (`FIREBASE_ADMIN_*`) and Firestore availability, not the Next.js runtime.
+
+**No new environment variables or secrets are required** — readiness reuses the
+existing `FIREBASE_ADMIN_*` credentials. The probe is a single read-only
+Firestore document `get` (path `_health/probe`); it **never writes**, so it
+creates no data and needs no TTL/cleanup, and it is cheap enough to be polled
+frequently.
+
+Test them after a deploy (see also docs/OPERATIONS.md):
+
+```bash
+curl -i https://<deployment>/api/health
+curl -i https://<deployment>/api/readiness
+```
+
+Expect `200` from both on a healthy deployment, an `x-request-id` header on each
+response, and a body containing no configuration, credentials, or error detail.
+
+**Vercel does not automatically consume these endpoints** for routing, health
+gating, or deploy validation, and this project adds no such configuration. They
+exist for operators, external uptime monitoring, and manual/deploy validation —
+point an uptime monitor at `/api/health` (and `/api/readiness` if you want a
+Firestore-dependent signal). They are **not** a replacement for the full
+application smoke test in docs/TESTING.md. The endpoints are intentionally **not**
+rate limited so probing stays reliable.
+
 ## Cron
 
 `vercel.json` schedules the continuity report:

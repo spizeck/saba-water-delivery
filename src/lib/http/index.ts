@@ -3,4 +3,4 @@
  * see TECHNICAL.md "Server error handling".
  */
 
-export { withApiRoute } from "./apiRoute";
+export { withApiRoute, type WithApiRouteOptions } from "./apiRoute";

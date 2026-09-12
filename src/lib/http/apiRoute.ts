@@ -9,9 +9,24 @@ import {
 import {
   extractRequestId,
   getLogger,
+  type LogLevel,
   setRequestIdHeader,
   withLogContext,
 } from "@/lib/logging";
+
+export interface WithApiRouteOptions {
+  /**
+   * Level for the routine per-request `api.<name>.completed` log. Defaults to
+   * `"info"`. High-frequency endpoints that are polled by external uptime
+   * monitors — `/api/health`, `/api/readiness` — pass `"debug"` so a successful
+   * probe stays quiet in production (which runs at `LOG_LEVEL=info`) instead of
+   * flooding Vercel logs on every check. It only affects the routine completion
+   * line: a genuine server fault is still logged at `error`, and a handler that
+   * records its own operational event (e.g. `health.readiness.failed`) is
+   * unaffected. See TECHNICAL.md "Health and readiness endpoints".
+   */
+  completionLogLevel?: LogLevel;
+}
 
 /**
  * The canonical API route boundary — the ONE mechanism a route handler should
@@ -45,8 +60,10 @@ import {
 export function withApiRoute<Args extends unknown[]>(
   name: string,
   handler: (request: NextRequest, ...args: Args) => Promise<Response>,
+  options: WithApiRouteOptions = {},
 ): (request: NextRequest, ...args: Args) => Promise<Response> {
   const logger = getLogger(`api.${name}`);
+  const completionLogLevel = options.completionLogLevel ?? "info";
 
   return (request: NextRequest, ...args: Args): Promise<Response> => {
     const requestId = extractRequestId(request);
@@ -58,7 +75,7 @@ export function withApiRoute<Args extends unknown[]>(
       try {
         const response = await handler(request, ...args);
         setRequestIdHeader(response, requestId);
-        logger.info(`api.${name}.completed`, {
+        logger[completionLogLevel](`api.${name}.completed`, {
           method,
           pathname,
           status: response.status,
