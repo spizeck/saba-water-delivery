@@ -39,8 +39,12 @@ into logs.
 - **Logs as the audit trail:** rejected — logs are ephemeral and not
   transactional; business accountability needs durable, queryable records.
 - **A separate audit database/service:** rejected — Firestore subcollections
-  co-located with the record are simpler, transactional with the change, and
-  backed up together.
+  co-located with the record are simpler and backed up together. Atomicity with
+  the business change depends on the mutation path and is **not** guaranteed by
+  co-location alone: some paths write the change and its event in one Firestore
+  transaction (e.g. driver-registry restrict/reinstate/link), while others commit
+  the change and then append the event in a separate write (e.g. dispatch-settings
+  updates). See Operational implications.
 
 ## Consequences
 
@@ -53,7 +57,14 @@ into logs.
 ## Operational implications
 
 - When adding a new significant action, record a durable audit event, not just a
-  log line.
+  log line — and prefer writing the event **in the same transaction** as the
+  business change so the record cannot be lost if the second write fails.
+- **Known limitation / follow-up:** not every existing path is transactional
+  (e.g. dispatch-settings updates append the event after committing the change),
+  so a rare failure between the two writes could leave a change without its audit
+  event. Making these paths write the event in the same transaction is a
+  worthwhile hardening follow-up; this ADR documents the current behavior rather
+  than overstating it.
 - Log volume is deliberately quiet for routine success (e.g. health probes log at
   debug) so meaningful events stand out ([0012](./0012-security-and-observability-baseline.md)).
 

@@ -15,9 +15,14 @@ convenience.
 ## Decision
 
 - **Priority ordering:** `critical` > `urgent` > `normal`. Within a priority
-  level, the **oldest request (by original request time) goes first** —
-  fairness-by-age. A request never loses its place because of a decline, an
-  expired hold, or reassignment; its original `requestedAt` is preserved.
+  level, the queue comparator sorts an explicit **dispatcher override rank first**
+  (lower ranks ahead of higher ranks, and any ranked request ahead of unranked
+  ones), then falls back to the **oldest original request time** — fairness-by-age.
+  The one deliberate way a request moves ahead of an older one is an authorized
+  dispatcher **escalation**, which sets that override rank; it changes queue
+  position **without** rewriting the original `requestedAt`. Absent an
+  escalation, a request never loses its place because of a decline, an expired
+  hold, or reassignment, and `requestedAt` is always preserved.
 - **Preferred driver:** a resident may choose a preferred driver. For a
   **`normal`** request, that driver gets a **24-hour hold** (first access). For
   **`urgent`/`critical`** requests, the preference is honored **only if that

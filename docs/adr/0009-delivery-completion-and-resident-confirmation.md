@@ -50,8 +50,15 @@ next job on the resident's confirmation would stall operations.
   precisely `status === "claimed"` (`isPhysicallyActiveDriverWork`).
 - Auto-confirm depends on documents being read; a never-viewed delivered request
   is confirmed the next time its state is evaluated, using the deadline math.
-- Confirmation/dispute is available to the resident (registered) or recorded by
-  staff for unregistered customers.
+- A **registered** resident can confirm or dispute their own delivery
+  (`disputeWaterDelivery` requires the request's `customerId` to match, so it is
+  a resident-only action). For an **unregistered** customer (no `customerId`),
+  staff can record **confirmation** on their behalf, but there is **no
+  staff-created dispute transition** — staff can only resolve a dispute that a
+  registered resident has already raised (`resolveDisputeCompleted` /
+  `resolveDisputeReopened`). An unregistered customer's complaint is therefore
+  handled operationally (e.g. by reopening/creating a request), not as a
+  `disputed` state.
 
 ## Operational implications
 

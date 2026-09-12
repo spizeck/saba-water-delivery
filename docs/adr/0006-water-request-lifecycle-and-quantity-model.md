@@ -31,9 +31,15 @@ accounting the business does not use.
   [0009](./0009-delivery-completion-and-resident-confirmation.md); dispatch
   ordering and the preferred-driver hold in
   [0007](./0007-dispatch-fairness-and-preferred-driver-policy.md).
-- A request also carries an immutable **customer snapshot** and an immutable
-  **water-situation snapshot** (reported urgency, vulnerable circumstances) taken
-  at creation time, so later profile edits never rewrite history.
+- A request carries a **customer snapshot** and a **water-situation snapshot**
+  (reported urgency, vulnerable circumstances) captured at creation time and
+  **decoupled from the live profile** — editing the resident's profile never
+  rewrites them. The customer snapshot is not strictly immutable, though: an
+  authorized dispatcher may edit the request's customer name/phone/email (and
+  optionally propagate to the profile) while the request is still `requested`,
+  `preferred_driver_hold`, or `available`; each such edit records prior/new values
+  in a `request_edited` audit event, and once `claimed` request fields are no
+  longer editable. The **water-situation snapshot is immutable** after creation.
 
 ## Alternatives considered
 

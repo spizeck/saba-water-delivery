@@ -26,7 +26,11 @@ not let holding the `driver` role by itself make someone an operational driver.
   operational driver. The `driver` role only grants access to the driver portal;
   it does not create a registry entry or confer eligibility.
 - **Admin safety constraints:** an admin cannot remove their own `admin` role,
-  and the system refuses to remove the last admin.
+  and `removeRole` performs a best-effort last-admin check (it counts admins and
+  refuses when only one remains). That count runs before the role-removal
+  transaction and is not re-checked inside it, so it guards the common
+  sequential case but is **not race-proof** against two concurrent removals of
+  different admins (see Operational implications).
 
 ## Alternatives considered
 
@@ -46,7 +50,9 @@ not let holding the `driver` role by itself make someone an operational driver.
   government entity, while `linkedUserId` (a Firebase uid) is what appears on
   requests/offers, because claiming work requires an authenticated session (see
   TECHNICAL.md "Canonical Driver ID").
-- The last-admin guard prevents accidental lock-out of all administrative access.
+- The last-admin guard prevents accidental lock-out of all administrative access
+  in the ordinary sequential case, but does not fully serialize concurrent admin
+  removals.
 
 ## Operational implications
 
@@ -56,6 +62,13 @@ not let holding the `driver` role by itself make someone an operational driver.
   ability to sign in.
 - Role/registry changes are recorded as durable audit events
   ([0010](./0010-audit-events-vs-application-logs.md)).
+- **Known limitation / follow-up:** the last-admin check is not enforced inside
+  the role-removal transaction, so two simultaneous removals of different admins
+  could in principle both pass and leave zero admins. In practice admin-role
+  changes are rare and effectively sequential, but making the admin count part
+  of the transaction (or otherwise serializing admin-role changes) is a worthwhile
+  hardening follow-up. This ADR documents the guard as it exists; it does not
+  claim race-safety.
 
 ## References
 
