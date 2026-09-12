@@ -42,66 +42,52 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 import { runRecoveryChecks } from "./lib/recovery-checks.mjs";
+import { resolveVerifyTarget } from "./lib/recovery-target.mjs";
 
 // ---------------------------------------------------------------------------
-// Arguments: --database=<id> and --service-account-file=<path>
+// Resolve the target (pure helper — see scripts/lib/recovery-target.mjs).
+// A stale FIRESTORE_EMULATOR_HOST alongside explicit cloud config is rejected
+// so a cloud validation can never silently pass against an empty local
+// emulator. Credentials are NEVER read from an inline command-line value.
 // ---------------------------------------------------------------------------
 
-function argValue(flag) {
-  const eq = process.argv.find((a) => a.startsWith(`${flag}=`));
-  if (eq) return eq.slice(flag.length + 1);
-  const idx = process.argv.indexOf(flag);
-  return idx !== -1 ? process.argv[idx + 1] : undefined;
+const target = resolveVerifyTarget(process.env, process.argv);
+
+if ("error" in target) {
+  console.error(target.error + "\nSee docs/DISASTER_RECOVERY.md.");
+  process.exit(2);
 }
 
-const databaseId =
-  argValue("--database") ??
-  process.env.FIREBASE_DATABASE_ID?.trim() ??
-  undefined;
-const serviceAccountFile = argValue("--service-account-file");
-
-// ---------------------------------------------------------------------------
-// Firebase init — emulator (no creds), a key FILE, or Application Default
-// Credentials. Credentials are NEVER read from an inline command-line value.
-// ---------------------------------------------------------------------------
-
-const usingEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 let credentialSource;
 
 if (getApps().length === 0) {
-  if (usingEmulator) {
-    credentialSource = `emulator (${process.env.FIRESTORE_EMULATOR_HOST})`;
+  if (target.mode === "emulator") {
+    credentialSource = `emulator (${target.emulatorHost})`;
     initializeApp({
       projectId:
         process.env.GCLOUD_PROJECT ??
         process.env.FIREBASE_ADMIN_PROJECT_ID ??
         "demo-recovery-drill",
     });
-  } else if (serviceAccountFile) {
+  } else if (target.mode === "service-account-file") {
     // Read the key from a FILE — not from an inline env value on the command
     // line (which would be recorded in shell history and the process list).
-    credentialSource = `service-account file (${serviceAccountFile})`;
+    credentialSource = `service-account file (${target.serviceAccountFile})`;
     initializeApp({
-      credential: cert(JSON.parse(readFileSync(serviceAccountFile, "utf8"))),
+      credential: cert(
+        JSON.parse(readFileSync(target.serviceAccountFile, "utf8")),
+      ),
     });
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    // Application Default Credentials from the key file that env var points at.
+  } else {
+    // Application Default Credentials from the key file GOOGLE_APPLICATION_CREDENTIALS points at.
     credentialSource = `application default credentials (${process.env.GOOGLE_APPLICATION_CREDENTIALS})`;
     initializeApp();
-  } else {
-    console.error(
-      "No target configured. Set one of:\n" +
-        "  - FIRESTORE_EMULATOR_HOST (an emulator drill), or\n" +
-        "  - GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json (a key FILE), or\n" +
-        "  - --service-account-file=/path/to/key.json\n" +
-        "Never inline the service-account JSON on the command line (shell history / process list).\n" +
-        "See docs/DISASTER_RECOVERY.md.",
-    );
-    process.exit(2);
   }
 }
 
-const db = databaseId ? getFirestore(getApps()[0], databaseId) : getFirestore();
+const db = target.databaseId
+  ? getFirestore(getApps()[0], target.databaseId)
+  : getFirestore();
 
 // ---------------------------------------------------------------------------
 // Read the collections the checks need (top-level only; read-only).
@@ -121,7 +107,7 @@ async function readCollection(name, fields) {
 console.log(
   `Disaster-recovery validation\n` +
     `  credentials: ${credentialSource ?? "already-initialized app"}\n` +
-    `  database:    ${databaseId ?? "(default)"}\n`,
+    `  database:    ${target.databaseId ?? "(default)"}\n`,
 );
 
 const [drivers, requests, batches, users] = await Promise.all([

@@ -157,6 +157,12 @@ gcloud firestore backups schedules create --database='(default)' \
 Neither command is run by this repository. Verify the plan and cost in the
 Google Cloud console first.
 
+> **These settings are per database.** They protect `(default)`. If a recovery
+> ever leaves production serving a **named** database (§6.8), that database is
+> NOT covered by the settings above — re-run these commands with
+> `--database=<that-database>`, or treat the failover as temporary and
+> consolidate back to `(default)`.
+
 ---
 
 ## 3. Recovery objectives (RPO / RTO)
@@ -228,6 +234,27 @@ Use this for any incident that requires **data** recovery. Steps are mandatory
 unless explicitly waived by the incident owner. Commands that **change or
 overwrite data are labelled DESTRUCTIVE**.
 
+### 6.0 Set the active-database variable first
+
+The app normally serves the `(default)` database, but a prior recovery may have
+switched production to a named database via `FIREBASE_DATABASE_ID` (§6.8). Every
+command below that operates on the **currently served production dataset** takes
+an explicit `--database`, so it can never silently act on `(default)` when
+production is actually on a named database. Set this once at the start of the
+incident to whatever the app is **currently** serving:
+
+```bash
+# What the deployed app currently serves. Check the Vercel Production env:
+#   FIREBASE_DATABASE_ID unset  -> ACTIVE_DATABASE='(default)'
+#   FIREBASE_DATABASE_ID=recovery-YYYYMMDD -> ACTIVE_DATABASE='recovery-YYYYMMDD'
+ACTIVE_DATABASE='(default)'
+PROJECT=saba-water-delivery
+```
+
+Use `"$ACTIVE_DATABASE"` for anything touching the live dataset (evidence
+export, PITR export, status checks, validation). A restore *target* is a
+different, new database and is named explicitly in §6.5.
+
 ### 6.1 Triage — decide whether a restore is even needed
 
 - What is wrong: one record, one collection, or the whole database?
@@ -242,12 +269,14 @@ overwrite data are labelled DESTRUCTIVE**.
 
 - Do **not** delete the damaged data immediately — it is often the only record
   of what happened.
-- Take an on-demand export of the **current** (damaged) database first so the
-  damaged state is preserved for investigation:
+- Take an on-demand export of the **currently served** (damaged) database first
+  so the damaged state is preserved for investigation — this uses
+  `"$ACTIVE_DATABASE"`, so it captures the named serving database rather than
+  `(default)` when production has been switched:
 
   ```bash
   gcloud firestore export gs://<BACKUP_BUCKET>/incident-<YYYYMMDD-HHMM> \
-    --project=saba-water-delivery
+    --database="$ACTIVE_DATABASE" --project="$PROJECT"
   ```
 
 - Preserve relevant Vercel and Google Cloud audit logs.
@@ -278,32 +307,42 @@ with the continuity report per `INCIDENT_RECOVERY.md`.
 ### 6.4 Select a restore point
 
 - Within 7 days and want minimal loss → **PITR** at a chosen timestamp.
-- Otherwise, or for a dependable daily point → a **scheduled backup**:
+- Otherwise, or for a dependable daily point → a **scheduled backup**. Backups
+  belong to the database they were taken from, so filter to the currently served
+  database — a backup of `(default)` is not a backup of a named serving database:
 
   ```bash
-  gcloud firestore backups list --project=saba-water-delivery
+  # List backups in the location, then pick one whose database is "$ACTIVE_DATABASE".
+  gcloud firestore backups list --location=<LOC> --project="$PROJECT"
+  # Scheduled-backup schedules are per-database:
+  gcloud firestore backups schedules list --database="$ACTIVE_DATABASE" \
+    --project="$PROJECT"
   ```
 
 ### 6.5 Restore into a SEPARATE target first (never in place)
 
 Restore to a **new database**, never over production, so you can validate before
-switching:
+switching. The restore *source* must be a backup/PITR window of
+`"$ACTIVE_DATABASE"` (the served dataset), and the *destination* is a new,
+explicitly named database:
 
 ```bash
-# From a scheduled backup — creates a NEW database "recovery-<date>"
+# From a scheduled backup of the served database — creates a NEW database.
 gcloud firestore databases restore \
-  --source-backup=projects/saba-water-delivery/locations/<LOC>/backups/<BACKUP_ID> \
+  --source-backup=projects/"$PROJECT"/locations/<LOC>/backups/<BACKUP_ID> \
   --destination-database=recovery-<YYYYMMDD> \
-  --project=saba-water-delivery
+  --project="$PROJECT"
 ```
 
 ```bash
-# OR from PITR: export as of a timestamp, then import into a new/empty database.
+# OR from PITR of the served database: export as of a timestamp, then import
+# into a new/empty database. The export reads "$ACTIVE_DATABASE".
 gcloud firestore export gs://<BACKUP_BUCKET>/pitr-<YYYYMMDD-HHMM> \
-  --snapshot-time=<RFC3339_TIMESTAMP> --project=saba-water-delivery
+  --database="$ACTIVE_DATABASE" --snapshot-time=<RFC3339_TIMESTAMP> \
+  --project="$PROJECT"
 # then, into a new database you created for recovery:  [DESTRUCTIVE to target db]
 gcloud firestore import gs://<BACKUP_BUCKET>/pitr-<YYYYMMDD-HHMM> \
-  --database=recovery-<YYYYMMDD> --project=saba-water-delivery
+  --database=recovery-<YYYYMMDD> --project="$PROJECT"
 ```
 
 ### 6.6 Validate the restored data (§11)
@@ -311,7 +350,9 @@ gcloud firestore import gs://<BACKUP_BUCKET>/pitr-<YYYYMMDD-HHMM> \
 Run the post-restore validation checklist and the read-only validator **against
 the recovery database you just created** — not `(default)`. Pass its name so the
 validator reads the right database (otherwise it reads `(default)` and can give a
-false zero-finding pass):
+false zero-finding pass). `FIRESTORE_EMULATOR_HOST` must be **unset** for a cloud
+validation — the validator refuses to run if an emulator host and cloud options
+are both present (so a stale emulator variable cannot pass a false zero-finding):
 
 ```bash
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
@@ -331,9 +372,22 @@ the damaged database untouched until the incident is fully resolved and audited:
 
 - **Point the app at the named recovery database (fastest).** Set
   `FIREBASE_DATABASE_ID=recovery-<YYYYMMDD>` in the Vercel Production environment
-  and redeploy. The app now serves the validated restore. (Later, you may
-  consolidate back onto `(default)` with the import step below during a planned
-  maintenance window.)
+  and redeploy. The app now serves the validated restore. Then update
+  `ACTIVE_DATABASE='recovery-<YYYYMMDD>'` for the rest of this incident so
+  evidence/PITR/status commands target the right dataset.
+
+  > **Protect the new serving database — its predecessor's protections do NOT
+  > carry over.** PITR and scheduled backups are **per database**; the settings
+  > enabled for `(default)` (§2) do not protect `recovery-<YYYYMMDD>`. Choose one:
+  >
+  > - **Enable protection on the named database** — apply the §2 PITR and
+  >   scheduled-backup commands with `--database=recovery-<YYYYMMDD>` before
+  >   leaving it as the serving database, **or**
+  > - **Treat the failover as temporary** — explicitly acknowledge and document
+  >   the **backup-risk window** (the named database is unprotected: no PITR, no
+  >   scheduled backups) and take a manual on-demand export of it until you
+  >   consolidate back onto `(default)` (below). Do not leave production on an
+  >   unprotected named database indefinitely.
 - **Restore back into `(default)` (consolidate).** A managed restore cannot
   overwrite the existing `(default)` in place, so export the validated data and
   import it into `(default)` — **[DESTRUCTIVE: import overwrites documents with
@@ -617,14 +671,28 @@ Document any recurring cloud cost a drill incurs before scheduling it.
 
 ## 13. Backup monitoring
 
-- **Verify backups are actually happening** in the Google Cloud console:
-  Firestore → Backups shows scheduled-backup history and PITR status
-  (`gcloud firestore backups list` and `gcloud firestore databases describe`).
+- **Verify backups are actually happening for the database the app is serving.**
+  In the Google Cloud console, Firestore → Backups shows scheduled-backup history
+  and PITR status per database. Check the **currently served** database
+  (`"$ACTIVE_DATABASE"` from §6.0 — `(default)` in normal operation, or the named
+  database if a failover is in effect):
+
+  ```bash
+  # Scheduled-backup schedules and PITR status for the served database:
+  gcloud firestore backups schedules list --database="$ACTIVE_DATABASE" \
+    --project="$PROJECT"
+  gcloud firestore databases describe --database="$ACTIVE_DATABASE" \
+    --project="$PROJECT"   # shows pointInTimeRecoveryEnablement
+  # Existing backups in the location (confirm one belongs to "$ACTIVE_DATABASE"):
+  gcloud firestore backups list --location=<LOC> --project="$PROJECT"
+  ```
+
 - If a simple supported alert for backup failures is available in the project's
   Cloud Monitoring, enable it. Do **not** build a custom backup-monitoring
   service inside this application.
-- Confirm during each quarterly drill that recent backups exist and are
-  restorable.
+- Confirm during each quarterly drill that recent backups exist for the served
+  database and are restorable. If production is on a named database, confirm that
+  database — not just `(default)` — is protected (§6.8).
 
 ---
 
