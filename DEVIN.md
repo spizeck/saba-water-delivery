@@ -823,11 +823,11 @@ opening a pull request:
 npm run check
 ```
 
-`check` runs, in order: `lint` (ESLint) → `typecheck` (`next typegen`
-then `tsc --noEmit`) → `test` (Vitest unit/domain suite) → `build`
-(`next build --webpack`, whose `postbuild` runs the PDFKit trace
-verifier). It requires no credentials, no live Firebase, and no network
-services.
+`check` runs, in order: `format:check` (Prettier) → `lint` (ESLint) →
+`typecheck` (`next typegen` then `tsc --noEmit`) → `test` (Vitest
+unit/domain suite) → `build` (`next build --webpack`, whose `postbuild`
+runs the PDFKit trace verifier). It requires no credentials, no live
+Firebase, and no network services.
 
 `typecheck` runs `next typegen` first on purpose: Next 16 generates the
 `LayoutProps`/`PageProps`/route types into `.next/types/`, and a bare
@@ -872,11 +872,11 @@ contributors:
 
 Prettier is configured (`.prettierrc.json`, `.prettierignore`) with
 `format` / `format:check` scripts and `eslint-config-prettier` wired into
-the ESLint flat config so ESLint and Prettier do not fight. The one-time
-repo-wide reformat is intentionally deferred (see issue #37), so
-`format:check` is **not** part of `check` and is only an informational,
-non-blocking CI step for now. Do not run `npm run format` across the tree
-as part of an unrelated change.
+the ESLint flat config so ESLint and Prettier do not fight. The repo-wide
+Prettier pass has landed (issue #37, closed), so `format:check` is the
+first step of `npm run check` and a **blocking** `CI / verify` step — the
+tree must stay formatted. Run `npm run format` to fix formatting, but do
+not reformat unrelated files as part of a change.
 
 ## Continuous integration
 
