@@ -7,7 +7,7 @@ government-produced RO water delivery requests, developed for the Public
 Entity Saba. For project provenance, volunteer basis, and intended
 handover, see `README.md`.
 
-Read `PRODUCT.md` and `TECHNICAL.md` before making architectural or product decisions.
+Read `PRODUCT.md` and `TECHNICAL.md` before making architectural or product decisions. For the reasoning behind the significant architectural decisions (and the assumptions not to accidentally undo), see the Architecture Decision Records in [`docs/adr/`](./docs/adr/README.md); add or supersede an ADR when a change alters data/auth/lifecycle/dispatch-policy/integration/deployment/recovery/security architecture (see that directory's README for the governance rules).
 
 When these documents conflict with assumptions made from existing code, stop and identify the conflict rather than silently changing the product behavior.
 

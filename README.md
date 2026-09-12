@@ -65,6 +65,8 @@ dependence on the original volunteer developer.
 | [`docs/DISPATCHER_GUIDE.md`](./docs/DISPATCHER_GUIDE.md) | Practical guide to the dispatcher dashboard and daily tasks. |
 | [`docs/DRIVER_GUIDE.md`](./docs/DRIVER_GUIDE.md) | Simple guide for water delivery drivers. |
 | [`docs/INCIDENT_RECOVERY.md`](./docs/INCIDENT_RECOVERY.md) | What to do during outages or a suspected security incident. |
+| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup and data-recovery runbook (Firestore/Auth restore, drills). |
+| [`docs/adr/`](./docs/adr/README.md) | Architecture Decision Records — why the system is built the way it is. |
 | [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | How to reproduce and configure the production deployment. |
 | [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) | Canonical Firestore collections and their fields/relationships. |
 | [`docs/TESTING.md`](./docs/TESTING.md) | Verification commands and a manual pre-deployment smoke test. |

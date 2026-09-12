@@ -37,39 +37,41 @@ Merging to `main` triggers the production deployment.
 
 CI is defined in `.github/workflows/ci.yml` (workflow **CI**, job
 **verify**). See [`TESTING.md`](./TESTING.md) for exactly what it runs.
-The stable required-check name is **`CI / verify`**.
+The GitHub PR "Checks" UI displays this as **`CI / verify`** (workflow name /
+job name), but the branch-protection **status-check context** is the bare job
+name **`verify`** (GitHub Actions). Use `verify` when configuring the ruleset.
 
 Branch protection / rulesets are repository administration settings and
-are not configured from code. Recommended ruleset for `main` (configure
-in GitHub → Settings → Rules → Rulesets):
+are not configured from code. The active `main` ruleset ("Protect Main"):
 
 - Require a pull request before merging.
 - Require **1** approval.
 - Dismiss stale approvals when new commits are pushed.
 - Require conversation resolution before merging.
-- Require the status check **`CI / verify`** to pass.
+- Require the status-check contexts **`verify`** and **`playwright`** to pass
+  (displayed as `CI / verify` and `E2E / playwright`).
 - Block force pushes.
 - Block branch deletion.
 
 A merge queue and signed commits are intentionally omitted unless the
-team decides it needs them. Note the required-check name only appears in
+team decides it needs them. Note a status-check context only appears in
 the ruleset picker after the workflow has run at least once on the
-repository (merge this workflow first, then add the rule).
+repository (merge a workflow first, then add the rule).
 
 ### End-to-end tests (`E2E / playwright`)
 
 The browser end-to-end suite runs as a **separate** GitHub Actions workflow
-(`.github/workflows/e2e.yml`, workflow **E2E**, job **playwright** → check name
-**`E2E / playwright`**), kept apart from `CI / verify` because it needs Firebase
-emulators, a browser download, and a built+served app. It uses only local
-emulators and synthetic data — **no production secrets**. See
-[`TESTING.md`](./TESTING.md) "End-to-end tests (Playwright)".
+(`.github/workflows/e2e.yml`, workflow **E2E**, job **playwright**), kept apart
+from the `verify` gate because it needs Firebase emulators, a browser download,
+and a built+served app. It uses only local emulators and synthetic data — **no
+production secrets**. See [`TESTING.md`](./TESTING.md) "End-to-end tests
+(Playwright)". Its status-check context is **`playwright`** (displayed
+`E2E / playwright`).
 
-Adding `E2E / playwright` as a **required** check is a deliberate, separate
-decision: leave it as a non-required signal until it has proven stable across a
-few runs on `main`, then add it to the ruleset above the same way as
-`CI / verify`. This change does not alter branch-protection expectations on its
-own.
+`playwright` **is** a required status-check context in the current "Protect Main"
+ruleset, alongside `verify`. If you ever need to make the E2E gate temporarily
+non-blocking (e.g. while stabilizing it), remove the `playwright` context from
+the ruleset deliberately — it is required by default.
 
 ## External services
 

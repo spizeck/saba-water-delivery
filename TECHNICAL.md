@@ -5,6 +5,12 @@ Water Delivery, developed for the Public Entity Saba. For project
 provenance, volunteer basis, and intended handover, see
 [`README.md`](../README.md).
 
+This guide is the authoritative reference for **current mechanics**. For the
+**reasoning** behind the significant architectural decisions — why the system is
+built this way, the alternatives weighed, and the assumptions a future
+maintainer must not accidentally undo — see the Architecture Decision Records in
+[`docs/adr/`](./docs/adr/README.md).
+
 ## Architecture
 
 Application stack:
