@@ -56,6 +56,21 @@ team decides it needs them. Note the required-check name only appears in
 the ruleset picker after the workflow has run at least once on the
 repository (merge this workflow first, then add the rule).
 
+### End-to-end tests (`E2E / playwright`)
+
+The browser end-to-end suite runs as a **separate** GitHub Actions workflow
+(`.github/workflows/e2e.yml`, workflow **E2E**, job **playwright** → check name
+**`E2E / playwright`**), kept apart from `CI / verify` because it needs Firebase
+emulators, a browser download, and a built+served app. It uses only local
+emulators and synthetic data — **no production secrets**. See
+[`TESTING.md`](./TESTING.md) "End-to-end tests (Playwright)".
+
+Adding `E2E / playwright` as a **required** check is a deliberate, separate
+decision: leave it as a non-required signal until it has proven stable across a
+few runs on `main`, then add it to the ruleset above the same way as
+`CI / verify`. This change does not alter branch-protection expectations on its
+own.
+
 ## External services
 
 | Service | Purpose |

@@ -36,11 +36,25 @@ export interface SecurityHeaderEnv {
   /** When truthy, emit `Content-Security-Policy-Report-Only` instead of the
    * enforcing header (a documented rollout valve — see docs/DEPLOYMENT.md). */
   reportOnly?: boolean;
+  /**
+   * Local Firebase emulator `host:port` values (auth, firestore) present ONLY in
+   * an E2E/emulator build (`NEXT_PUBLIC_FIREBASE_*_EMULATOR_HOST`). When set, the
+   * CSP additionally allows the local emulator origins so the browser client can
+   * reach them, and drops `upgrade-insecure-requests` (the emulators are plain
+   * http on localhost). These variables are never set in a production build, so
+   * the production policy is unchanged. See TECHNICAL.md "End-to-end testing".
+   */
+  emulatorHosts?: string[];
 }
 
 function readEnv(
   values: Record<string, string | undefined> = process.env,
 ): SecurityHeaderEnv {
+  const emulatorHosts = [
+    values.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
+    values.NEXT_PUBLIC_FIREBASE_FIRESTORE_EMULATOR_HOST,
+  ].filter((h): h is string => Boolean(h && h.trim()));
+
   return {
     nodeEnv: values.NODE_ENV,
     vercelEnv: values.VERCEL_ENV,
@@ -48,6 +62,7 @@ function readEnv(
     reportOnly: Boolean(
       values.CSP_REPORT_ONLY && values.CSP_REPORT_ONLY !== "false",
     ),
+    emulatorHosts,
   };
 }
 
@@ -68,6 +83,13 @@ function buildCsp(env: SecurityHeaderEnv): SecurityHeader {
   const isProductionBuild = env.nodeEnv === "production";
   const isDevelopment = !isProductionBuild;
   const isPreview = env.vercelEnv === "preview";
+  // Emulator (E2E) build only — never true in a production build.
+  const emulatorHosts = env.emulatorHosts ?? [];
+  const isEmulator = emulatorHosts.length > 0;
+  const emulatorOrigins = emulatorHosts.flatMap((host) => [
+    `http://${host}`,
+    `ws://${host}`,
+  ]);
 
   const authDomain = env.authDomain?.trim();
   const authFrameOrigin = authDomain ? [`https://${authDomain}`] : [];
@@ -87,6 +109,8 @@ function buildCsp(env: SecurityHeaderEnv): SecurityHeader {
   const connectSrc = ["'self'", ...authConnectOrigins];
   if (isDevelopment) connectSrc.push("ws://localhost:*", "ws://127.0.0.1:*"); // HMR websocket
   if (isPreview) connectSrc.push(VERCEL_LIVE, "wss://ws-us3.pusher.com");
+  // E2E only: allow the browser client to reach the local Firebase emulators.
+  if (isEmulator) connectSrc.push(...emulatorOrigins);
 
   const frameSrc = ["'self'", ...authFrameOrigin, GOOGLE_APIS_SCRIPT];
   if (isPreview) frameSrc.push(VERCEL_LIVE);
@@ -108,8 +132,8 @@ function buildCsp(env: SecurityHeaderEnv): SecurityHeader {
     ["worker-src", "'self'"], // the PWA service worker (/sw.js)
     ["manifest-src", "'self'"],
     // Upgrade any stray http subresource to https in HTTPS environments; must
-    // NOT apply in local http dev.
-    ["upgrade-insecure-requests", isDevelopment ? null : ""],
+    // NOT apply in local http dev or an http emulator (E2E) build.
+    ["upgrade-insecure-requests", isDevelopment || isEmulator ? null : ""],
   ];
 
   const value = directives

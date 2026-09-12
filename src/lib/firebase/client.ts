@@ -1,8 +1,12 @@
 "use client";
 
 import { type FirebaseApp, getApps, initializeApp } from "firebase/app";
-import { type Auth, getAuth } from "firebase/auth";
-import { type Firestore, getFirestore } from "firebase/firestore";
+import { type Auth, connectAuthEmulator, getAuth } from "firebase/auth";
+import {
+  type Firestore,
+  connectFirestoreEmulator,
+  getFirestore,
+} from "firebase/firestore";
 
 /**
  * Firebase client SDK configuration.
@@ -33,6 +37,25 @@ export const isFirebaseClientConfigured = Boolean(
   firebaseConfig.appId,
 );
 
+/**
+ * Local Firebase emulator hosts, used ONLY by the Playwright E2E suite and
+ * local emulator development. When `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` is
+ * present (e.g. "127.0.0.1:9099"), the client Auth SDK is pointed at the local
+ * Auth emulator so tests can sign in with seeded email/password users instead
+ * of live Google OAuth. These `NEXT_PUBLIC_*` variables are build-time inlined
+ * and are NEVER set for a production build, so a production bundle never
+ * contains an emulator connection. See docs/TESTING.md.
+ */
+const authEmulatorHost = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST;
+const firestoreEmulatorHost =
+  process.env.NEXT_PUBLIC_FIREBASE_FIRESTORE_EMULATOR_HOST;
+
+/** True when the client should talk to local emulators rather than real Firebase. */
+export const isFirebaseEmulatorMode = Boolean(authEmulatorHost);
+
+let authEmulatorConnected = false;
+let firestoreEmulatorConnected = false;
+
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
@@ -58,6 +81,13 @@ export function getFirebaseAuth(): Auth | null {
   if (!firebaseApp) return null;
   if (!auth) {
     auth = getAuth(firebaseApp);
+    // Must run before the SDK's first network call (guarded to run once).
+    if (isFirebaseEmulatorMode && !authEmulatorConnected) {
+      authEmulatorConnected = true;
+      connectAuthEmulator(auth, `http://${authEmulatorHost}`, {
+        disableWarnings: true,
+      });
+    }
   }
   return auth;
 }
@@ -67,6 +97,15 @@ export function getFirebaseDb(): Firestore | null {
   if (!firebaseApp) return null;
   if (!db) {
     db = getFirestore(firebaseApp);
+    if (
+      isFirebaseEmulatorMode &&
+      firestoreEmulatorHost &&
+      !firestoreEmulatorConnected
+    ) {
+      firestoreEmulatorConnected = true;
+      const [host, port] = firestoreEmulatorHost.split(":");
+      connectFirestoreEmulator(db, host, Number(port));
+    }
   }
   return db;
 }

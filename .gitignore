@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# playwright e2e
+/playwright-report/
+/test-results/
+/blob-report/
+/playwright/.cache/
+
 # next.js
 /.next/
 /out/
@@ -32,6 +38,9 @@ yarn-error.log*
 firebase-debug.log*
 firestore-debug.log*
 ui-debug.log*
+pglite-debug.log*
+database-debug.log*
+auth-debug.log*
 .firebase/
 
 # env files (can opt-in for committing if needed)
