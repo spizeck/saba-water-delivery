@@ -134,16 +134,21 @@ declines, the hold ends immediately either way.
 
 ## Escalating a request
 
-You can move an open request ahead in the dispatch queue without
-changing its priority or its original request time. Use **Escalate** on
-a request when operational circumstances require it (for example, a
-vulnerable resident or an urgent follow-up). You must provide a reason;
-the action is recorded in the audit trail. Within the same priority,
-staff override rank is considered before original request age; age resolves
-remaining ties and orders requests without overrides. The current Escalate
-action assigns rank 0, so requests escalated by that action share a rank and
-remain oldest-first among themselves. Escalation never moves
-a request ahead of a higher priority category.
+Use **Escalate** to record that an open request should move ahead within its
+priority, with a required reason and audit history. It preserves the priority
+and original request time. The queue comparator considers priority, then staff
+override rank, then age. The current action sets rank 0, so included rank-0
+requests remain oldest-first among themselves; escalation never outranks a
+higher priority category.
+
+**Current automatic-offer limitation:** the driver-offer query takes only the
+first 100 available requests ordered by priority and original age before
+applying staff escalation ordering. A newer escalated request outside that
+window can therefore wait behind older, non-escalated requests at the same
+priority. An existing valid offer is also retained until resolved; escalation
+does not replace it. Check actual assignment progress and use the supported
+manual assignment or Delivery Run tools when intervention is needed, subject
+to their usual safeguards. See [#66](https://github.com/spizeck/saba-water-delivery/issues/66).
 
 ## Assignment and reassignment
 
@@ -204,8 +209,9 @@ receive one offer at a time.
    and cooldown status, and whether they already have an active
    delivery, are shown so you can decide with full information.
 3. **Choose requests.** The list shows every outstanding request not yet
-   claimed by anyone, in the normal fairness order (priority, then staff
-   override rank, then original request age). Check as many as you need —
+   claimed by anyone, in canonical comparator order (priority, then staff
+   override rank, then original request age). This list does not share the
+   automatic-offer query's 100-request limit. Check as many as you need —
    there is a generous maximum per run, shown on screen. Each request
    displays its quantity (e.g., 2 loads / 2,000 gallons) as one entry.
 4. If a request is held for a **different** resident's preferred driver,

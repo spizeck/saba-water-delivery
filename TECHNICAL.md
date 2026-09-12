@@ -647,9 +647,9 @@ cherry-picking (see PRODUCT.md "Dispatch Offers").
    queue stays healthy without a scheduled job).
 4. Select a candidate:
    - A `preferred_driver_hold` addressed to this driver, if not expired.
-   - Otherwise, the oldest `available` request this driver has not
-     already declined (`getDeclinedRequestIdsForDriver()`), preserving
-     fairness by request age.
+   - Otherwise, select from the bounded `available` candidate query described
+     below, skipping recently declined requests. Comparator ordering applies
+     only to retrieved candidates, not the complete queue.
 5. Create a `driverOffers` document for the candidate and return it.
 
 ## Accept / decline
@@ -1139,20 +1139,43 @@ the composite indexes this requires.
 
 ## Dispatch offer selection
 
-`getNextOfferForDriver()` (`src/lib/domain/dispatch.ts`) selects, in
-order:
+The intended/canonical queue comparator, `dispatchQueueCompare`, orders by
+priority category, then `dispatchOverrideRank` (lower first, null last), then
+original `requestedAt`. This is an ordering function over the records supplied
+to it, not proof that the driver-offer query retrieves the complete ranked queue.
 
-1. A `preferred_driver_hold` addressed to this driver, not yet expired
-   (ordered by `priorityRank` then `requestedAt` in case more than one
-   is ever addressed to the same driver — practically always at most
-   one).
-2. Otherwise, the oldest `available` request this driver has not
-   already declined, ordered by `priorityRank` then `requestedAt` —
-   i.e. highest priority first, oldest first within a priority level.
+`getNextOfferForDriver()` (`src/lib/domain/dispatch.ts`) currently:
 
-This preserves the existing decline/cooldown and atomic-claim guarantees
-unchanged — priority only changes WHICH request is selected, never how
-selection or claiming works mechanically.
+1. Rejects new work while claimed work exists and retains a still-valid pending
+   offer (subject to decline exclusion); pending offers are not preempted by
+   later escalation.
+2. Queries holds addressed to the driver, ordered by `priorityRank` then
+   `requestedAt`, with `limit(1)`. Re-sorting this single result cannot rank all
+   holds. The current escalation action releases a held request to available.
+3. Queries `status == available`, ordered by `priorityRank` then
+   `requestedAt`, with **`limit(100)` before retrieval**. Only then does it map
+   results and sort by `dispatchQueueCompare` in memory.
+4. The selector prefers the retained pending offer, then a valid fetched hold,
+   then the first non-declined fetched available candidate. It does not fetch
+   another page after decline filtering.
+
+**Current limitation ([#66](https://github.com/spizeck/saba-water-delivery/issues/66)):**
+with 100 older, unranked available requests and a newer rank-0 request at the
+same priority, the newer escalation is excluded before sorting. An older
+unranked request can be offered first despite the comparator's intended order.
+If all fetched candidates are declined, selection can also return no new offer
+while work exists beyond the window. A larger fixed limit alone would only
+move the boundary, not establish complete-queue ordering.
+
+Delivery Run selection is a separate path: `getBatchEligibleRequests()` has no
+corresponding 100-result limit, and the new-run page sorts its fetched eligible
+list with `sortForBatchSelection`. Its list order must not be used as evidence
+that automatic driver offers have the same candidate coverage.
+
+These are candidate-selection limits, not a relaxation of the atomic claim
+transaction. Offers remain non-reservations; acceptance revalidates current
+claimability and driver workload. PR #65 documents this behavior without changing
+queries, indexes, business rules, or runtime code.
 
 ## Preferred driver vs. priority
 
@@ -1302,7 +1325,8 @@ over a live profile lookup.
 ## Same dispatch workflow
 
 A dispatcher-created request is a normal `waterRequests` document like
-any other — preferred-driver hold/decline, oldest-first offer selection,
+any other — preferred-driver hold/decline, the bounded candidate selection
+described in [Dispatch offer selection](#dispatch-offer-selection),
 one-offer-at-a-time driver dispatch, atomic claiming, delivery, dispute,
 reassignment, cancellation, and statistics all operate on it identically.
 No driver-facing code branches on `source`.

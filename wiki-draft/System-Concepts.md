@@ -10,7 +10,7 @@ Requests enter the queue, may spend time on a preferred-driver hold, become avai
 
 ## Fairness and preferences
 
-The queue considers Critical before Urgent before Normal. Within a category, explicit staff escalation ordering takes precedence; original request age resolves remaining ties and orders requests without overrides. A priority override changes the category. An escalation changes position within it. Neither rewrites the submitted time.
+The canonical queue comparator considers Critical before Urgent before Normal. Within a category, explicit staff escalation ordering takes precedence; original request age resolves remaining ties and orders requests without overrides. A priority override changes the category. An escalation records a within-category rank. Neither rewrites the submitted time. This comparator is applied only to the candidates supplied to it: automatic offers first fetch up to 100 available requests by priority and original age. An escalation outside that set may therefore be missed in favor of older same-priority work. Existing valid offers and preferred-driver holds are handled separately. See [Known Limitations](Known-Limitations-and-Roadmap.md) for the follow-up.
 
 A preferred driver gets limited first access, normally up to 24 hours. For Urgent/Critical requests, the driver must be immediately available or the request opens to general dispatch. Decline or expiry releases the hold without resetting request age. A preference does not guarantee a particular driver or arrival time.
 

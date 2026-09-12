@@ -444,13 +444,19 @@ back to Normal — with a required reason; every override is audited
 
 ## Priority-based dispatch
 
-Requests are offered to drivers **highest priority first, oldest
-request first within that priority** — critical, then urgent, then
-normal, and within each level, fairness by request age exactly as
-before. A resident's request never loses its place in the queue due to
-a decline, hold expiration, or dispatcher reassignment — its original
-request time is always preserved (see "Request Age Still Matters" in
-TECHNICAL.md).
+The intended queue order is Critical, then Urgent, then Normal; within each
+priority, staff escalation rank precedes original request age. Equal ranks and
+unranked requests remain oldest-first. Decline, hold expiration, and
+reassignment preserve the original request time.
+
+Current automatic offers do not guarantee that ordering across the complete
+queue: only the first 100 available requests by priority and original age are
+fetched before escalation ordering is applied. A newer escalated request outside
+that set can be delayed behind older same-priority work. Valid pending offers
+are retained and preferred-driver holds are selected separately. See
+[TECHNICAL.md](./TECHNICAL.md#dispatch-offer-selection) for the implementation
+boundary and [#66](https://github.com/spizeck/saba-water-delivery/issues/66) for
+the runtime follow-up.
 
 Drivers still receive only ONE offer at a time — priority changes which
 request that is, never how many they see.
@@ -771,8 +777,9 @@ anything.
    hidden.
 3. The dispatcher sees every outstanding request still waiting for a
    driver (not yet claimed by anyone), by default in the same
-   fairness order used everywhere else — highest priority first,
-   oldest first within a priority level. The dispatcher may select any
+   canonical comparator order — priority, then staff override rank, then
+   original age. Unlike automatic offers, this selection fetch has no
+   corresponding 100-request candidate limit. The dispatcher may select any
    subset, in any order, for genuine operational reasons.
 4. If a selected request is currently held for a **different**
    resident's preferred driver, this is shown clearly and the

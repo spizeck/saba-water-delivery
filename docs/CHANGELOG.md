@@ -221,8 +221,9 @@ Prelaunch cleanup pass:
 - Added "View Open Batches" dashboard button.
 - Dispatcher/admin can now mark individual batch loads and ordinary
   `claimed` requests as delivered with an audit note.
-- New dispatcher escalation action that moves a request ahead in the
-  queue without rewriting its original request timestamp.
+- New dispatcher escalation action that records a within-priority override
+  without rewriting the original request timestamp. See the current limitation
+  note below; this entry does not guarantee complete-queue offer ordering.
 - Dispatcher-visible warning when a customer has 3 or more requests in
   the last 7 days (now shown during manual request creation and on the
   request detail page).
@@ -230,7 +231,11 @@ Prelaunch cleanup pass:
   visible on mobile.
 - Manual dispatch escalation (`Escalate` on request detail) sorts
   ahead within the same priority without mutating `requestedAt`; multiple
-  escalated requests stay oldest-first within equal priority.
+  escalated requests stay oldest-first within equal priority among fetched
+  candidates. **Clarification recorded 2026-09-12:** automatic offers fetch up
+  to 100 available requests by priority/age before applying the comparator,
+  so newer escalated work outside that set can be omitted. See
+  [#66](https://github.com/spizeck/saba-water-delivery/issues/66).
 - Canonical village list enforced across forms, WhatsApp, and server
   validation; legacy spellings are no longer accepted for new data.
 - `scripts/migrate-villages.mjs` one-time dry-run/write migration for

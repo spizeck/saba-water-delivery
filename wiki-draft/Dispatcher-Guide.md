@@ -8,7 +8,7 @@ Open the Dispatcher portal and review new requests, preferred-driver holds, agin
 
 Priority is **Critical, then Urgent, then Normal**. Vulnerable circumstances or a self-reported critical situation produce an initial Critical priority; otherwise it is Normal. Urgent is a staff override. Staff should assess the explanation and circumstances rather than treating priority as a promise of a delivery time.
 
-**Change Priority** changes the priority category and requires a reason. **Escalate** moves a request ahead within its existing category and also requires a reason. Priority is considered first, staff ordering within the category next, and original request time resolves remaining ties. These actions are audited and preserve the submitted time. A decline, reassignment, or expired preference does not reset the request's age.
+**Change Priority** changes the priority category and requires a reason. **Escalate** records a request to move ahead within its existing category and also requires a reason. Priority is considered first, staff ordering within the category next, and original request time resolves remaining ties. This describes the intended comparator order. Automatic offers first fetch up to 100 available requests by priority and original age, then apply escalation ordering only within that set. A newer escalated request outside it can remain behind older same-priority work, and valid pending offers are not replaced by escalation. Check assignment progress and use the supported manual assignment or Delivery Run tools when intervention is needed. These actions are audited and preserve the submitted time. A decline, reassignment, or expired preference does not reset the request's age.
 
 ## Enter and edit requests
 
