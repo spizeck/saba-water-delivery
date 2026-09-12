@@ -68,8 +68,14 @@ export function findStaleDriverLocks(drivers, requestsById) {
 /**
  * Claimed requests whose driver assignment is inconsistent: no
  * `assignedDriverId`, an `assignedDriverId` with no matching (non-archived)
- * driver registry entry, or a driver whose `activeRequestId` does not point
- * back to the request it is claimed for.
+ * driver registry entry, or a NON-batch claimed request whose driver's
+ * `activeRequestId` does not point back to it.
+ *
+ * The back-pointer check is skipped for batch (Delivery Run) loads on purpose:
+ * `createDispatchBatch()` deliberately leaves `driverRegistry.activeRequestId`
+ * unchanged so a driver can hold several batch loads at once (the documented
+ * exception to the one-active-request lock — see TECHNICAL.md "Batch Dispatch").
+ * Requiring the back-pointer there would flag every valid batch as inconsistent.
  */
 export function findClaimedRequestDriverMismatches(requests, driversByUserId) {
   /** @type {RecoveryFinding[]} */
@@ -103,7 +109,9 @@ export function findClaimedRequestDriverMismatches(requests, driversByUserId) {
       });
       continue;
     }
-    if (driver.activeRequestId !== request.id) {
+    // Batch loads intentionally do not set the driver's single-active-request
+    // lock, so only require the back-pointer for non-batch claimed requests.
+    if (!request.dispatchBatchId && driver.activeRequestId !== request.id) {
       findings.push({
         category: "claimed_request_driver_mismatch",
         id: request.id,

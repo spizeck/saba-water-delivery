@@ -342,8 +342,11 @@ never against production as a mutation, since it only reads:
 # Local, no cloud cost: run against the Firestore emulator (empty → 0 findings).
 firebase emulators:exec --only firestore "node scripts/verify-recovery.mjs"
 
-# Against a restored/isolated project (read-only service-account credentials):
-FIREBASE_SERVICE_ACCOUNT_KEY='<service-account-json>' npm run verify:recovery
+# Against a restored named database in an isolated/test project. Credentials come
+# from a key FILE (never inline the JSON on the command line). Pass the database
+# name so you validate the restore, not (default).
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
+  node scripts/verify-recovery.mjs --database=recovery-<YYYYMMDD>
 ```
 
 It exits non-zero when it finds inconsistencies, so a restore drill can gate on

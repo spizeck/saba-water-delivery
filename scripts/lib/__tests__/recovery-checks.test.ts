@@ -136,6 +136,69 @@ describe("runRecoveryChecks", () => {
     );
   });
 
+  it("does NOT flag a valid batch (Delivery Run) load whose driver lock differs", () => {
+    // Batch dispatch deliberately leaves activeRequestId unchanged, so a
+    // driver can hold several batch loads. Neither a null nor a different
+    // activeRequestId is an inconsistency for a batch-claimed request.
+    const { findings } = runRecoveryChecks({
+      drivers: [
+        { id: "reg-1", linkedUserId: "driver-1", activeRequestId: null },
+      ],
+      requests: [
+        {
+          id: "req-1",
+          status: "claimed",
+          assignedDriverId: "driver-1",
+          customerId: null,
+          dispatchBatchId: "batch-1",
+        },
+        {
+          id: "req-2",
+          status: "claimed",
+          assignedDriverId: "driver-1",
+          customerId: null,
+          dispatchBatchId: "batch-1",
+        },
+      ],
+      batches: [
+        {
+          id: "batch-1",
+          originalRequestIds: ["req-1", "req-2"],
+          status: "active",
+        },
+      ],
+      users: [],
+    });
+    expect(
+      findings.filter((f) => f.category === "claimed_request_driver_mismatch"),
+    ).toEqual([]);
+  });
+
+  it("still flags a batch load assigned to a non-existent driver", () => {
+    const { findings } = runRecoveryChecks({
+      drivers: [],
+      requests: [
+        {
+          id: "req-1",
+          status: "claimed",
+          assignedDriverId: "ghost",
+          customerId: null,
+          dispatchBatchId: "batch-1",
+        },
+      ],
+      batches: [
+        { id: "batch-1", originalRequestIds: ["req-1"], status: "active" },
+      ],
+      users: [],
+    });
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        category: "claimed_request_driver_mismatch",
+        id: "req-1",
+      }),
+    );
+  });
+
   it("detects a delivery run pointing at a missing request", () => {
     const { findings } = runRecoveryChecks({
       drivers: [],

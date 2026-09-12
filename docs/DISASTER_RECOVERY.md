@@ -254,15 +254,24 @@ overwrite data are labelled DESTRUCTIVE**.
 
 ### 6.3 Temporarily stop writes where appropriate
 
-There is no built-in maintenance mode. To prevent further corruption during a
-serious incident, an administrator can, as a deliberate and **DESTRUCTIVE-to-
-availability** step:
+There is no built-in maintenance mode. **Firestore security rules are NOT a
+server write freeze:** the application's trusted server paths (server actions,
+the WhatsApp webhook, the continuity cron) write through the Firebase Admin SDK,
+which **bypasses** client security rules. Deploying deny-all
+`firestore.rules` blocks browser/client access only — the running app keeps
+writing. Do **not** believe the database is frozen after only deploying deny-all
+rules.
 
-- Pause the Vercel production deployment (Vercel dashboard) so the app cannot
-  write, **or**
-- Temporarily tighten `firestore.rules` to deny writes and deploy them
-  (`firebase deploy --only firestore:rules`), then revert after recovery.
+To actually prevent further corruption during a serious incident, as a
+deliberate and **DESTRUCTIVE-to-availability** step, pause or disable **every
+write-capable production surface**:
 
+- Pause/disable the Vercel production deployment (Vercel dashboard) so server
+  actions and API routes stop, **and**
+- Disable the WhatsApp webhook and any scheduled jobs (Vercel cron) so no
+  trusted background write continues.
+
+Confirm the chosen control blocks Admin SDK writes before relying on it.
 Communicate the freeze through the normal channel and keep deliveries moving
 with the continuity report per `INCIDENT_RECOVERY.md`.
 
@@ -297,20 +306,51 @@ gcloud firestore import gs://<BACKUP_BUCKET>/pitr-<YYYYMMDD-HHMM> \
   --database=recovery-<YYYYMMDD> --project=saba-water-delivery
 ```
 
-### 6.6 Validate the restored data (§12)
+### 6.6 Validate the restored data (§11)
 
-Run the post-restore validation checklist and the read-only validator against
-the **recovery** database before considering a switch.
+Run the post-restore validation checklist and the read-only validator **against
+the recovery database you just created** — not `(default)`. Pass its name so the
+validator reads the right database (otherwise it reads `(default)` and can give a
+false zero-finding pass):
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
+  node scripts/verify-recovery.mjs --database=recovery-<YYYYMMDD>
+```
 
 ### 6.7 Recover Auth if needed (§7) and Storage if used (§8)
 
 ### 6.8 Switch service to the recovered data
 
-Only after validation passes and the incident owner approves. Point the app at
-the recovered database (update the relevant Vercel environment variable /
-Firebase database selection) or promote the recovered database per your Firebase
-setup. Keep the damaged database until the incident is fully resolved and
-audited.
+Only after validation passes and the incident owner approves. **The app reads
+and writes one Firestore database, selected by `FIREBASE_DATABASE_ID` (default
+`(default)`); client-side Firestore is not used for data (see §1), so this
+server-side selection alone governs which database the deployed app serves.**
+There are two supported ways to make production use the validated data — keep
+the damaged database untouched until the incident is fully resolved and audited:
+
+- **Point the app at the named recovery database (fastest).** Set
+  `FIREBASE_DATABASE_ID=recovery-<YYYYMMDD>` in the Vercel Production environment
+  and redeploy. The app now serves the validated restore. (Later, you may
+  consolidate back onto `(default)` with the import step below during a planned
+  maintenance window.)
+- **Restore back into `(default)` (consolidate).** A managed restore cannot
+  overwrite the existing `(default)` in place, so export the validated data and
+  import it into `(default)` — **[DESTRUCTIVE: import overwrites documents with
+  matching paths in `(default)`]** — during a write freeze (§6.3):
+
+  ```bash
+  gcloud firestore export gs://<BACKUP_BUCKET>/validated-<YYYYMMDD> \
+    --database=recovery-<YYYYMMDD> --project=saba-water-delivery
+  gcloud firestore import gs://<BACKUP_BUCKET>/validated-<YYYYMMDD> \
+    --database='(default)' --project=saba-water-delivery   # [DESTRUCTIVE]
+  ```
+
+  Then clear any `FIREBASE_DATABASE_ID` override so the app is back on
+  `(default)`.
+
+Re-run the validator (§6.6, without `--database`, or with `--database='(default)'`)
+after a consolidation to confirm `(default)` is consistent before resuming.
 
 ### 6.9 Rotate credentials if compromise is suspected (§10)
 
@@ -454,6 +494,7 @@ what must exist for the app to run, and where the authoritative copy lives.
 | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Meta App Dashboard → WhatsApp | **Rotate/recover** in Meta; re-set the webhook verify token |
 | `CRON_SECRET` | Chosen value stored only in Vercel | **Re-generate** and set in Vercel (Vercel Cron uses it) |
 | `RATE_LIMIT_HASH_SECRET` | Chosen value stored only in Vercel (Production and Preview) | **Re-generate** and set; rotating it harmlessly resets in-flight rate-limit windows |
+| `FIREBASE_DATABASE_ID` | Not normally set (app uses `(default)`); a recovery override only | Set only to point the app at a named recovery database during recovery (§6.8); clear it once consolidated back to `(default)` |
 | `LOG_LEVEL`, `CSP_REPORT_ONLY` | Optional; defaults documented in `.env.example` | Re-enter if used |
 
 - **Authoritative copies live in Vercel** (project → Settings → Environment
@@ -486,22 +527,36 @@ Checks (the important cross-document invariants after a restore):
   request that is missing, reassigned, or no longer `claimed` (mirrors the
   runtime self-healing rule in `activeRequestValidation.ts`).
 - **Claimed request / driver mismatch** — a `claimed` request with no
-  `assignedDriverId`, an `assignedDriverId` with no (non-archived) driver
-  registry entry, or a driver whose `activeRequestId` does not point back.
+  `assignedDriverId`, or an `assignedDriverId` with no (non-archived) driver
+  registry entry; and, for **non-batch** claimed requests only, a driver whose
+  `activeRequestId` does not point back. (Batch/Delivery-Run loads deliberately
+  do not set the single-active-request lock, so they are not flagged for that.)
 - **Delivery-run membership** — a `dispatchBatches.originalRequestIds` entry
   referencing a missing request, or a request whose `dispatchBatchId` points at
   a missing batch.
 - **Orphaned ownership** — a registered request (`customerId` set) whose
   `users/{uid}` document is missing.
 
-Run it against the recovery database or an emulator drill (see §13), never as a
-"fix" — remediation uses the targeted tools in §5:
+Run it against the **recovery database** (pass its name — see below) or an
+emulator drill (see §12), never as a "fix" — remediation uses the targeted tools
+in §5. Provide credentials from a key **file** via Application Default
+Credentials (or `--service-account-file`); **never inline the service-account
+JSON on the command line** — it would be recorded in shell history and the
+process list:
 
 ```bash
-# Against a restored/isolated project (read-only service-account credentials):
-FIREBASE_SERVICE_ACCOUNT_KEY='<service-account-json>' node scripts/verify-recovery.mjs
-# or: npm run verify:recovery   (with the same env provided)
+# Against a restored named database in an isolated/test project:
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
+  node scripts/verify-recovery.mjs --database=recovery-<YYYYMMDD>
+# or, equivalently:
+node scripts/verify-recovery.mjs \
+  --service-account-file=/path/to/key.json --database=recovery-<YYYYMMDD>
+# npm run verify:recovery accepts the same env/args; omit --database to read (default).
 ```
+
+The `GOOGLE_APPLICATION_CREDENTIALS` value is a **file path**, not the secret
+itself; keep the key file readable only by the operator and delete it when the
+drill/recovery is complete. Do not paste the key's contents into a terminal.
 
 ### Manual validation checklist
 
