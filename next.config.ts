@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import { buildSecurityHeaders } from "./src/lib/security/headers";
+
 // pdfkit v0.20+ ships its Base-14 font metrics as dynamically required
 // `./standard-fonts/*.cjs` modules (plus a shared `chunks` file), while
 // the ICC color profile and legacy AFM files remain under `./data/`.
@@ -15,20 +17,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Canonical browser security headers (CSP, COOP, Referrer-Policy,
+        // X-Content-Type-Options, X-Frame-Options, Permissions-Policy, HSTS).
+        // Single source of truth: src/lib/security/headers.ts.
         source: "/:path*",
-        headers: [
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "X-Frame-Options", value: "DENY" },
-          {
-            key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
-          },
-          {
-            key: "Strict-Transport-Security",
-            value: "max-age=31536000; includeSubDomains",
-          },
-        ],
+        headers: buildSecurityHeaders(),
       },
       {
         source: "/sw.js",

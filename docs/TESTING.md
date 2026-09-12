@@ -89,6 +89,144 @@ What CI intentionally does **not** do:
   verifies code correctness; Vercel Preview verifies deployment/render
   behavior.
 
+## End-to-end tests (Playwright)
+
+Browser-level regression coverage for the highest-value real user journeys,
+run against **local Firebase emulators** with synthetic data — never
+production Firebase, credentials, email, or WhatsApp.
+
+### Running locally
+
+```bash
+# One-time: install the Chromium browser Playwright drives.
+npx playwright install chromium
+
+# Run the whole suite (starts the Auth + Firestore emulators, builds and
+# serves the app in emulator mode, seeds data, runs the tests, tears down).
+npm run test:e2e
+```
+
+You need a **JVM** on your PATH (the Firestore emulator requires Java, same as
+`npm run test:rules`). `npm run test:e2e` wraps `playwright test` in
+`firebase emulators:exec --project demo-saba-water-delivery --only auth,firestore`,
+so the emulators are running and their host variables are set for the app and
+the seed step.
+
+Other scripts:
+
+```bash
+npm run test:e2e:ui      # Playwright UI mode (watch/inspect)
+npm run test:e2e:headed  # run with a visible browser
+npm run test:e2e:report  # open the last HTML report
+```
+
+`npm run test:e2e` is intentionally **not** part of `npm run check` — it is a
+separate, heavier, emulator-backed gate (its own CI check, below).
+
+### How authentication works (no OAuth, no bypass)
+
+Tests sign in through the **real login UI** using the app's email/password
+provider pointed at the **Firebase Auth emulator** (`loginAs()` in
+`e2e/support/auth.ts`). That exercises the entire real auth path —
+`signInWithEmailAndPassword` → `getIdToken()` → `POST /api/auth/session` →
+session cookie → server role check — with only the identity provider swapped
+for the local emulator. Live Google OAuth is **not** automated (it remains a
+manual smoke test). There is no test-only auth bypass: the client connects to
+the emulator only when `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` is set (never
+in a production build), and the Admin SDK enters emulator mode only when
+`FIREBASE_AUTH_EMULATOR_HOST`/`FIRESTORE_EMULATOR_HOST` are set — with a hard
+guard (`src/lib/firebase/admin.ts`) that refuses emulator mode in Vercel
+Production/Preview.
+
+### Test data, roles, and isolation
+
+- **Seeded roles** (`e2e/support/config.ts`): `resident`, `driver`,
+  `dispatcher`, and `admin` — deterministic uids/emails/passwords that only
+  ever exist in the local Auth emulator. The resident has a complete canonical
+  profile; the driver has a linked Driver Registry entry (online, eligible)
+  with a meter at the default fill station.
+- **Seeding** (`e2e/support/seed.ts`) writes plain documents via the Admin SDK
+  against the emulator. Global setup (`e2e/global-setup.ts`) clears the
+  emulators and seeds the baseline once; each spec that mutates shared state
+  calls `resetToBaseline()` in `beforeEach`, and per-test entities (water
+  requests, delivery runs) use unique ids. Tests are independent and do not
+  depend on ordering.
+- **Safety guard** (`e2e/support/safety.ts`, mandatory): every seed/reset and
+  global setup asserts the Auth + Firestore emulator hosts are set, the project
+  id is a `demo-` project, and we are not in a deployed Vercel environment —
+  and fails loudly otherwise. It is impossible for the suite to touch
+  production.
+- **External integrations**: Resend and WhatsApp/Meta are never called — the
+  covered flows use server-side state (e.g. delivery confirmation navigates the
+  authenticated review route from seeded state rather than a real email link),
+  so no test-only email/WhatsApp subsystem is needed.
+
+### What is covered
+
+`e2e/tests/`:
+
+- **route-protection** — `/resident`, `/driver`, `/dispatcher` redirect
+  unauthenticated visitors to login; a deep review link preserves `returnTo`.
+- **auth** — resident/dispatcher/driver establish a session through the real
+  login flow; a resident is denied the dispatcher portal (`/access-denied`);
+  logout clears access and back-navigation cannot reopen the portal.
+- **resident-request** — 1-load happy path with notes (becomes the active
+  request; Firestore state verified) and a 2-load quantity check.
+- **resident-profile** — a canonical village chosen and saved stays selected
+  after the server action re-render and a full reload (the known remount bug).
+- **dispatcher-request** — search an existing resident, select, "Change"
+  requestor, review, and create; asserts a dispatcher-sourced request with the
+  normal-urgency default.
+- **dispatcher-assignment** — from only an unassigned `available` request (no
+  seeded claimed state), a dispatcher assigns an eligible driver through the real
+  `/dispatcher/<id>` "Assign driver" UI, then that driver signs in and sees the
+  request in their open work with the correct requestor/village/quantity —
+  proving the dispatcher→driver handoff. Direct assign is used because it is the
+  supported path for handing one request to one driver.
+- **driver-workflow** — a claimed request is seeded; the driver records
+  collection at the default station, is blocked from delivering until all loads
+  are collected, and marks delivered (plus a 2-load 1/2 → 2/2 progression).
+- **resident-confirmation** — a delivered request is confirmed from the review
+  route (→ `confirmed`), and a second test reports a problem with a reason
+  (→ `disputed`, with the dispute reason persisted on the `customer_disputed`
+  audit event).
+- **delivery-run** — a run with a claimed + a delivered member is opened by a
+  dispatcher (a delivered/awaiting-confirmation item does not block remaining
+  work), and the run-sheet PDF endpoint returns a PDF.
+- **health-security** — `/api/health` returns 200, `/api/readiness` reports
+  `ready` against the local Firestore, and page responses carry the CSP header.
+
+### Configuration
+
+`playwright.config.ts`: Chromium only; `workers: 1` (serial — the suite shares
+emulator state and the real session flow); `retries: 0` locally / `1` in CI (a
+retry never excuses a genuinely flaky test); `trace: retain-on-failure`,
+`screenshot: only-on-failure`; the HTML report is written to
+`playwright-report/`. No arbitrary sleeps are used — assertions are web-first
+(`toBeVisible`, `toHaveURL`, `waitForURL`).
+
+### CI
+
+`.github/workflows/e2e.yml` runs a single job, **playwright** (required status
+check name **`E2E / playwright`**). It sets up Node 24 + Temurin JVM, installs
+Playwright Chromium (`--with-deps`), and runs `npm run test:e2e`; the HTML
+report is uploaded as an artifact. It is a **separate** check from
+`CI / verify`, which stays unchanged, so an E2E failure is easy to isolate.
+Whether `E2E / playwright` becomes a **required** check in branch protection is
+a deliberate follow-up decision once it has proven stable on `main` — this
+workflow does not change branch-protection expectations on its own. CI uses no
+production secrets and never contacts a live Google account.
+
+### What this suite protects (and what it does not)
+
+It meaningfully guards, at the browser level: Next.js client/server routing and
+navigation, React rendering of the critical forms, Firebase client SDK sign-in
+and Firebase Admin/session behavior, CSS/UI regressions in the covered flows,
+auth/authorization boundaries, and the run-sheet PDF route. It does **not**
+replace: live Google OAuth (the popup), real Resend email delivery, real
+WhatsApp/Meta delivery, PWA install behavior, or visual/pixel regressions —
+those remain the manual preview smoke test below.
+
 ## Unit tests
 
 Vitest covers the pure domain logic extensively, including:
@@ -133,8 +271,54 @@ Vitest covers the pure domain logic extensively, including:
   email/phone/tokens/secrets and nested objects, safe error serialization
   (provider error objects are never spread), request/correlation ID
   generation and validation, that the logger never throws and always emits
-  JSON, and that representative critical-path logs do not leak request
-  notes, delivery directions, or raw WhatsApp message content.
+  JSON, that representative critical-path logs do not leak request notes,
+  delivery directions, or raw WhatsApp message content, and that
+  `security.*` events carry only safe metadata.
+- Browser security headers (`src/lib/security/__tests__/`): the generated
+  Content-Security-Policy and companion headers as structured directives — a
+  restrictive `default-src`/`base-uri`/`object-src`/`frame-ancestors`, no
+  wildcards in `script`/`connect`/`frame` sources, no `'unsafe-eval'` in
+  production, the required Firebase/Google auth origins present, server-only
+  (Meta/Resend/Firestore) and GA4 origins absent, dev/preview allowances not
+  leaking into production, the `CSP_REPORT_ONLY` toggle, COOP
+  `same-origin-allow-popups` with no COEP, and intentional Permissions-Policy
+  and HSTS. CSP is a browser-runtime concern, so these unit tests are backed by
+  the required Vercel **preview smoke test** in [`DEPLOYMENT.md`](./DEPLOYMENT.md)
+  (an automated browser test arrives with issue #34's Playwright work).
+- Rate limiting (`src/lib/security/__tests__/rateLimit.test.ts`): the
+  fixed-window algorithm (below/at/above limit, window reset, server-supplied
+  time), identifier and policy isolation, IP normalization, fail-open on a
+  storage error (with an operational log and no false rejection event), the
+  `security.rate_limit.exceeded` event carrying only the identifier *type*
+  (never a raw IP/value), `enforceRateLimit` throwing a 429/`RATE_LIMITED`
+  error with `Retry-After`, and trusted-IP extraction. The Firestore store's
+  transaction **atomicity under concurrency** is proven against the emulator in
+  `firestore.rateLimit.emulator.test.ts` (run by `npm run test:rules`), and
+  `firestore.rules.test.ts` confirms the `rateLimits` collection is
+  deny-by-default for clients.
+- Error handling (`src/lib/errors/__tests__/`, `src/lib/http/__tests__/`):
+  `AppError` category/code/status mapping, `normalizeError` for known/unknown
+  errors, the flat client error body (public message vs. generic; no raw
+  exception message, stack, Firebase, or provider detail; `requestId`
+  included), preservation of 4xx statuses, and the `withApiRoute` boundary —
+  an unexpected throw yields a safe 500 with the request ID in the header and
+  body, a thrown `AppError` yields its intended status, `redirect()` still
+  propagates, and one failure is logged exactly once.
+- Health and readiness (`src/lib/health/__tests__/readiness.test.ts`,
+  `src/app/api/health/__tests__/route.test.ts`,
+  `src/app/api/readiness/__tests__/route.test.ts`): liveness returns a boring
+  `{ status: "ok" }` 200 with an `x-request-id` header and no config/secrets;
+  readiness is 200 `ready` when the (mocked) Firestore probe succeeds and **503**
+  `not_ready` when it fails or Firebase Admin is unconfigured; the readiness body
+  is only categorical (`ok`/`unavailable`), so a raw Firestore exception message,
+  stack trace, `FIREBASE_ADMIN_PRIVATE_KEY`, project id, service-account email,
+  and the `_health` probe path **never** reach the client; the default probe
+  issues a single read (`.get()`) with **no** `set`/`add`/`update`/`delete`
+  (proving no production write); an optional-integration outage does not fail
+  readiness; a successful probe emits no error/warn logs while a failure emits
+  exactly one sanitized `health.readiness.failed` event; and `withTimeout` bounds
+  a hung probe. These run in the plain `vitest` suite — no Firebase emulator,
+  network, or production project is used.
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently
@@ -326,3 +510,21 @@ any of these areas.
 - Confirm the nightly cron route responds successfully when invoked
   with the correct `CRON_SECRET` bearer token (and is rejected without
   one, if `CRON_SECRET` is configured).
+
+### Health and readiness
+
+- `curl -i https://<deployment>/api/health` returns **200** with
+  `{"status":"ok"}` and an `x-request-id` response header.
+- `curl -i https://<deployment>/api/readiness` returns **200** with
+  `{"status":"ready","checks":{"app":"ok","firestore":"ok"}}` on a
+  correctly configured deployment.
+- Confirm neither response body contains any project id, service-account
+  email, private key, environment value, Firestore path, stack trace, or
+  error message.
+- Confirm normal app login, the resident portal, and the dispatcher portal
+  still load, and that PDFs still generate (health work touches none of
+  these paths).
+- Optional (local/emulator only): simulate Firestore being unavailable and
+  confirm `/api/readiness` returns **503** with
+  `{"status":"not_ready","checks":{"app":"ok","firestore":"unavailable"}}`
+  while `/api/health` stays 200. Do **not** break production to test this.

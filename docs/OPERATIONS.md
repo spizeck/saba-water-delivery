@@ -192,16 +192,16 @@ Firestore keeps.
 
 Every server request is tagged with a random **request ID**, included on
 every log line for that request and returned to the browser in the
-`x-request-id` response header (present on the responses the app returns,
-including handled errors). To diagnose a specific user-reported failure:
+`x-request-id` response header. When an unexpected error occurs, the same
+ID is also included in the JSON error body as `requestId`, so it is
+available even for a server fault. To diagnose a specific user-reported
+failure:
 
 1. Ask the reporter (or read from their browser's network tab) for the
-   `x-request-id` value on the failed request, if available. (An
-   unexpected server crash produces a generic 500 without this header —
-   in that case skip to step 2 and locate the request in the logs by its
-   route and the time it happened; the request ID is still logged there.)
-2. In Vercel → Logs, search for that ID (or the route/time) to see every
-   log line for that request, including the safe error name/code.
+   `x-request-id` header, or the `requestId` shown in the error response.
+2. In Vercel → Logs, search for that ID (or, if it is unavailable, the
+   route and the time it happened) to see every log line for that
+   request, including the safe error name/code.
 3. Each log line names a stable **event** (for example
    `whatsapp.message.processing_failed`,
    `report.continuity.email_failed`, `auth.session.verify_failed`) and
@@ -212,6 +212,126 @@ resident's name, phone, email, delivery directions, request notes, or
 any secret or access token. If you need the full business detail of a
 request (who, what, when), use the in-app request history / audit trail,
 not the logs.
+
+### Checking whether the app is up (health & readiness)
+
+Before digging into logs, you can confirm at a glance whether the
+deployment is up and able to serve. Two endpoints answer this and expose
+nothing sensitive:
+
+- **`/api/health`** — _is the app running?_ A healthy deployment returns
+  HTTP **200** with `{"status":"ok"}`. This stays 200 even if email,
+  WhatsApp, or the database is having trouble — it only tells you the app
+  itself is responding.
+- **`/api/readiness`** — _can the app actually serve requests?_ It checks
+  the database (Firebase/Firestore) the system depends on. A ready app
+  returns **200** with `{"status":"ready","checks":{"app":"ok","firestore":"ok"}}`.
+  If the app is running but cannot reach the database, it returns **503**
+  with `"firestore":"unavailable"`.
+
+You can check them from any browser or terminal:
+
+```bash
+curl -i https://<deployment>/api/health
+curl -i https://<deployment>/api/readiness
+```
+
+What the results mean:
+
+- **Both 200** — the app is up and able to serve. If users still report
+  problems, it is not a whole-app outage; use the request-ID steps above.
+- **`/api/health` 200 but `/api/readiness` 503** — the app is running but
+  cannot reach the database. This is a **Firebase/Firestore** problem (or a
+  missing/incorrect `FIREBASE_ADMIN_*` configuration), not a crash of the
+  app itself. Check Firebase status and the deployment's environment
+  variables.
+- **`/api/health` not returning 200** — the deployment itself is down or
+  mid-deploy. Check Vercel's deployment status.
+
+These endpoints are safe to point an external uptime monitor at. They are
+a quick up/down signal only — they are **not** a substitute for the full
+manual smoke test in [`TESTING.md`](./TESTING.md) after a release.
+
+### Security events
+
+A few log lines use the `security.*` prefix and flag noteworthy access
+failures worth monitoring: `security.authorization.denied` (a signed-in
+user tried to reach a portal/action they are not permitted to use),
+`security.webhook.signature_invalid` (an inbound WhatsApp webhook failed
+signature verification — a forged or misconfigured request), and
+`security.cron.unauthorized` (the nightly report endpoint was called
+without the correct secret). An occasional one is normal (a mistaken URL,
+a stale cron secret); a sustained burst from one source is worth a closer
+look. These carry only safe identifiers (an opaque user ID, role names),
+never personal data or secrets. Routine "not signed in" redirects are
+deliberately NOT flagged as security events.
+
+### Diagnosing a blocked resource (CSP violation)
+
+The app sends a strict Content-Security-Policy. If a page feature stops
+working after a browser resource is blocked, the browser's **devtools
+Console** shows a `Content Security Policy` violation naming the blocked
+URL and the directive that blocked it (e.g. "Refused to connect to
+'https://…' because it violates … connect-src"). To resolve one:
+
+1. Read the violation: note the blocked origin and the directive.
+2. Decide whether it is legitimate (a real dependency the app added) or
+   unwanted (an injected/third-party resource the policy correctly
+   blocked). If unwanted, leave the policy as-is.
+3. If legitimate, add the exact origin to that directive in
+   `src/lib/security/headers.ts` (never a wildcard) and redeploy. The CSP
+   rationale is in [`../TECHNICAL.md`](../TECHNICAL.md) "Browser security
+   headers / CSP".
+4. For a cautious change, an admin can set `CSP_REPORT_ONLY=1` in Vercel
+   and redeploy so violations are reported to the console without blocking
+   anything, then remove it to re-enforce once the policy is confirmed.
+
+Never disable or broaden the CSP just to silence a violation — determine
+which browser resource actually needs the allowance.
+
+### Rate limiting (abuse protection)
+
+A few abuse-sensitive operations are rate limited to slow down automated
+abuse. This is separate from the app's business rules (a resident may
+still only have one active request, etc.). Quick reference for a
+maintainer:
+
+- **Which operations, and the thresholds?** Sign-in (`POST
+  /api/auth/session`, 50 per 5 min per IP), resident water-request
+  submission (10 per 10 min per resident), and delivery
+  confirm/dispute (20 per 10 min per resident). The exact numbers live in
+  one place — `RATE_LIMIT_POLICIES` in `src/lib/security/rateLimit.ts`.
+- **What is NOT limited, and why:** the WhatsApp webhook (protected by
+  signature + idempotency), the nightly cron (`CRON_SECRET`), PDF/report
+  downloads and other staff actions (authenticated staff), and account
+  invitations (staff-only). See TECHNICAL.md "Rate limiting".
+- **Where is the state? How long does it live?** In Firestore, collection
+  `rateLimits`, one opaque hashed document per counter, each with an
+  `expiresAt` ~24h after its window ends. It is server-only (residents,
+  drivers, and staff cannot read it).
+- **How do I spot a rate-limit rejection in Vercel logs?** Search the
+  Logs for the event `security.rate_limit.exceeded`; it names the `policy`
+  and the identifier `type` (never a raw IP/email/phone).
+- **A user reports being blocked (suspected false positive):** find their
+  `security.rate_limit.exceeded` events; if a legitimate user (or a shared
+  island IP for sign-in) is hitting a limit, raise that policy's `limit` (or
+  shorten its `windowMs`) in `RATE_LIMIT_POLICIES` and redeploy. Windows
+  are short, so an accidental block clears itself within minutes.
+- **Adjusting a policy requires a redeploy** (thresholds are in source, not
+  env). Changing them does not require touching any route.
+- **If Firestore is unavailable**, the limiter *fails open* — it logs
+  `rate_limit.storage_unavailable` and lets the request through, so a
+  Firestore outage never blocks water-delivery operations.
+- **If `RATE_LIMIT_HASH_SECRET` is missing on a deployed environment**, the
+  limiter is treated as unavailable and also *fails open*, logging a
+  high-severity `rate_limit.secret_missing` event on each check. This means
+  rate limiting is effectively **off** until the secret is set: if you see
+  that event, set `RATE_LIMIT_HASH_SECRET` in Vercel (Production and Preview
+  each need one) and redeploy. See [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+- **Firebase TTL:** cleanup of expired `rateLimits` documents relies on a
+  one-time Firestore TTL policy (see [`DEPLOYMENT.md`](./DEPLOYMENT.md)). If
+  it has not been configured, the app is still correct — expired counters
+  are ignored on read — the collection just retains a few stale documents.
 
 By default only `info` and above are logged in production. A maintainer
 can temporarily raise verbosity by setting the `LOG_LEVEL` environment
