@@ -368,6 +368,24 @@ export async function getRequestData(
 }
 
 /**
+ * Reads the audit events recorded under a request (`waterRequests/{id}/events`),
+ * optionally filtered by `type`. Used to assert that a UI action persisted the
+ * canonical event and metadata (e.g. the dispute reason) — never to mutate.
+ */
+export async function getRequestEvents(
+  requestId: string,
+  type?: string,
+): Promise<Record<string, unknown>[]> {
+  const snap = await db()
+    .collection("waterRequests")
+    .doc(requestId)
+    .collection("events")
+    .get();
+  const events = snap.docs.map((doc) => doc.data());
+  return type ? events.filter((e) => e.type === type) : events;
+}
+
+/**
  * Returns the most recent water request for a customer (raw data + id), or null.
  * Used by tests to assert that a UI submission persisted the expected Firestore
  * state without needing to know the generated request id.

@@ -177,11 +177,19 @@ Production/Preview.
 - **dispatcher-request** — search an existing resident, select, "Change"
   requestor, review, and create; asserts a dispatcher-sourced request with the
   normal-urgency default.
+- **dispatcher-assignment** — from only an unassigned `available` request (no
+  seeded claimed state), a dispatcher assigns an eligible driver through the real
+  `/dispatcher/<id>` "Assign driver" UI, then that driver signs in and sees the
+  request in their open work with the correct requestor/village/quantity —
+  proving the dispatcher→driver handoff. Direct assign is used because it is the
+  supported path for handing one request to one driver.
 - **driver-workflow** — a claimed request is seeded; the driver records
   collection at the default station, is blocked from delivering until all loads
   are collected, and marks delivered (plus a 2-load 1/2 → 2/2 progression).
 - **resident-confirmation** — a delivered request is confirmed from the review
-  route, moving it to `confirmed`.
+  route (→ `confirmed`), and a second test reports a problem with a reason
+  (→ `disputed`, with the dispute reason persisted on the `customer_disputed`
+  audit event).
 - **delivery-run** — a run with a claimed + a delivered member is opened by a
   dispatcher (a delivered/awaiting-confirmation item does not block remaining
   work), and the run-sheet PDF endpoint returns a PDF.
