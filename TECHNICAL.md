@@ -3,7 +3,7 @@
 This document describes the implemented technical architecture of Saba
 Water Delivery, developed for the Public Entity Saba. For project
 provenance, volunteer basis, and intended handover, see
-[`README.md`](../README.md).
+[`README.md`](./README.md).
 
 This guide is the authoritative reference for **current mechanics**. For the
 **reasoning** behind the significant architectural decisions — why the system is
@@ -735,6 +735,12 @@ loops without an unbounded read.
 ---
 
 # Batch Dispatch
+
+**Terminology:** the **user-facing name is "Delivery Runs"** (used in the
+resident/driver/dispatcher UI and guides); "Batch Dispatch" is the internal name
+retained in the code and data model (`dispatchBatches`, `DispatchBatch`,
+`dispatchBatchId`, `createDispatchBatch`) and in this technical section. The two
+refer to the same feature — see [ADR 0008](./docs/adr/0008-delivery-runs-batch-dispatch-exception.md).
 
 See PRODUCT.md "Batch Dispatch" for the product rationale. This is a
 deliberate, dispatcher-controlled EXCEPTION to the normal one-offer-

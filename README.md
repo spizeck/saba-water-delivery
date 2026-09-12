@@ -47,31 +47,39 @@ dependence on the original volunteer developer.
 ## Technology
 
 - Next.js (App Router) and TypeScript
-- Firebase Authentication (Google, Facebook, email/password)
-- Cloud Firestore (source of truth) and Firebase Storage
+- Firebase Authentication — Google and email/password (Facebook is scaffolded
+  but disabled/"Coming Soon" pending Meta verification)
+- Cloud Firestore (source of truth). Firebase Storage is provisioned with
+  deny-by-default rules but not yet used — photo upload is a future phase.
 - Vercel (hosting, cron)
 - Resend (transactional email)
 - Meta WhatsApp Business Platform / Cloud API (WhatsApp ordering)
 
 ## Documentation map
 
-| Document | Contents |
-| --- | --- |
-| [`PRODUCT.md`](./PRODUCT.md) | Authoritative business rules and product behavior. |
-| [`TECHNICAL.md`](./TECHNICAL.md) | Architecture, data model, and implementation reference. |
-| [`DEVIN.md`](./DEVIN.md) | Development guide, conventions, and build philosophy. |
-| [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) | Plain-English daily operations workflow for government staff. |
-| [`docs/ADMIN_GUIDE.md`](./docs/ADMIN_GUIDE.md) | How to manage users, the Driver Registry, and dispatch settings. |
-| [`docs/DISPATCHER_GUIDE.md`](./docs/DISPATCHER_GUIDE.md) | Practical guide to the dispatcher dashboard and daily tasks. |
-| [`docs/DRIVER_GUIDE.md`](./docs/DRIVER_GUIDE.md) | Simple guide for water delivery drivers. |
-| [`docs/INCIDENT_RECOVERY.md`](./docs/INCIDENT_RECOVERY.md) | What to do during outages or a suspected security incident. |
-| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup and data-recovery runbook (Firestore/Auth restore, drills). |
-| [`docs/adr/`](./docs/adr/README.md) | Architecture Decision Records — why the system is built the way it is. |
-| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | How to reproduce and configure the production deployment. |
-| [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) | Canonical Firestore collections and their fields/relationships. |
-| [`docs/TESTING.md`](./docs/TESTING.md) | Verification commands and a manual pre-deployment smoke test. |
-| [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md) | Every external service integration in one place. |
-| [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) | Production-facing changelog going forward. |
+Each document below is the **authoritative source** for its subject; other
+documents link to it rather than restating its rules. Find the right one by what
+you need to do:
+
+| I need to… | Document | Audience |
+| --- | --- | --- |
+| Understand the product rules and workflows | [`PRODUCT.md`](./PRODUCT.md) | Product / staff / developers |
+| Learn the architecture and implementation | [`TECHNICAL.md`](./TECHNICAL.md) | Developers |
+| Understand the Firestore data model | [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) | Developers |
+| Understand *why* a major decision was made | [`docs/adr/`](./docs/adr/README.md) | Developers / maintainers |
+| Work on the code (conventions, build philosophy) | [`DEVIN.md`](./DEVIN.md) | Developers / AI-assisted work |
+| Deploy or configure production (env vars, release flow, branch protection) | [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | Deployer / IT admin |
+| Run tests and verification | [`docs/TESTING.md`](./docs/TESTING.md) | Developers |
+| Operate production day to day | [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) | Government staff |
+| Respond to an outage or suspected security incident | [`docs/INCIDENT_RECOVERY.md`](./docs/INCIDENT_RECOVERY.md) | Operators / IT admin |
+| Back up or restore data after loss/corruption | [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | IT admin |
+| Manage users, the Driver Registry, and dispatch settings | [`docs/ADMIN_GUIDE.md`](./docs/ADMIN_GUIDE.md) | Administrators |
+| Use the dispatcher dashboard | [`docs/DISPATCHER_GUIDE.md`](./docs/DISPATCHER_GUIDE.md) | Dispatchers |
+| Use the driver app | [`docs/DRIVER_GUIDE.md`](./docs/DRIVER_GUIDE.md) | Drivers |
+| Understand external service integrations | [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md) | Developers / IT admin |
+| See what changed in production | [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) | Everyone |
+
+Security policy and reporting: [`SECURITY.md`](./SECURITY.md).
 
 ## Development quick start
 
@@ -92,19 +100,23 @@ Run the full non-destructive verification suite before opening a pull
 request:
 
 ```bash
-npm run check   # lint + typecheck + Vitest + production build (incl. PDFKit trace check)
+npm run check   # format:check + lint + typecheck + Vitest + production build (incl. PDFKit trace check)
 ```
 
-Individual steps are also available (`npm run lint`, `npm run typecheck`,
-`npm run test`, `npm run build`). The Firestore/Storage security-rules
-tests need the Firebase emulators and a JVM and are run separately:
+Individual steps are also available (`npm run format:check`, `npm run lint`,
+`npm run typecheck`, `npm run test`, `npm run build`). The Firestore/Storage
+security-rules tests and the Playwright end-to-end suite need the Firebase
+emulators and a JVM and are run separately:
 
 ```bash
-npm run test:rules
+npm run test:rules   # Firestore/Storage security-rules tests (emulators)
+npm run test:e2e     # Playwright end-to-end tests (Auth + Firestore emulators)
 ```
 
-Every pull request and push to `main` is verified by GitHub Actions (the
-`CI / verify` check). See [`docs/TESTING.md`](./docs/TESTING.md) for the
-full verification reference and CI details, [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
+Every pull request and push to `main` is verified by GitHub Actions. Two
+status checks are required on `main`: **`verify`** (workflow `CI`, displayed as
+`CI / verify`) and **`playwright`** (workflow `E2E`, displayed as
+`E2E / playwright`). See [`docs/TESTING.md`](./docs/TESTING.md) for the full
+verification reference and CI details, [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
 for environment variables, the release flow, and branch protection, and
 [`TECHNICAL.md`](./TECHNICAL.md) for architecture.
