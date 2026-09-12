@@ -3129,6 +3129,63 @@ conversation scratch state only.
 
 ---
 
+# End-to-end testing (Playwright)
+
+Browser-level regression coverage for the critical resident/dispatcher/driver
+journeys (issue #34). The operational details — how to run it, what is covered,
+CI — live in [docs/TESTING.md](./docs/TESTING.md) "End-to-end tests
+(Playwright)". This section records the architectural decisions.
+
+## Emulator-backed, never production
+
+The suite runs entirely against **local Firebase emulators** (Auth + Firestore)
+backed by a disposable `demo-saba-water-delivery` project, launched by
+`npm run test:e2e` (`firebase emulators:exec … "playwright test"`). It uses no
+production Firebase, no real credentials, and no external providers (Resend,
+WhatsApp/Meta). A mandatory safety guard (`e2e/support/safety.ts`) asserts the
+emulator hosts are set, the project id is a `demo-` project, and we are not in a
+deployed Vercel environment — every seed/reset fails closed otherwise.
+
+## Emulator mode in the Firebase clients
+
+Two small, guarded additions let the existing app talk to the emulators without
+weakening production:
+
+- **Admin SDK** (`src/lib/firebase/admin.ts`): when
+  `FIREBASE_AUTH_EMULATOR_HOST`/`FIRESTORE_EMULATOR_HOST` are set (the standard
+  Firebase convention, set only by `emulators:exec`), it initializes with just a
+  project id — the emulators ignore credentials — and treats itself as
+  configured. `assertNotDeployedEmulatorMode()` throws if emulator mode is ever
+  seen in Vercel Production/Preview, so a misconfiguration can never point the
+  trusted server at a local emulator.
+- **Client SDK** (`src/lib/firebase/client.ts`): when
+  `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` is present (build-time inlined, never
+  in a production build) it calls `connectAuthEmulator`/`connectFirestoreEmulator`
+  once. A production bundle contains no emulator connection.
+
+## Real auth, no bypass
+
+There is deliberately **no test-only authentication bypass**. Tests sign in
+through the real login form using the app's email/password provider against the
+Auth emulator, then the real `POST /api/auth/session` mints the session cookie
+that every server request re-verifies. Only the identity provider is swapped
+(emulator instead of live Google), so the suite gives genuine confidence in
+auth/session/routing changes. Live Google OAuth stays a manual smoke test.
+
+## Seeding and isolation
+
+Seed helpers (`e2e/support/seed.ts`) write plain documents in the shapes
+documented above (users, driverRegistry + meters, fillStations, waterRequests,
+dispatchBatches) via the Admin SDK against the emulator — they do not re-run
+business logic. Preconditions for the deeper flows (a claimed request, a
+delivered request, a delivery run) are seeded directly so each test drives only
+the specific UI under test. Global setup seeds a baseline once; specs reset to
+baseline between tests and use unique ids, so tests are independent and
+order-free. The suite runs serially (one worker) because it shares emulator
+state and the real session flow.
+
+---
+
 # Out of Scope for Initial Build
 
 Do not implement:

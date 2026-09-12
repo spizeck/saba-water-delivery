@@ -89,6 +89,144 @@ What CI intentionally does **not** do:
   verifies code correctness; Vercel Preview verifies deployment/render
   behavior.
 
+## End-to-end tests (Playwright)
+
+Browser-level regression coverage for the highest-value real user journeys,
+run against **local Firebase emulators** with synthetic data — never
+production Firebase, credentials, email, or WhatsApp.
+
+### Running locally
+
+```bash
+# One-time: install the Chromium browser Playwright drives.
+npx playwright install chromium
+
+# Run the whole suite (starts the Auth + Firestore emulators, builds and
+# serves the app in emulator mode, seeds data, runs the tests, tears down).
+npm run test:e2e
+```
+
+You need a **JVM** on your PATH (the Firestore emulator requires Java, same as
+`npm run test:rules`). `npm run test:e2e` wraps `playwright test` in
+`firebase emulators:exec --project demo-saba-water-delivery --only auth,firestore`,
+so the emulators are running and their host variables are set for the app and
+the seed step.
+
+Other scripts:
+
+```bash
+npm run test:e2e:ui      # Playwright UI mode (watch/inspect)
+npm run test:e2e:headed  # run with a visible browser
+npm run test:e2e:report  # open the last HTML report
+```
+
+`npm run test:e2e` is intentionally **not** part of `npm run check` — it is a
+separate, heavier, emulator-backed gate (its own CI check, below).
+
+### How authentication works (no OAuth, no bypass)
+
+Tests sign in through the **real login UI** using the app's email/password
+provider pointed at the **Firebase Auth emulator** (`loginAs()` in
+`e2e/support/auth.ts`). That exercises the entire real auth path —
+`signInWithEmailAndPassword` → `getIdToken()` → `POST /api/auth/session` →
+session cookie → server role check — with only the identity provider swapped
+for the local emulator. Live Google OAuth is **not** automated (it remains a
+manual smoke test). There is no test-only auth bypass: the client connects to
+the emulator only when `NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` is set (never
+in a production build), and the Admin SDK enters emulator mode only when
+`FIREBASE_AUTH_EMULATOR_HOST`/`FIRESTORE_EMULATOR_HOST` are set — with a hard
+guard (`src/lib/firebase/admin.ts`) that refuses emulator mode in Vercel
+Production/Preview.
+
+### Test data, roles, and isolation
+
+- **Seeded roles** (`e2e/support/config.ts`): `resident`, `driver`,
+  `dispatcher`, and `admin` — deterministic uids/emails/passwords that only
+  ever exist in the local Auth emulator. The resident has a complete canonical
+  profile; the driver has a linked Driver Registry entry (online, eligible)
+  with a meter at the default fill station.
+- **Seeding** (`e2e/support/seed.ts`) writes plain documents via the Admin SDK
+  against the emulator. Global setup (`e2e/global-setup.ts`) clears the
+  emulators and seeds the baseline once; each spec that mutates shared state
+  calls `resetToBaseline()` in `beforeEach`, and per-test entities (water
+  requests, delivery runs) use unique ids. Tests are independent and do not
+  depend on ordering.
+- **Safety guard** (`e2e/support/safety.ts`, mandatory): every seed/reset and
+  global setup asserts the Auth + Firestore emulator hosts are set, the project
+  id is a `demo-` project, and we are not in a deployed Vercel environment —
+  and fails loudly otherwise. It is impossible for the suite to touch
+  production.
+- **External integrations**: Resend and WhatsApp/Meta are never called — the
+  covered flows use server-side state (e.g. delivery confirmation navigates the
+  authenticated review route from seeded state rather than a real email link),
+  so no test-only email/WhatsApp subsystem is needed.
+
+### What is covered
+
+`e2e/tests/`:
+
+- **route-protection** — `/resident`, `/driver`, `/dispatcher` redirect
+  unauthenticated visitors to login; a deep review link preserves `returnTo`.
+- **auth** — resident/dispatcher/driver establish a session through the real
+  login flow; a resident is denied the dispatcher portal (`/access-denied`);
+  logout clears access and back-navigation cannot reopen the portal.
+- **resident-request** — 1-load happy path with notes (becomes the active
+  request; Firestore state verified) and a 2-load quantity check.
+- **resident-profile** — a canonical village chosen and saved stays selected
+  after the server action re-render and a full reload (the known remount bug).
+- **dispatcher-request** — search an existing resident, select, "Change"
+  requestor, review, and create; asserts a dispatcher-sourced request with the
+  normal-urgency default.
+- **dispatcher-assignment** — from only an unassigned `available` request (no
+  seeded claimed state), a dispatcher assigns an eligible driver through the real
+  `/dispatcher/<id>` "Assign driver" UI, then that driver signs in and sees the
+  request in their open work with the correct requestor/village/quantity —
+  proving the dispatcher→driver handoff. Direct assign is used because it is the
+  supported path for handing one request to one driver.
+- **driver-workflow** — a claimed request is seeded; the driver records
+  collection at the default station, is blocked from delivering until all loads
+  are collected, and marks delivered (plus a 2-load 1/2 → 2/2 progression).
+- **resident-confirmation** — a delivered request is confirmed from the review
+  route (→ `confirmed`), and a second test reports a problem with a reason
+  (→ `disputed`, with the dispute reason persisted on the `customer_disputed`
+  audit event).
+- **delivery-run** — a run with a claimed + a delivered member is opened by a
+  dispatcher (a delivered/awaiting-confirmation item does not block remaining
+  work), and the run-sheet PDF endpoint returns a PDF.
+- **health-security** — `/api/health` returns 200, `/api/readiness` reports
+  `ready` against the local Firestore, and page responses carry the CSP header.
+
+### Configuration
+
+`playwright.config.ts`: Chromium only; `workers: 1` (serial — the suite shares
+emulator state and the real session flow); `retries: 0` locally / `1` in CI (a
+retry never excuses a genuinely flaky test); `trace: retain-on-failure`,
+`screenshot: only-on-failure`; the HTML report is written to
+`playwright-report/`. No arbitrary sleeps are used — assertions are web-first
+(`toBeVisible`, `toHaveURL`, `waitForURL`).
+
+### CI
+
+`.github/workflows/e2e.yml` runs a single job, **playwright** (required status
+check name **`E2E / playwright`**). It sets up Node 24 + Temurin JVM, installs
+Playwright Chromium (`--with-deps`), and runs `npm run test:e2e`; the HTML
+report is uploaded as an artifact. It is a **separate** check from
+`CI / verify`, which stays unchanged, so an E2E failure is easy to isolate.
+Whether `E2E / playwright` becomes a **required** check in branch protection is
+a deliberate follow-up decision once it has proven stable on `main` — this
+workflow does not change branch-protection expectations on its own. CI uses no
+production secrets and never contacts a live Google account.
+
+### What this suite protects (and what it does not)
+
+It meaningfully guards, at the browser level: Next.js client/server routing and
+navigation, React rendering of the critical forms, Firebase client SDK sign-in
+and Firebase Admin/session behavior, CSS/UI regressions in the covered flows,
+auth/authorization boundaries, and the run-sheet PDF route. It does **not**
+replace: live Google OAuth (the popup), real Resend email delivery, real
+WhatsApp/Meta delivery, PWA install behavior, or visual/pixel regressions —
+those remain the manual preview smoke test below.
+
 ## Unit tests
 
 Vitest covers the pure domain logic extensively, including:

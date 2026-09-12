@@ -844,6 +844,30 @@ npm run test:rules
 `check` deliberately excludes `test:rules` (heavier, emulator-backed) so
 the everyday loop stays fast; CI runs both.
 
+## End-to-end tests (Playwright)
+
+Full reference in [docs/TESTING.md](./docs/TESTING.md) "End-to-end tests
+(Playwright)" and TECHNICAL.md "End-to-end testing (Playwright)". For
+contributors:
+
+- `npm run test:e2e` runs the browser suite against **local Firebase
+  emulators** (Auth + Firestore, `demo-` project) with synthetic data — never
+  production, no real credentials, no Resend/WhatsApp. Needs a JVM (like
+  `test:rules`) and a one-time `npx playwright install chromium`.
+- It is a **separate** CI check (**`E2E / playwright`**, `.github/workflows/e2e.yml`),
+  NOT part of `npm run check` or `CI / verify`. Keep it that way — do not fold
+  Playwright into `check`.
+- Tests sign in through the **real** login form (email/password against the Auth
+  emulator) → real `POST /api/auth/session`. There is **no auth bypass**; do not
+  add one. Emulator mode is enabled only by the emulator host env vars, guarded
+  to fail closed in Vercel Production/Preview.
+- Add new specs under `e2e/tests/`; seed preconditions with the helpers in
+  `e2e/support/seed.ts` (reset with `resetToBaseline()` in `beforeEach`, use
+  unique ids). Prefer accessible selectors (`getByRole`/`getByLabel`/`getByText`);
+  no arbitrary `waitForTimeout` sleeps — use web-first assertions.
+- Never point the suite at real Firebase: `e2e/support/safety.ts` enforces a
+  `demo-` project + emulator hosts and fails loudly otherwise.
+
 ## Formatting (Prettier)
 
 Prettier is configured (`.prettierrc.json`, `.prettierignore`) with
