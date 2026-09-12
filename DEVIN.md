@@ -1005,6 +1005,36 @@ Full reference in `TECHNICAL.md` "Rate limiting". For contributors:
 
 ---
 
+# Health and readiness
+
+Full reference in `TECHNICAL.md` "Health and readiness endpoints". For
+contributors:
+
+- Two public-safe endpoints (issue #33): **`GET /api/health`** (liveness) and
+  **`GET /api/readiness`**. Liveness returns a constant `{ status: "ok" }` (200)
+  with **no dependencies** — keep it that way (no Firestore, no secrets), so a
+  dependency outage never makes liveness fail. Readiness runs a Firestore probe.
+- Readiness is determined **only** by Firebase Admin / Firestore. Optional,
+  gracefully-degrading integrations (Resend, WhatsApp, Storage, PDFKit, the
+  fail-open rate limiter) are **non-blocking** and must NOT influence it.
+  Firestore reachable → 200 `ready`; unavailable → **503** `not_ready`. Use 503
+  (a known dependency-unavailable state), never 500.
+- The probe (`@/lib/health/readiness.ts`) is a single **read-only** `.get()` on
+  the dedicated non-business path `_health/probe`, bounded by a 3 s timeout.
+  **Never** add a write, a query/scan of business data, an external call, or a
+  business document used as a health sentinel. No caching.
+- Responses are **categorical only** (`ok`/`unavailable`/`ready`/`not_ready`).
+  Never add a reason, provider error, exception message, stack trace, secret,
+  project id, service-account detail, or Firestore path to the body. Log failures
+  sanitized (`serializeError`) via the existing logger as `health.readiness.failed`.
+- Both routes use `withApiRoute(..., { completionLogLevel: "debug" })` so
+  frequent probes stay quiet in production (info level) while failures still log.
+  Do **not** rate limit them, and do not weaken CSP for them.
+- Vercel does not auto-consume these; they are for operators, uptime monitors,
+  and deploy validation only.
+
+---
+
 # Public pages and legal
 
 - `/` — public homepage with the PES logo, resident/driver login buttons, Need Help card, and footer.

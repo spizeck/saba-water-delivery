@@ -166,6 +166,21 @@ Vitest covers the pure domain logic extensively, including:
   an unexpected throw yields a safe 500 with the request ID in the header and
   body, a thrown `AppError` yields its intended status, `redirect()` still
   propagates, and one failure is logged exactly once.
+- Health and readiness (`src/lib/health/__tests__/readiness.test.ts`,
+  `src/app/api/health/__tests__/route.test.ts`,
+  `src/app/api/readiness/__tests__/route.test.ts`): liveness returns a boring
+  `{ status: "ok" }` 200 with an `x-request-id` header and no config/secrets;
+  readiness is 200 `ready` when the (mocked) Firestore probe succeeds and **503**
+  `not_ready` when it fails or Firebase Admin is unconfigured; the readiness body
+  is only categorical (`ok`/`unavailable`), so a raw Firestore exception message,
+  stack trace, `FIREBASE_ADMIN_PRIVATE_KEY`, project id, service-account email,
+  and the `_health` probe path **never** reach the client; the default probe
+  issues a single read (`.get()`) with **no** `set`/`add`/`update`/`delete`
+  (proving no production write); an optional-integration outage does not fail
+  readiness; a successful probe emits no error/warn logs while a failure emits
+  exactly one sanitized `health.readiness.failed` event; and `withTimeout` bounds
+  a hung probe. These run in the plain `vitest` suite — no Firebase emulator,
+  network, or production project is used.
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently
@@ -357,3 +372,21 @@ any of these areas.
 - Confirm the nightly cron route responds successfully when invoked
   with the correct `CRON_SECRET` bearer token (and is rejected without
   one, if `CRON_SECRET` is configured).
+
+### Health and readiness
+
+- `curl -i https://<deployment>/api/health` returns **200** with
+  `{"status":"ok"}` and an `x-request-id` response header.
+- `curl -i https://<deployment>/api/readiness` returns **200** with
+  `{"status":"ready","checks":{"app":"ok","firestore":"ok"}}` on a
+  correctly configured deployment.
+- Confirm neither response body contains any project id, service-account
+  email, private key, environment value, Firestore path, stack trace, or
+  error message.
+- Confirm normal app login, the resident portal, and the dispatcher portal
+  still load, and that PDFs still generate (health work touches none of
+  these paths).
+- Optional (local/emulator only): simulate Firestore being unavailable and
+  confirm `/api/readiness` returns **503** with
+  `{"status":"not_ready","checks":{"app":"ok","firestore":"unavailable"}}`
+  while `/api/health` stays 200. Do **not** break production to test this.

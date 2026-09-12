@@ -2422,6 +2422,125 @@ Saba).
 - **Account setup/recovery** — dispatcher-initiated (staff-only) with existing
   idempotency; Firebase handles password reset client-side, so there is no
   public server surface to protect.
+- **Health / readiness** (`/api/health`, `/api/readiness`) — intentionally
+  cheap and meant to be polled frequently by uptime monitors; a rate limit
+  would make the operational signal unreliable. See "Health and readiness
+  endpoints" below.
+
+---
+
+# Health and readiness endpoints
+
+Two small, public-safe endpoints (`src/app/api/health/route.ts`,
+`src/app/api/readiness/route.ts`) give operators, uptime monitors, and
+deployment tooling a clear answer to _"is the app up, and can it serve?"_ — with
+no secrets, personal data, or infrastructure detail exposed (issue #33). They are
+built on the existing #29/#30 request boundary, not a parallel monitoring stack.
+
+## Liveness vs. readiness
+
+The two concepts are kept deliberately separate:
+
+- **Liveness — `GET /api/health`.** _Is the Next.js route runtime responding?_
+  It has NO dependencies (no Firestore, no external APIs, no secrets) and returns
+  a constant `{ "status": "ok" }` with **200**. A Firestore, Resend, or Meta
+  outage must never make liveness fail — that is what lets an operator tell "the
+  app is down" apart from "a dependency is degraded".
+- **Readiness — `GET /api/readiness`.** _Can the app perform its core
+  water-delivery service right now?_ That core depends on Firebase Admin /
+  Firestore, so readiness runs a minimal Firestore probe. Ready → **200**
+  `{ "status": "ready", "checks": { "app": "ok", "firestore": "ok" } }`;
+  Firestore unavailable → **503** `{ "status": "not_ready", "checks": { "app":
+  "ok", "firestore": "unavailable" } }`.
+
+**503, not 500,** is used for a known dependency-unavailable readiness condition,
+so a Firestore outage reads as "healthy app, not ready" rather than a server
+crash. A genuinely unexpected throw is still normalized by `withApiRoute` to the
+canonical safe error response.
+
+## Firestore readiness probe
+
+`evaluateReadiness()` (`src/lib/health/readiness.ts`) performs a single,
+read-only Firestore access and nothing more:
+
+- It reads one document at the dedicated **non-business** path `_health/probe`
+  via the Admin SDK. The document is not expected to exist — a successful "not
+  found" read still proves Admin credentials are valid and Firestore is
+  reachable. Because nothing is ever written, that collection never materializes,
+  carries no domain data, and creates no coupling to any resident/request
+  collection.
+- **No writes, ever.** The probe issues only `.get()` — never
+  `set`/`add`/`update`/`delete`. A readiness check can never create or mutate
+  production data. This is asserted by a test.
+- **No scans or queries** of business data, no external HTTP, no email/WhatsApp
+  calls, no PDF generation, no Storage reads.
+- The probe is bounded by a 3 s timeout (`withTimeout`) so an unreachable or slow
+  Firestore yields `not_ready` quickly instead of hanging the request (and any
+  monitor behind it). Trade-off: a Firestore that is merely very slow (> 3 s)
+  reports `not_ready`; for a health signal, failing fast is the right default.
+- A missing or malformed Firebase Admin configuration surfaces here as a caught
+  failure (`getAdminDb()` throws) → `not_ready`. The raw initialization error is
+  **never** returned to the caller; it is logged sanitized.
+
+There is **no cache**: the probe is a single indexed document read, so it is
+cheap enough to run on every request. This avoids any risk of a short-lived cache
+hiding an outage, and sidesteps the fact that Vercel instances are ephemeral and
+distributed (a per-instance cache would be inconsistent anyway).
+
+## Readiness-critical vs. non-blocking dependencies
+
+Only **Firebase Admin / Firestore** determines readiness — it is core to every
+request/dispatch/delivery operation. Everything else is intentionally
+**non-blocking**, so its outage must not make a still-serving app look unready
+(each decision confirmed against the current code):
+
+| Dependency        | Readiness? | Why                                                                                             |
+| ----------------- | ---------- | ----------------------------------------------------------------------------------------------- |
+| Firestore/Admin   | **Yes**    | Core datastore for all requests, dispatch, and delivery state.                                  |
+| Resend (email)    | No         | Delivery/account emails already degrade gracefully; a send failure never changes recorded state. |
+| WhatsApp / Meta   | No         | An inbound-ordering convenience; the web/dispatcher intake path serves the core contract.        |
+| Firebase Storage  | No         | Property photos are optional; core request/dispatch does not require an object read.             |
+| PDFKit / reports  | No         | An isolated report/PDF problem does not stop the request/dispatch service.                       |
+| Rate limiter      | No         | Fail-open by design (see "Rate limiting"); it must never become an availability dependency.      |
+
+The public body stays intentionally boring: it reports only `app` and
+`firestore`. Integration configuration status is documented here rather than
+exposed on a public endpoint, keeping deployment posture out of an unauthenticated
+response.
+
+## Request IDs, logging, and quiet probes
+
+Both routes go through the canonical `withApiRoute` boundary, so every response
+carries a correlated `x-request-id` header (echoing a safe inbound one) and any
+unexpected throw is normalized safely. Two things keep frequent probing from
+flooding Vercel logs:
+
+- The routine `api.<name>.completed` line is emitted at **debug** for these
+  routes (`withApiRoute(..., { completionLogLevel: "debug" })`), so a successful
+  probe is silent under production's `info` log level.
+- The readiness evaluation logs **only on failure** — a single sanitized
+  `health.readiness.failed` event (check name + `serializeError`d cause) at
+  `error`, visible in production. Successful probes emit no error/warn logs.
+
+## Security / privacy
+
+The responses are stable and categorical (`ok` / `unavailable` / `ready` /
+`not_ready`) and never contain a reason string, provider error, exception
+message, stack trace, secret, `FIREBASE_ADMIN_PRIVATE_KEY`, project id,
+service-account email, Firestore path, internal hostname, Vercel deployment id,
+or any resident data. Tests assert the client response contains none of these.
+The endpoints still receive the canonical #31 security headers (applied to
+`/:path*` in `next.config.ts`); nothing about CSP is weakened for them.
+
+## Vercel and external monitoring
+
+Vercel does **not** automatically consume a custom application health endpoint
+for routing or deploy gating, and this issue adds no such configuration. The
+endpoints are for **operators, uptime monitors, and deployment validation** —
+e.g. point an external monitor at `/api/health` (liveness) and, where a
+readiness distinction is wanted, `/api/readiness` (a 503 there means "app up,
+Firestore not reachable"). They are not a replacement for the full application
+smoke test in docs/TESTING.md.
 
 ---
 
