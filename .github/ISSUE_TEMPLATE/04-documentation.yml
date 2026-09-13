@@ -1,0 +1,47 @@
+name: Documentation issue
+description: Report incorrect, stale, unclear, or inconsistent documentation — including broken links.
+title: "[Docs]: "
+labels: [documentation]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Covers `README.md`, `PRODUCT.md`, `TECHNICAL.md`, `DEVIN.md`,
+        `docs/` (guides and ADRs), `SECURITY.md`, `CONTRIBUTING.md`, and
+        the operations Wiki draft under `wiki-draft/`.
+  - type: input
+    id: location
+    attributes:
+      label: Affected document or page
+      description: File path, heading, or Wiki page.
+      placeholder: 'Example: docs/OPERATIONS.md, "Checking data integrity"'
+    validations:
+      required: true
+  - type: dropdown
+    id: problem-type
+    attributes:
+      label: What is wrong?
+      multiple: true
+      options:
+        - Incorrect information
+        - Stale / out of date
+        - Broken link
+        - Unclear or missing guidance
+        - Inconsistency between documents
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What does the document say, and what should it say instead (or what is unclear)?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-fix
+    attributes:
+      label: Proposed clarification
+      description: Optional — suggested wording or the correct behavior if you know it.
+    validations:
+      required: false

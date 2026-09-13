@@ -1,0 +1,94 @@
+name: Feature / enhancement request
+description: Propose a new capability or an improvement to an existing workflow.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Describe the **problem to solve** and the desired outcome rather
+        than prescribing an implementation — the maintainers will work out
+        the technical approach with you. Product behavior is defined by
+        `PRODUCT.md`; significant architectural choices are recorded in
+        `docs/adr/` and normally require an ADR, so expect design
+        discussion before implementation.
+
+        Do not include secrets or resident/customer personal information.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem being solved
+      description: What is difficult, missing, or error-prone today? Who experiences it?
+    validations:
+      required: true
+  - type: dropdown
+    id: affected-roles
+    attributes:
+      label: Affected users / roles
+      multiple: true
+      options:
+        - Resident
+        - Driver
+        - Dispatcher
+        - Administrator
+        - Viewer
+        - Government operations staff
+        - Maintainers / developers
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should the system do? Describe outcomes and workflows, not framework choices.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: How is this handled today (including manual/offline processes)? Write "None" if there is none.
+    validations:
+      required: false
+  - type: textarea
+    id: value
+    attributes:
+      label: Operational value
+      description: Why does this matter for the water-delivery service or for Public Entity Saba?
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, or reasons existing features do not cover this.
+    validations:
+      required: false
+  - type: textarea
+    id: data-implications
+    attributes:
+      label: Data implications
+      description: New or changed Firestore data, indexes, Security Rules, migrations/backfills, audit history, or effects on existing production records. Write "None known" if unsure.
+    validations:
+      required: false
+  - type: textarea
+    id: security-implications
+    attributes:
+      label: Security / privacy implications
+      description: Authentication, authorization, roles, resident personal data, or audit implications. Write "None known" if unsure.
+    validations:
+      required: false
+  - type: textarea
+    id: integration-implications
+    attributes:
+      label: Integration implications
+      description: Effects on Firebase, Vercel, Resend, Meta/WhatsApp/Facebook, DNS, or new external dependencies. Write "None known" if unsure.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Desired outcome / acceptance criteria
+      description: How will we know this is done and working?
+    validations:
+      required: true

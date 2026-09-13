@@ -69,6 +69,7 @@ you need to do:
 | Understand the Firestore data model | [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) | Developers |
 | Understand *why* a major decision was made | [`docs/adr/`](./docs/adr/README.md) | Developers / maintainers |
 | Work on the code (conventions, build philosophy) | [`DEVIN.md`](./DEVIN.md) | Developers / AI-assisted work |
+| Contribute a change, report a bug, or open a PR | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Contributors / maintainers |
 | Deploy or configure production (env vars, release flow, branch protection) | [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | Deployer / IT admin |
 | Run tests and verification | [`docs/TESTING.md`](./docs/TESTING.md) | Developers |
 | Operate production day to day | [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) | Government staff |

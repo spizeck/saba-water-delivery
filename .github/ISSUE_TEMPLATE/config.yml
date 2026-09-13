@@ -1,0 +1,8 @@
+# Issue chooser configuration (issue #68).
+#
+# Blank issues stay enabled deliberately: maintainers file tracking and
+# meta issues (production-readiness work items, release chores) that do
+# not fit the reporter-facing forms. No contact_links are configured —
+# there is no maintained external support channel; all triage happens in
+# this repository.
+blank_issues_enabled: true
