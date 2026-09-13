@@ -3399,6 +3399,59 @@ so a restore drill can gate on it. Remediation uses the existing targeted tools
 (e.g. `scripts/reconcile-stale-driver-locks.mjs`, dispatcher/admin actions), not
 this validator.
 
+## Read-only production integrity diagnostic (#52)
+
+`scripts/production-integrity.mjs` is a routine, on-demand maintainer diagnostic
+that answers "is the live operational data internally consistent?" — distinct
+from the disaster-recovery validator above (a restore-drill gate). It is a CLI,
+not an admin UI, deliberately: it is a maintainer/operations tool, keeps a new
+sensitive diagnostics surface out of the app, and lets target selection,
+credentials, and scan bounds be explicit. Operator usage, severity, exit codes,
+and target safeguards are documented in
+[docs/OPERATIONS.md](./docs/OPERATIONS.md) "Checking data integrity"; the
+architecture is:
+
+- **One source of truth for the rules.** Both tools consume the same pure check
+  functions in `scripts/lib/recovery-checks.mjs`: the DR validator runs the
+  `runRecoveryChecks` subset; the diagnostic runs the fuller `runIntegrityChecks`
+  set (the DR checks plus two-way Delivery Run membership/driver/status,
+  preferred-driver references, user-role ↔ registry linkage, and impossible
+  request-state fields). Findings carry `severity`/`category`/`code`/opaque
+  `id`(+`relatedIds`)/`detail`. The module keeps small standalone copies of two
+  canonical domain rules (`classifyDriverLock` ↔ `checkActiveRequestValidity`,
+  `deriveBatchStatus` ↔ `computeDispatchBatchStatus`) so the no-build-step
+  operator tooling has no dependency on the TypeScript app; a parity test
+  (`activeRequestRuleParity.test.ts`) fails if either copy drifts.
+- **Read-only by construction.** The checks are pure (arrays in, findings out).
+  All Firestore access is confined to `scripts/lib/integrity-scan.mjs`
+  `makeFirestoreReader`, which uses only reads (`get`/`limit`/`startAfter`/
+  `getAll`) — no `update`/`set`/`delete`, no batch, no transaction, and it never
+  calls any reconciliation/repair function. A test drives the reader against a
+  fake db whose write methods throw, proving the path is read-only.
+- **Bounded scanning.** `assembleDataset` loads the (small) driver/user/batch
+  sets and, by default, only ACTIVE water requests — the growing terminal
+  history is scanned only with `--full-scan` — then resolves any request
+  referenced by a driver lock or a batch by id, so a "missing reference" finding
+  reflects genuine absence rather than operational-mode scoping. `--max-records`
+  bounds the **total** `waterRequests` documents read (scanned page **plus**
+  referenced backfill), not each phase: referenced ids beyond the remaining
+  budget are left **unresolved**, recorded, and handed to `runIntegrityChecks`
+  as `unresolvedRequestIds` so a check never treats a *not-scanned* reference as
+  *missing* (and a batch with an unread member is skipped for status-drift
+  derivation). Any such shortfall marks the scan `truncated`, which exits `3`
+  rather than a false clean pass.
+- **Fail-closed read errors.** `runDiagnosticScan` wraps the read phase: a
+  target/permission/database/read failure returns a config/target/auth failure
+  (exit `2`) — never a silent exit `0`/`1` or an uncontrolled crash — with the
+  resolved target/database in the message and no credentials. The pure checks
+  run only on a dataset that assembled successfully.
+- **Target safety** (`scripts/lib/integrity-target.mjs`, building on
+  `recovery-target.mjs`): an explicit, unambiguous target is required; a stale
+  `FIRESTORE_EMULATOR_HOST` alongside cloud config is rejected; a cloud scan
+  requires a deliberate `--production` flag and an explicit project (no implicit
+  ADC default); inline service-account JSON is refused; the resolved
+  project/database is printed before scanning.
+
 ---
 
 # Out of Scope for Initial Build

@@ -126,6 +126,12 @@ offer, accepting a delivery, and processing a dispatcher assignment.
 When a stale lock is cleared, a `stale_active_request_cleared` event is
 recorded on the driver registry with the stale request ID and reason.
 
+**Read-only check first:** to see whether any stale locks (or other
+cross-document inconsistencies) currently exist without changing anything, run
+the read-only integrity diagnostic (see
+[`OPERATIONS.md`](./OPERATIONS.md) "Checking data integrity"); a stale lock shows
+as a `stale_driver_lock.*` finding with the opaque driver/request ids.
+
 **Manual diagnostic:** For bulk prelaunch cleanup, run:
 
 ```
@@ -140,7 +146,10 @@ No staff action is required — the system repairs itself transparently.
 If data has been **deleted, overwritten, or corrupted** (a bad deployment
 wrote wrong values, a collection or documents were deleted, a migration
 went wrong), this is a **data-recovery** situation, not an availability
-outage. Do not improvise. Follow
+outage. To scope suspected corruption without changing anything, first run the
+read-only integrity diagnostic (see [`OPERATIONS.md`](./OPERATIONS.md) "Checking
+data integrity"); it reports cross-document inconsistencies by severity using
+opaque IDs and never writes. Do not improvise. Follow
 [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md), which covers triaging the
 scope, preserving the current (damaged) state before doing anything,
 choosing a restore point (point-in-time recovery or a scheduled backup),

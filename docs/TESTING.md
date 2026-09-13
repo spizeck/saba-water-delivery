@@ -326,6 +326,41 @@ Vitest covers the pure domain logic extensively, including:
   at a missing request (and a request pointing at a missing run), and an orphaned
   registered-request owner — plus the per-category summary. Pure and synthetic:
   no Firestore, no production data, no PII.
+- Production integrity diagnostic (issue #52):
+  - `scripts/lib/__tests__/integrity-checks.test.ts` — the fuller integrity
+    check set (`runIntegrityChecks`): the DR checks above **plus** two-way
+    Delivery Run membership/driver/status, preferred-driver references,
+    user-role ↔ registry linkage, and impossible request-state fields. Includes
+    **valid-state / false-positive tests** (a normal claimed request, a
+    legitimate Delivery Run exception, a terminal batch member that keeps its
+    `dispatchBatchId`, a valid preferred-driver hold with an offline driver, and
+    an intentionally unregistered request) that must NOT be flagged, and asserts
+    the severity model. Also covers the **strengthened batch-member driver
+    invariant** — a current member whose batch has no `driverId`, whose own
+    `assignedDriverId` is missing, or whose driver differs from the run's are all
+    critical, while a valid current member is not — and that a referenced request
+    left **unscanned by the record budget is never reported as "missing"**.
+  - `scripts/lib/__tests__/integrity-target.test.ts` — target/production safety:
+    no target rejected, ambiguous emulator+cloud rejected, cloud requires
+    `--production`, `--production` against the emulator rejected, ADC requires an
+    explicit project, and inline service-account JSON rejected — proving the
+    resolver cannot silently fall back between emulator and cloud.
+  - `scripts/lib/__tests__/integrity-scan.test.ts` — bounded scanning
+    (operational vs `--full-scan`, referenced-doc resolution so pagination
+    cannot cause false "missing" findings, truncation reporting), the **total
+    `--max-records` budget** (initial scan **plus** referenced backfill: the
+    backfill spends only the remaining budget, exceeding it marks the scan
+    truncated, total request reads never exceed the budget, and a truncated but
+    clean run still exits `3`), the exit-code contract, **fail-closed read
+    errors** (`runDiagnosticScan` maps a reader/scan exception to a config/target
+    failure — exit `2` — not a finding or a crash), and a **read-only proof**:
+    the Firestore reader driven against a fake db whose every write method throws
+    still completes using only reads.
+  - `scripts/lib/__tests__/activeRequestRuleParity.test.ts` — pins the operator
+    tooling's standalone copies of `classifyDriverLock` / `deriveBatchStatus` to
+    the canonical `checkActiveRequestValidity` / `computeDispatchBatchStatus` so
+    the intentional (no-build-step) duplication cannot drift silently.
+  All pure and synthetic: no Firestore, no production data, no PII.
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently
@@ -352,6 +387,16 @@ It exits non-zero when it finds inconsistencies, so a restore drill can gate on
 it. See [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) for the full restore
 drill and post-restore validation checklist. Do **not** add browser (Playwright)
 tests for backups — E2E is unrelated to backup/restore mechanics.
+
+The read-only **production integrity diagnostic** (issue #52,
+`scripts/production-integrity.mjs`) is a separate, routine tool that shares the
+same pure checks but adds bounded/paginated reads and stricter cloud-target
+safeguards — see [`OPERATIONS.md`](./OPERATIONS.md) "Checking data integrity". It
+can be exercised locally against the emulator the same way:
+
+```bash
+firebase emulators:exec --only firestore "node scripts/production-integrity.mjs"
+```
 
 ## Manual smoke test
 
