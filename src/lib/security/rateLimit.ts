@@ -99,6 +99,14 @@ export const RATE_LIMIT_POLICIES = {
     windowMs: 10 * 60 * 1000,
     description: "Delivery confirmation/dispute, per authenticated UID.",
   },
+  // Resident self-service request cancellation, keyed by UID. The request
+  // state machine and its transaction guard remain authoritative; this
+  // guards against automated repeated cancellation attempts.
+  "request-cancel": {
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+    description: "Resident request cancellation, per authenticated UID.",
+  },
 } as const satisfies Record<string, RateLimitPolicy>;
 
 export type RateLimitPolicyName = keyof typeof RATE_LIMIT_POLICIES;

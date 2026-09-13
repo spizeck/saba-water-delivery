@@ -8,7 +8,10 @@ import type { WaterRequest, WaterRequestStatus } from "@/lib/domain/types";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
+import { isResidentCancellableRequest } from "@/lib/domain/residentCancellation";
+
 import {
+  cancelOwnRequest,
   confirmDelivery,
   disputeDelivery,
   type DeliveryResponseState,
@@ -47,6 +50,10 @@ const initialState: DeliveryResponseState = { status: "idle" };
 
 export function ActiveRequest({ request, preferredDriverName }: Props) {
   const showConfirmation = request.status === "delivered";
+  // Visibility only — the server action re-verifies eligibility
+  // transactionally, so a stale page that still shows this button can
+  // never undo a driver's claim (issue #23).
+  const showCancel = isResidentCancellableRequest(request);
 
   return (
     <Card>
@@ -104,7 +111,85 @@ export function ActiveRequest({ request, preferredDriverName }: Props) {
           <DeliveryConfirmation request={request} />
         </div>
       )}
+
+      {showCancel && <CancelRequest requestId={request.id} />}
     </Card>
+  );
+}
+
+/**
+ * Secondary, deliberately low-prominence cancel affordance (issue #23):
+ * a two-step confirm (never one-click) rendered below the status
+ * information so it cannot compete with the primary request state.
+ */
+function CancelRequest({ requestId }: { requestId: string }) {
+  const [confirming, setConfirming] = useState(false);
+  const [state, formAction, pending] = useActionState(
+    cancelOwnRequest,
+    initialState,
+  );
+
+  if (state.status === "success") {
+    return (
+      <p className="mt-4 border-t border-slate-200 pt-4 text-sm font-medium text-green-800">
+        {state.message}
+      </p>
+    );
+  }
+
+  if (!confirming) {
+    return (
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        <Button variant="outline" size="md" onClick={() => setConfirming(true)}>
+          Cancel Request
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="group"
+      aria-label="Cancel water request?"
+      className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4"
+    >
+      <p className="text-sm font-semibold text-slate-900">
+        Cancel water request?
+      </p>
+      <p className="mt-1 text-sm text-slate-600">
+        Are you sure you want to cancel this water request? If you need water
+        later, you will need to submit a new request.
+      </p>
+
+      {state.status === "error" && (
+        <p role="alert" className="mt-2 text-sm text-red-700">
+          {state.message}
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
+          onClick={() => setConfirming(false)}
+          disabled={pending}
+        >
+          Keep Request
+        </Button>
+        <form action={formAction}>
+          <input type="hidden" name="requestId" value={requestId} />
+          <Button
+            type="submit"
+            size="md"
+            variant="secondary"
+            disabled={pending}
+          >
+            {pending ? "Cancelling…" : "Cancel Request"}
+          </Button>
+        </form>
+      </div>
+    </div>
   );
 }
 

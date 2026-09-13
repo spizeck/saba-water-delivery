@@ -380,6 +380,7 @@ describe("EVENT_LABELS completeness", () => {
       "dispute_resolved_completed",
       "dispute_resolved_reopened",
       "request_cancelled",
+      "request_cancelled_by_resident",
       "dispatcher_assigned",
       "dispatcher_reassigned",
       "request_returned_to_queue",

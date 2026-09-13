@@ -618,6 +618,7 @@ delivery_confirmed_by_dispatcher
 customer_disputed
 delivery_auto_confirmed
 request_cancelled
+request_cancelled_by_resident
 request_priority_changed
 preferred_driver_bypassed_for_priority
 preferred_driver_hold_released_for_priority
@@ -822,6 +823,67 @@ DST.
 declined from being selected as their next offer again, bounded to a
 recent window of their own decline history — enough to prevent obvious
 loops without an unbounded read.
+
+---
+
+# Resident Self-Service Cancellation
+
+A registered resident may cancel their own request while it is still
+genuinely pre-dispatch (issue #23; see PRODUCT.md "Cancelling a
+request"). The resident portal shows a secondary "Cancel Request"
+affordance on the active-request card, backed by an explicit
+confirmation step — never one-click.
+
+**Eligibility** is defined once in
+`src/lib/domain/residentCancellation.ts`
+(`isResidentCancellableRequest()`): status must be `requested`,
+`preferred_driver_hold`, or `available`, AND the request must carry no
+`assignedDriverId` and no `dispatchBatchId`. The status list alone is
+deliberately not the whole rule — a document whose status looks
+eligible but already bears a driver assignment or a delivery-run
+commitment is inside physical delivery operations and must not be
+resident-cancellable. The same pure predicate drives the transaction
+guard and the UI's button visibility, so the two can never disagree
+about what "pre-dispatch" means.
+
+**The mutation** is `cancelOwnWaterRequest()` in
+`waterRequests.ts`, called by the `cancelOwnRequest` server action in
+`src/app/resident/actions.ts` (rate-limited under the `request-cancel`
+policy). The action sends only the request id; ownership comes from the
+verified session uid, and the transaction re-verifies that
+`customerId` equals it — `customerId: null` (unregistered customers)
+can never match an authenticated uid, so unregistered requestors have
+no self-service path by construction.
+
+**Race safety** uses the same document-transaction convention as every
+other request mutation — no separate locking. The eligibility read and
+the status write happen in one Firestore transaction, so a concurrent
+`claimWaterRequest()`, dispatcher assignment, batch creation
+(`validateBatchSelection` rejects non-eligible statuses on its own
+transactional re-read), hold transition, staff cancellation, or second
+resident cancellation retries against committed state and loses
+cleanly. The rejection surfaces to the resident as "This request can
+no longer be cancelled because it has already been assigned for
+delivery."
+
+**State and audit:** the canonical `cancelled` status is reused — the
+request is never deleted, stays in resident history, dispatcher views,
+statistics, and the audit trail. The mutation records a distinct
+`request_cancelled_by_resident` event in the same transaction (the
+issue #49 atomic-audit convention), deliberately not the staff
+`request_cancelled` event, so the audit trail never disguises which
+side initiated the cancellation. Metadata carries only
+`previousStatus` — no resident PII and no free-text reason.
+
+No extra cleanup is needed downstream: a resident-cancellable request
+has no assigned driver (so no `activeRequestId` lock to clear) and no
+run membership by definition, and every downstream consumer already
+filters on status — offer selection queries `available` /
+`preferred_driver_hold` only (a stale pending offer for the cancelled
+request is lazily expired by `getNextOfferForDriver()`), batch
+eligibility is `BATCH_ELIGIBLE_STATUSES`, and `ACTIVE_STATUSES`
+excludes `cancelled`, freeing the resident's one-active-request slot
+immediately.
 
 ---
 

@@ -220,6 +220,13 @@ New event types: `water_collected` — driver-recorded collection of one
 collection on a driver's behalf. Both record the load number, station,
 meter, driver, actor, and timestamp details.
 
+New event type: `request_cancelled_by_resident` — resident self-service
+cancellation of their own pre-dispatch request (issue #23). Deliberately
+distinct from `request_cancelled` (the staff action); records the
+resident's uid, role, `previousStatus`, and timestamp — no free-text
+reason, no additional PII. See
+[`TECHNICAL.md`](../TECHNICAL.md) "Resident Self-Service Cancellation."
+
 ### `waterRequests/{requestId}/photos/{photoId}` — planned, not implemented
 
 Same status as `propertyPhotos` above: a type definition and security

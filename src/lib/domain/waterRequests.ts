@@ -34,6 +34,7 @@ import {
   decidePreferredDriverHold,
   isPreferredDriverHoldExpired,
 } from "./preferredDriverPolicy";
+import { isResidentCancellableRequest } from "./residentCancellation";
 import type {
   DispatchBatchStatus,
   DispatchPriority,
@@ -2195,8 +2196,115 @@ export async function cancelWaterRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Dispute resolution
+// Resident self-service cancellation (issue #23)
 // ---------------------------------------------------------------------------
+
+export interface CancelOwnWaterRequestInput {
+  requestId: string;
+  /** The resident's authenticated uid — resolved from the session by the
+   * caller, NEVER trusted from client input. */
+  customerId: string;
+}
+
+/**
+ * Resident self-service cancellation of their OWN request while it is
+ * still genuinely pre-dispatch — see PRODUCT.md "Cancelling a Request"
+ * and TECHNICAL.md "Resident Self-Service Cancellation".
+ *
+ * The eligibility check and the transition run in ONE transaction, so a
+ * concurrent driver claim, staff assignment, delivery-run commitment,
+ * hold transition, staff cancellation, or second resident cancellation
+ * can never produce a torn state: whoever loses the document-level
+ * read/write race retries against the committed state and is rejected.
+ * No separate locking system is needed — the request document's
+ * transaction IS the lock (the same convention as every other request
+ * mutation here).
+ *
+ * Deliberately does NOT clear `preferredDriverId`/
+ * `preferredDriverExpiresAt`: they stay on the cancelled document as
+ * historical fact, and every consumer (offer selection, hold expiry,
+ * batch eligibility, the dispatcher queue) already filters on status,
+ * so a `cancelled` request can never resurface as driver work. See
+ * `isResidentCancellableRequest` for why no batch/registry cleanup is
+ * needed here — a resident-cancellable request has no assigned driver
+ * and no run membership by definition.
+ *
+ * Records a distinct `request_cancelled_by_resident` audit event in the
+ * same transaction, so the state change can never commit without its
+ * durable audit record (the issue #49 atomic-audit convention).
+ *
+ * Throws:
+ * - REQUEST_NOT_FOUND
+ * - NOT_REQUEST_OWNER — another resident's request, or an unregistered
+ *   customer's request (`customerId` null can never match an
+ *   authenticated uid, so unregistered requestors can never use this
+ *   path)
+ * - REQUEST_ALREADY_CANCELLED — already cancelled; the rejection is a
+ *   safe no-op, never a rewrite of history
+ * - REQUEST_NOT_CANCELLABLE — the request has entered physical delivery
+ *   operations (claimed/delivered/confirmed/disputed), or carries an
+ *   assigned driver / delivery-run commitment that makes a
+ *   superficially-eligible stored status untrustworthy
+ */
+export async function cancelOwnWaterRequest(
+  input: CancelOwnWaterRequestInput,
+): Promise<WaterRequest> {
+  const { requestId, customerId } = input;
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+
+    // Ownership check first: the resident's uid comes from their verified
+    // session, and `customerId: null` (unregistered customer) can never
+    // equal it — so this single comparison covers both "not yours" and
+    // "no self-service account exists" without leaking which.
+    if (data.customerId !== customerId) {
+      throw new Error("NOT_REQUEST_OWNER");
+    }
+
+    if (data.status === "cancelled") {
+      throw new Error("REQUEST_ALREADY_CANCELLED");
+    }
+
+    // Eligibility reflects the COMMITTED state read inside this
+    // transaction — never a stale page snapshot that still shows the
+    // Cancel button after a driver has already claimed the request.
+    if (
+      !isResidentCancellableRequest({
+        status: data.status as WaterRequestStatus,
+        assignedDriverId: (data.assignedDriverId as string | null) ?? null,
+        dispatchBatchId: (data.dispatchBatchId as string | null) ?? null,
+      })
+    ) {
+      throw new Error("REQUEST_NOT_CANCELLABLE");
+    }
+
+    txn.update(requestRef, {
+      status: "cancelled",
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "request_cancelled_by_resident",
+      actorId: customerId,
+      actorRole: "resident",
+      createdAt: now,
+      metadata: {
+        previousStatus: data.status,
+      },
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
 
 export interface ResolveDisputeCompletedInput {
   requestId: string;

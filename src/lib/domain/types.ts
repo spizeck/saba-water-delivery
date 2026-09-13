@@ -389,6 +389,12 @@ export type WaterRequestEventType =
   | "dispute_resolved_completed"
   | "dispute_resolved_reopened"
   | "request_cancelled"
+  /** Resident self-service cancellation of their OWN request while it is
+   * still pre-dispatch (issue #23). Deliberately distinct from the staff
+   * "request_cancelled" event — same convention as "request_created" vs
+   * "request_created_by_dispatcher" — so the audit trail never disguises
+   * which side initiated the cancellation. */
+  | "request_cancelled_by_resident"
   | "dispatcher_assigned"
   | "dispatcher_reassigned"
   | "request_returned_to_queue"
