@@ -389,6 +389,28 @@ describe("worker leasing and concurrency", () => {
     expect(r.sent).toBe(1);
     expect((await readOutbox("n5"))!.state).toBe("sent");
   });
+
+  it("does not let a full pending queue starve an expired-lease reclaim", async () => {
+    // Two pending-due notifications and one expired lease, but a batch limit of
+    // 2. The expired lease (crashed-worker recovery) must still be claimed this
+    // pass — interleaved with pending — not starved behind the pending backlog.
+    await seedOutbox("p1", { requestId: "rp1", nextAttemptAtMs: BASE });
+    await seedOutbox("p2", { requestId: "rp2", nextAttemptAtMs: BASE });
+    await seedOutbox("e1", {
+      requestId: "re1",
+      state: "processing",
+      leaseOwner: "dead",
+      leaseExpiresAtMs: BASE - 1000,
+    });
+    const r = await processNotificationOutbox({
+      now: BASE,
+      limit: 2,
+      send: recordingSender(SENT),
+      leaseOwner: "w1",
+    });
+    expect(r.claimed).toBe(2);
+    expect((await readOutbox("e1"))!.state).toBe("sent");
+  });
 });
 
 // --- Provider-accepted / local-record crash window --------------------------

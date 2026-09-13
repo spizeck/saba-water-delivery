@@ -17,7 +17,8 @@ import { classifyResendError, type SendOutcome } from "./outboxPolicy";
  * behavior exactly:
  *   - Resend not configured        -> terminal `configuration_disabled`
  *   - request gone                 -> terminal `permanent` (subject no longer exists)
- *   - request not delivered        -> terminal `recipient_ineligible`
+ *   - not awaiting confirmation     -> terminal `recipient_ineligible`
+ *     (status left "delivered" via confirm/dispute, or reopened) — no stale email
  *   - unregistered requestor        -> terminal `recipient_ineligible`
  *     (an unregistered requestor NEVER receives an authenticated confirmation link)
  *   - registered but not claimed    -> terminal `recipient_ineligible`
@@ -38,12 +39,16 @@ export async function sendDeliveryConfirmationFromOutbox(
       reason: "request_not_found",
     };
   }
-  if (!request.deliveredAt) {
-    // e.g. the delivery was reopened/disputed before the email went out.
+  if (request.status !== "delivered" || !request.deliveredAt) {
+    // Only send while the request is actually AWAITING resident confirmation.
+    // Confirmation/dispute change status away from "delivered" but leave
+    // `deliveredAt` set, and reopen clears it — in every case the "confirm your
+    // delivery" prompt (and its review link) is no longer valid, so a delayed
+    // worker run must not send a stale email.
     return {
       status: "failed",
       category: "recipient_ineligible",
-      reason: "request_not_delivered",
+      reason: "request_not_awaiting_confirmation",
     };
   }
   if (!request.customerId) {

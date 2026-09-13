@@ -18,6 +18,14 @@
       ]
     },
     {
+      "collectionGroup": "notificationOutbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "driverOffers",
       "queryScope": "COLLECTION",
       "fields": [

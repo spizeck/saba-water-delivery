@@ -450,7 +450,8 @@ Composite indexes are defined in `firestore.indexes.json` and support:
 - A batch's current member requests, in run-sheet order (`dispatchBatchId` + `batchSequence`).
 - Notification outbox worker queries (issue #53): due pending notifications
   (`state` + `nextAttemptAt` + `createdAt`) and expired processing leases to
-  reclaim (`state` + `leaseExpiresAt`).
+  reclaim (`state` + `leaseExpiresAt`); plus the admin failed-notification
+  listing, newest first (`state` + `createdAt` descending).
 
 `whatsappSessions` and `whatsappProcessedMessages` need no composite
 indexes — both are accessed only by direct document ID lookup.

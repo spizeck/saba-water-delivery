@@ -58,9 +58,11 @@ function toAdminEntry(id: string, data: DocumentData): OutboxAdminEntry {
 }
 
 /**
- * Lists notifications in a given state, newest first. `failed` (the actionable
- * set) is the default. Uses a single equality filter (no composite index) and
- * sorts in memory — the actionable set is small.
+ * Lists notifications in a given state, NEWEST FIRST. `failed` (the actionable
+ * set) is the default. The `createdAt`-descending order is applied IN THE QUERY
+ * (backed by the `state`+`createdAt` composite index) before the limit, so the
+ * newest failures are always returned — never an arbitrary older subset hidden
+ * behind the cap once more than `limit` failures exist.
  */
 export async function listNotificationsByState(
   state: NotificationState = "failed",
@@ -70,11 +72,10 @@ export async function listNotificationsByState(
   const snap = await db
     .collection(NOTIFICATION_OUTBOX_COLLECTION)
     .where("state", "==", state)
+    .orderBy("createdAt", "desc")
     .limit(limit)
     .get();
-  return snap.docs
-    .map((d) => toAdminEntry(d.id, d.data()))
-    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  return snap.docs.map((d) => toAdminEntry(d.id, d.data()));
 }
 
 /** Aggregate count of outbox docs per state (cheap `count()` aggregations). */

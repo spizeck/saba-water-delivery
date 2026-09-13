@@ -105,13 +105,26 @@ export async function processNotificationOutbox(
       .get(),
   ]);
 
+  // Interleave expired-lease and pending-due candidates so a sustained pending
+  // backlog can never STARVE crashed-worker recovery: a notification abandoned
+  // by a crashed worker (expired `processing` lease) would otherwise never be
+  // reclaimed while at least `limit` pending records are always due. Expired
+  // leases are placed first in each pair to slightly favor recovery.
   const candidateIds: string[] = [];
   const seen = new Set<string>();
-  for (const doc of [...pendingSnap.docs, ...expiredSnap.docs]) {
-    if (seen.has(doc.id)) continue;
-    seen.add(doc.id);
-    candidateIds.push(doc.id);
-    if (candidateIds.length >= limit) break;
+  const expired = expiredSnap.docs;
+  const pending = pendingSnap.docs;
+  for (
+    let i = 0;
+    candidateIds.length < limit && (i < expired.length || i < pending.length);
+    i++
+  ) {
+    for (const doc of [expired[i], pending[i]]) {
+      if (!doc || seen.has(doc.id)) continue;
+      seen.add(doc.id);
+      candidateIds.push(doc.id);
+      if (candidateIds.length >= limit) break;
+    }
   }
 
   const result: ProcessOutboxResult = {
