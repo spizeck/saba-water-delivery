@@ -354,6 +354,12 @@ describe("locked collections and catch-all", () => {
     await assertFails(getDoc(doc(db, "accountMergeEvents/merge-a")));
     await assertFails(getDoc(doc(db, "rateLimits/bucket-a")));
     await assertFails(setDoc(doc(db, "rateLimits/bucket-b"), { count: 1 }));
+    // System invariant singletons (admin-role serialization doc — issue #48)
+    // are server-only; even an admin client is denied both read and write.
+    await assertFails(getDoc(doc(db, "systemInvariants/adminRole")));
+    await assertFails(
+      setDoc(doc(db, "systemInvariants/adminRole"), { adminCount: 0 }),
+    );
     await assertFails(getDoc(doc(db, "driverRegistryUniqueKeys/name-key")));
     await assertFails(
       getDoc(doc(db, "waterRequests/request-a/photos/photo-a")),

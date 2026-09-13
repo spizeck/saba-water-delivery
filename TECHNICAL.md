@@ -115,6 +115,32 @@ Role checks must be enforced server-side and/or through Firestore Security Rules
 
 Do not trust role values submitted by clients.
 
+## Admin role safety (last-admin invariant)
+
+Removing the `admin` role is guarded so the system can never be left with zero
+administrators:
+
+- **Self-lockout:** an admin cannot remove their own `admin` role
+  (`CANNOT_REMOVE_OWN_ADMIN`). This is deterministic and checked before the
+  transaction.
+- **Last admin:** `removeRole` (`src/lib/domain/admin.ts`) enforces the
+  last-admin check **inside** the role-removal transaction, not before it. Every
+  admin removal reads the live admin set (`users` where `roles` array-contains
+  `admin`) **and** reads/writes a single shared invariant document,
+  `systemInvariants/adminRole`, in the same transaction. That one document is a
+  deliberate point of contention: two concurrent removals of different admins
+  both touch it, so Firestore serializes them — the loser's transaction is
+  retried and, re-reading the now-smaller admin set, fails with `LAST_ADMIN`.
+  The count always comes from the live query (never a denormalized counter), so
+  it cannot drift; the invariant document is created lazily on first admin
+  removal and needs no migration or backfill. Proven by an emulator concurrency
+  test (`src/lib/domain/__tests__/adminRoleConcurrency.emulator.test.ts`); see
+  ADR 0005 and issue #48.
+
+  This guarantee is scoped to concurrent `removeRole` admin removals. Account
+  merges (`mergeUserAccounts`) are a separate, rarer, operator-confirmed path and
+  are not serialized by this document.
+
 ## Role vs Eligibility (Drivers)
 
 Having the `driver` role grants access to driver portal functionality. Whether a
@@ -169,6 +195,28 @@ the domain modules before treating it as exhaustive.
 ```
 
 Role changes are recorded here for audit. These are admin-only operations.
+
+## systemInvariants/adminRole
+
+```ts
+{
+  revision: number        // bumped on every admin removal (the write that
+                          // creates transaction contention)
+  adminCount: number      // live admin count AFTER the last removal; recomputed
+                          // from the users query each time (observability only,
+                          // not the source of truth for the guard)
+  updatedAt: Timestamp
+  updatedBy: string       // actor uid of the last admin removal
+}
+```
+
+A server-only singleton (one fixed document) used purely to **serialize admin
+role removals** so the last-admin invariant holds under concurrency — see "Admin
+role safety" above and ADR 0005. It is created lazily on the first admin removal
+(no migration/backfill), read and written only by `removeRole` via the Admin
+SDK, and fully deny-by-default in `firestore.rules` (the Admin SDK bypasses
+rules, so the transaction — not the rules — is the actual guarantee). Non-admin
+role removals never touch it.
 
 ## driverRegistry/{driverId}
 

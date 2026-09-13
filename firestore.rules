@@ -182,6 +182,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // System invariant singletons (e.g. the admin-role serialization document
+    // that makes last-admin removal concurrency-safe — see ADR 0005 and issue
+    // #48). Read and written only by trusted server-side domain code via the
+    // Admin SDK (which bypasses these rules). No client ever touches them, so
+    // they are fully deny-by-default. This is defense in depth: the Admin SDK
+    // bypasses rules, so the transaction — not these rules — is the actual
+    // concurrency guarantee.
+    match /systemInvariants/{invariantId} {
+      allow read, write: if false;
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;

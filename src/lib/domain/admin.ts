@@ -18,6 +18,15 @@ import type { UserProfile, UserRole } from "./types";
 const USERS_COLLECTION = "users";
 const DRIVER_REGISTRY_COLLECTION = "driverRegistry";
 
+/**
+ * Server-only singleton collection/document used to serialize admin-role
+ * removals so the "never remove the last admin" invariant holds under
+ * concurrency (issue #48). See {@link removeRole}. Denied to all clients in
+ * `firestore.rules`; only trusted Admin SDK code touches it.
+ */
+export const SYSTEM_INVARIANTS_COLLECTION = "systemInvariants";
+export const ADMIN_ROLE_INVARIANT_DOC = "adminRole";
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
@@ -186,7 +195,10 @@ export interface RemoveRoleInput {
  * - Cannot remove "resident" (baseline role).
  * - Cannot remove the "driver" role (managed by the Driver Registry).
  * - Cannot remove own final "admin" role (self-lockout).
- * - Cannot remove the system's last "admin" role.
+ * - Cannot remove the system's last "admin" role — enforced transactionally
+ *   and serialized against concurrent admin removals via a shared singleton
+ *   invariant document (see {@link SYSTEM_INVARIANTS_COLLECTION} and issue #48),
+ *   so two simultaneous removals of different admins can never both succeed.
  */
 export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
   const { targetUid, role, actorId } = input;
@@ -210,25 +222,49 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
     throw new Error("ROLE_NOT_FOUND");
   }
 
-  // Admin lockout protections.
-  if (role === "admin") {
-    // Self-lockout: admin removing their own admin role.
-    if (targetUid === actorId) {
-      throw new Error("CANNOT_REMOVE_OWN_ADMIN");
-    }
-    // System lockout: check if this is the last admin.
-    const adminCount = await countAdmins();
-    if (adminCount <= 1) {
-      throw new Error("LAST_ADMIN");
-    }
+  // Self-lockout is deterministic (the actor cannot change their own uid
+  // mid-operation), so it is safe and cheapest to reject before the
+  // transaction. The last-admin guard, by contrast, MUST run inside the
+  // transaction — see below.
+  if (role === "admin" && targetUid === actorId) {
+    throw new Error("CANNOT_REMOVE_OWN_ADMIN");
   }
 
+  // The last-admin guard MUST be enforced inside the transaction. The previous
+  // implementation counted admins BEFORE the transaction, which re-read only
+  // the target user; two concurrent removals of DIFFERENT admins both observed
+  // two admins and both committed, because their transactions touched only
+  // their own disjoint user documents and so never conflicted, leaving the
+  // system with zero admins (issue #48).
+  //
+  // Fix: every admin removal also reads and writes one shared singleton
+  // invariant document. That single document is the point of contention that
+  // makes Firestore serialize concurrent admin removals — the loser's
+  // transaction is retried and, re-reading the now-smaller admin set, is
+  // correctly rejected. The admin count is read from the live users query
+  // inside the transaction (never a denormalized counter), so it cannot drift
+  // and needs no backfill.
   await db.runTransaction(async (txn) => {
     const now = FieldValue.serverTimestamp();
+    const isAdminRemoval = role === "admin";
+    const invariantRef = db
+      .collection(SYSTEM_INVARIANTS_COLLECTION)
+      .doc(ADMIN_ROLE_INVARIANT_DOC);
+
+    // All reads must precede all writes in a Firestore transaction. For an
+    // admin removal, read the invariant document (the contention point) and
+    // the live admin set before any write.
+    const invariantSnap = isAdminRemoval ? await txn.get(invariantRef) : null;
+    const adminSnap = isAdminRemoval
+      ? await txn.get(
+          db
+            .collection(USERS_COLLECTION)
+            .where("roles", "array-contains", "admin"),
+        )
+      : null;
 
     // Re-read the user document inside the transaction so the write is based
-    // on the latest committed state. The pre-transaction guards above already
-    // validated the operation; this re-read protects against races.
+    // on the latest committed state.
     const freshUserDoc = await txn.get(userRef);
     if (!freshUserDoc.exists) throw new Error("USER_NOT_FOUND");
     const freshData = freshUserDoc.data()!;
@@ -237,12 +273,42 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
       throw new Error("ROLE_NOT_FOUND");
     }
 
+    if (isAdminRemoval) {
+      // The target still holds admin (validated just above) and so is one of
+      // the admins in adminSnap; removing it lowers the count by exactly one.
+      if (adminSnap!.size <= 1) {
+        throw new Error("LAST_ADMIN");
+      }
+    }
+
     const newRoles = freshRoles.filter((r) => r !== role);
 
     txn.update(userRef, {
       roles: newRoles,
       updatedAt: now,
     });
+
+    if (isAdminRemoval) {
+      const priorRevision =
+        typeof invariantSnap?.data()?.revision === "number"
+          ? (invariantSnap.data()!.revision as number)
+          : 0;
+      // Writing the invariant document puts it in this transaction's write set,
+      // so two racing admin removals conflict on it and are serialized. The
+      // stored `adminCount` is recomputed from the live query on every removal
+      // (self-healing observability metadata) and is never the source of truth
+      // for the guard above.
+      txn.set(
+        invariantRef,
+        {
+          revision: priorRevision + 1,
+          adminCount: adminSnap!.size - 1,
+          updatedAt: now,
+          updatedBy: actorId,
+        },
+        { merge: true },
+      );
+    }
 
     const userEventRef = userRef.collection("roleEvents").doc();
     txn.set(userEventRef, {
