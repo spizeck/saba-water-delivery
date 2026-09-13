@@ -39,7 +39,8 @@ Closes #
 
 ## Testing
 
-<!-- Check only what applies. Required checks (`CI / verify`,
+<!-- Check only what applies. The required status-check contexts
+(`verify` and `playwright`, displayed as `CI / verify` and
 `E2E / playwright`) run in CI regardless — this section records what you
 verified locally and where reviewers should look. See `docs/TESTING.md`. -->
 

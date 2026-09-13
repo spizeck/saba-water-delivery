@@ -57,9 +57,10 @@ inferring behavior from the code:
    closing syntax (`Closes #123`) so merging closes it.
 8. Resolve review conversations — the `main` ruleset requires
    conversation resolution before merge.
-9. Wait for the required status checks to pass: **`CI / verify`** and
-   **`E2E / playwright`**, plus a successful **Vercel Preview**
-   deployment for runtime changes.
+9. Wait for the required status checks to pass — the required
+   status-check contexts are **`verify`** and **`playwright`**,
+   displayed in GitHub as `CI / verify` and `E2E / playwright` — plus a
+   successful **Vercel Preview** deployment for runtime changes.
 10. Merge only after review requirements are satisfied — the ruleset
     requires a pull request and one approving review, dismisses stale
     approvals on new pushes, and blocks force pushes to `main`.
