@@ -355,6 +355,37 @@ deletion/update of the involved user documents.
 **Reads/writes:** fully deny-by-default in `firestore.rules`. All access
 is through server-side admin operations in `src/lib/domain/identity.ts`.
 
+## `systemInvariants/adminRole`
+
+**Purpose:** a server-only singleton that makes last-admin role removal
+concurrency-safe (issue #48). It holds no authoritative state of its own;
+it exists so that every admin removal reads and writes **one shared
+document** inside the role-removal transaction, giving Firestore a single
+point of contention that serializes concurrent admin removals. Two
+simultaneous removals of different admins therefore cannot both commit —
+the losing transaction is retried and, re-reading the now-smaller admin
+set, fails with `LAST_ADMIN`. See TECHNICAL.md "Admin role safety" and ADR
+0005.
+
+**Fields:**
+
+- `revision` — integer bumped on each admin removal (the write that creates
+  contention).
+- `adminCount` — the live admin count after the last removal, recomputed
+  from the `users` query every time. Observability metadata only; the guard
+  never trusts it as the source of truth, so it is self-healing and cannot
+  drift.
+- `updatedAt` — timestamp of the last admin removal.
+- `updatedBy` — actor uid of the last admin removal.
+
+**Lifecycle:** created lazily on the first admin removal — no migration or
+backfill. Non-admin role removals never touch it.
+
+**Reads/writes:** fully deny-by-default in `firestore.rules`. All access is
+through `removeRole` in `src/lib/domain/admin.ts` via the Admin SDK. Because
+the Admin SDK bypasses rules, the transaction — not the rules — is the
+concurrency guarantee; the rule is defense in depth.
+
 ## Indexes
 
 Composite indexes are defined in `firestore.indexes.json` and support:

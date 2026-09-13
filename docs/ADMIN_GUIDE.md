@@ -46,10 +46,11 @@ section.
   under "Driver Registry" — attempting to add it from this screen is
   not offered, because becoming an operational driver is a government
   decision made through the Driver Registry, not a generic role grant.
-- An admin cannot remove their own admin role. The last-admin check protects
-  ordinary sequential removals, but concurrent removals of different admins
-  can bypass that count: see [#48](https://github.com/spizeck/saba-water-delivery/issues/48).
-  Coordinate removals one at a time and verify remaining administrator access.
+- An admin cannot remove their own admin role. The system also refuses to
+  remove the **last** remaining admin, so administrative access can never be
+  fully locked out. This check is enforced inside the role-removal transaction
+  and is safe even if two admins are removed at the same time — at most one such
+  removal succeeds and at least one admin always remains (see ADR 0005).
 - Every role change is recorded with who made it and when.
 
 ## Linking historical requests
