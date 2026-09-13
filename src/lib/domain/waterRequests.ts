@@ -7,8 +7,10 @@ import {
 } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
-import { notifyDeliveryConfirmation } from "@/lib/email/deliveryConfirmationNotification";
-import { getLogger, serializeError } from "@/lib/logging";
+import {
+  buildDeliveryConfirmationIntent,
+  deliveryConfirmationOutboxRef,
+} from "@/lib/notifications/outbox";
 import { processInBatches } from "@/lib/utils/processInBatches";
 
 import { appConfig } from "./config";
@@ -51,8 +53,6 @@ import type { WaterSituationInput } from "./waterSituation";
 
 export { buildWaterSituationSnapshot } from "./waterSituation";
 export type { WaterSituationInput } from "./waterSituation";
-
-const log = getLogger("domain.waterRequests");
 
 /**
  * Domain/service layer for water request operations.
@@ -1409,6 +1409,19 @@ export async function markWaterDelivered(
         )
       : null;
 
+    // Durable notification intent (issue #53): a registered resident's delivery
+    // confirmation is enqueued in THIS transaction, so the notification
+    // obligation commits atomically with the delivery — a crash after delivery
+    // but before enqueueing can never lose it. Unregistered requestors
+    // (customerId null) get no intent and thus no authenticated confirmation
+    // link. Read the deterministic outbox doc now (reads precede writes); create
+    // it only if absent so a re-delivery cannot abort or clobber prior intent.
+    const customerId = (data.customerId as string | null) ?? null;
+    const outboxRef = customerId
+      ? deliveryConfirmationOutboxRef(db, requestId)
+      : null;
+    const outboxSnap = outboxRef ? await txn.get(outboxRef) : null;
+
     txn.update(requestRef, {
       status: "delivered",
       deliveredAt: now,
@@ -1445,22 +1458,17 @@ export async function markWaterDelivered(
       createdAt: now,
       metadata: null,
     });
+
+    if (customerId && outboxRef && outboxSnap && !outboxSnap.exists) {
+      txn.create(
+        outboxRef,
+        buildDeliveryConfirmationIntent(requestId, customerId, now),
+      );
+    }
   });
 
   const updated = await requestRef.get();
-  const request = toWaterRequest(requestId, updated.data()!);
-  // Notification failures must not roll back the committed delivery or
-  // prevent the driver action from returning success.
-  try {
-    await notifyDeliveryConfirmation(request);
-  } catch (notificationError) {
-    log.error("email.delivery_confirmation.notify_failed", {
-      requestId: request.id,
-      path: "driver",
-      error: serializeError(notificationError),
-    });
-  }
-  return request;
+  return toWaterRequest(requestId, updated.data()!);
 }
 
 // ---------------------------------------------------------------------------
@@ -1540,6 +1548,16 @@ export async function markWaterDeliveredByStaff(
         )
       : null;
 
+    // Durable delivery-confirmation intent (issue #53), created atomically with
+    // this staff-recorded delivery. See the identical rationale in
+    // markWaterDelivered — unregistered requestors get no intent/link, and the
+    // deterministic doc is created only if absent.
+    const customerId = (data.customerId as string | null) ?? null;
+    const outboxRef = customerId
+      ? deliveryConfirmationOutboxRef(db, requestId)
+      : null;
+    const outboxSnap = outboxRef ? await txn.get(outboxRef) : null;
+
     txn.update(requestRef, {
       status: "delivered",
       deliveredAt: now,
@@ -1578,22 +1596,17 @@ export async function markWaterDeliveredByStaff(
       createdAt: now,
       metadata,
     });
+
+    if (customerId && outboxRef && outboxSnap && !outboxSnap.exists) {
+      txn.create(
+        outboxRef,
+        buildDeliveryConfirmationIntent(requestId, customerId, now),
+      );
+    }
   });
 
   const updated = await requestRef.get();
-  const request = toWaterRequest(requestId, updated.data()!);
-  // Notification failures must not roll back the committed delivery or
-  // prevent the staff action from returning success.
-  try {
-    await notifyDeliveryConfirmation(request);
-  } catch (notificationError) {
-    log.error("email.delivery_confirmation.notify_failed", {
-      requestId: request.id,
-      path: "staff",
-      error: serializeError(notificationError),
-    });
-  }
-  return request;
+  return toWaterRequest(requestId, updated.data()!);
 }
 
 /**

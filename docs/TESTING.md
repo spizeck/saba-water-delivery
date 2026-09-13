@@ -55,7 +55,42 @@ npm run test:rules
 
 This is kept out of `npm run check` (it is heavier and emulator-backed)
 but is run in CI. It never contacts production Firebase — the emulators
-run entirely locally against a throwaway test project id.
+run entirely locally against a throwaway test project id. The rules suite
+includes a check that the durable notification outbox (`notificationOutbox`,
+issue #53) is deny-by-default to every client, including an admin.
+
+### Notification outbox tests (issue #53)
+
+The durable notification outbox has both fast and emulator-backed coverage:
+
+- `src/lib/notifications/__tests__/outboxPolicy.test.ts` — pure, deterministic
+  (injected "now"/RNG): deterministic ids/provider key, exponential backoff with
+  jitter bounds, transient-vs-permanent classification, and the terminal-vs-retry
+  decision (including the max-attempts cap). Runs in the plain `vitest` suite.
+- `src/lib/notifications/__tests__/notificationOutbox.emulator.test.ts` (run by
+  `npm run test:rules`), covering, against real Firestore transactions:
+  - **Durable intent** — delivery commits the outbox intent atomically; an
+    injected transaction failure commits neither the delivery nor the intent; an
+    unregistered requestor gets no intent (and no authenticated link).
+  - **Retry/backoff** — transient failure schedules a backoff retry, becomes
+    eligible only at `nextAttemptAt`, then succeeds → `sent`; the attempt cap
+    yields terminal `max_attempts`.
+  - **Idempotency** — a `sent` notification is never reclaimed/resent; the
+    provider idempotency key is stable and reused on retry.
+  - **Concurrency** — an active lease blocks a second overlapping worker; an
+    expired lease is reclaimed.
+  - **Provider-accept/local-crash window** — the retry reuses the identical
+    provider idempotency key (the fake provider records keys; the test does not
+    assert external exactly-once).
+  - **Terminal failures** — permanent and `configuration_disabled` become
+    terminal without hammering.
+  - **Admin manual retry** — a failed notification is listed (sanitized) and
+    safely re-queued; a sent one is never re-queued; a missing one reports
+    not-found.
+  The provider is injected (a fake sender), so these never touch Resend.
+- `src/lib/domain/__tests__/deliveryNotificationTrigger.test.ts` — fast
+  (non-emulator) coverage that both delivery paths stage the outbox intent for a
+  registered requestor and none for an unregistered one.
 
 ## Continuous integration
 
