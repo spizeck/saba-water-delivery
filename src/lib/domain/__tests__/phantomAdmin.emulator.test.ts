@@ -237,4 +237,45 @@ describe("phantom admin — merge cannot leave zero usable admins", () => {
     // Exactly one usable admin remains.
     expect(await countAdmins()).toBe(1);
   }, 30_000);
+
+  it("fails closed (no partial state) when the duplicate owns too many requests to relink atomically", async () => {
+    // Guard against the one partial-merge window the role-first transaction
+    // introduced: if the request-relink batch would exceed Firestore's 500-write
+    // limit, the merge must reject BEFORE any write rather than after committing
+    // the role change. Seed 501 duplicate-owned requests.
+    await seedUser("canonAdmin", ["resident", "admin"]);
+    await seedUser("dupAdmin", ["resident", "admin"]);
+
+    const total = 501;
+    for (let start = 0; start < total; start += 400) {
+      const batch = db.batch();
+      for (let i = start; i < Math.min(start + 400, total); i++) {
+        batch.set(db.collection("waterRequests").doc(`req-${i}`), {
+          customerId: "dupAdmin",
+          status: "available",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+      await batch.commit();
+    }
+
+    await expect(
+      unionMerge("canonAdmin", "dupAdmin", "canonAdmin"),
+    ).rejects.toThrow("MERGE_TOO_MANY_REQUESTS");
+
+    // Nothing changed: roles intact, no audit, no invariant doc, requests still
+    // owned by the duplicate.
+    expect(await rolesOf("canonAdmin")).toContain("admin");
+    expect(await rolesOf("dupAdmin")).toContain("admin");
+    expect(await countAdmins()).toBe(2);
+    expect(await mergeEventCount()).toBe(0);
+    expect(await invariantExists()).toBe(false);
+    const stillDup = await db
+      .collection("waterRequests")
+      .where("customerId", "==", "dupAdmin")
+      .count()
+      .get();
+    expect(stillDup.data().count).toBe(total);
+  }, 60_000);
 });

@@ -1503,7 +1503,12 @@ accounts. `getAccountMergePreview()` returns comparison data including
 role lists, driver registry links, and duplicate-owned request counts.
 `mergeUserAccounts()` performs the merge with these safeguards:
 
-- **Request ownership** (`customerId`) relinked from duplicate to canonical.
+- **Request ownership** (`customerId`) relinked from duplicate to canonical in a
+  single atomic batch. A merge whose duplicate owns more than
+  `MAX_MERGE_REQUEST_RELINKS` (500, Firestore's batch limit) requests is rejected
+  (`MERGE_TOO_MANY_REQUESTS`) **before** any write, so an oversized relink can
+  never fail after the role transaction has committed (implausible at Saba's
+  scale; full cross-step merge atomicity is tracked by #49).
 - **Driver registry link** moved only if the canonical account is not
   already linked to a different registry entry; if both accounts are
   linked to different entries, the merge is blocked.
@@ -1522,8 +1527,13 @@ role lists, driver registry links, and duplicate-owned request counts.
   identity is about to be deleted) so it cannot linger as a counted-but-unusable
   "phantom admin," and counts that revocation in the check. A merge that would
   leave zero usable admins fails closed with `LAST_ADMIN` — no roles changed, no
-  requests relinked, no Auth deletion, no `accountMergeEvents` record. Merges
-  that touch no admin are unaffected.
+  requests relinked, no Auth deletion, no `accountMergeEvents` record. Whether a
+  merge reduces admins is decided from **fresh reads** of the canonical and
+  duplicate documents (and the live admin set) **inside** the transaction, never
+  from the non-transactional preview — the preview is UI input only, so a
+  canonical or duplicate that concurrently gained `admin` cannot slip past the
+  guard. The canonical role write itself always occurs in this transaction.
+  Merges that touch no admin are unaffected.
 - **Duplicate Firebase Auth account** is deleted only after Firestore
   relinking succeeds. If deletion fails, the audit record captures the
   error so staff can retry or clean up manually. The duplicate's `users`

@@ -353,6 +353,12 @@ export async function mergeAccounts(
             message:
               "This merge would remove the last admin from the system. Keep the admin role or promote another admin first.",
           };
+        case "MERGE_TOO_MANY_REQUESTS":
+          return {
+            status: "error",
+            message:
+              "This account has too many linked requests to merge safely in one step. Contact an administrator.",
+          };
         default:
           return { status: "error", message: err.message };
       }
