@@ -249,9 +249,13 @@ Role management safeguards:
   to a user automatically grants the `driver` role; unlinking it
   automatically removes the `driver` role.
 - Admins cannot remove their own admin role (self-lockout protection).
-- The system refuses to remove the last remaining admin. The check is enforced
-  inside the role-removal transaction and serialized across concurrent removals,
-  so simultaneous admin removals can never leave zero admins.
+- The system refuses any mutation that would remove the last **usable** admin.
+  The check is enforced inside the transaction of every admin-reducing
+  operation — removing the admin role, and merging accounts (a merge can drop
+  admin from the account kept and always revokes admin from the merged-away
+  account whose login is deleted, so no unusable "phantom" admin is left
+  counted) — and serialized across them, so no combination of concurrent
+  operations can leave zero usable admins.
 - Unlinking a Driver Registry account is blocked while the driver has
   active claimed deliveries.
 - Role changes are audited with actor and timestamp.

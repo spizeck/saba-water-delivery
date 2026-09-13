@@ -46,11 +46,16 @@ section.
   under "Driver Registry" — attempting to add it from this screen is
   not offered, because becoming an operational driver is a government
   decision made through the Driver Registry, not a generic role grant.
-- An admin cannot remove their own admin role. The system also refuses to
-  remove the **last** remaining admin, so administrative access can never be
-  fully locked out. This check is enforced inside the role-removal transaction
-  and is safe even if two admins are removed at the same time — at most one such
-  removal succeeds and at least one admin always remains (see ADR 0005).
+- An admin cannot remove their own admin role. The system also refuses any
+  action that would remove the **last usable** admin, so administrative access
+  can never be fully locked out. This holds for every way admin access can be
+  taken away — removing the admin role, **and** merging accounts (a merge both
+  can drop admin from the account kept and removes admin from the merged-away
+  account, whose login is deleted, so it can never linger as an administrator
+  that cannot sign in). It holds even when two such actions happen at the same
+  time: at most one succeeds and at least one usable admin always remains (see
+  ADR 0005). A blocked action changes nothing and reports that it would remove
+  the last admin.
 - Every role change is recorded with who made it and when.
 
 ## Linking historical requests
