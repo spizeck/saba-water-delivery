@@ -4,11 +4,13 @@ import { type UserRecord } from "firebase-admin/auth";
 import {
   FieldValue,
   type DocumentData,
+  type DocumentReference,
   type DocumentSnapshot,
 } from "firebase-admin/firestore";
 
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { toUserRoles } from "@/lib/auth/roles";
+import { getLogger, serializeError } from "@/lib/logging";
 
 import type {
   AccountMergeEvent,
@@ -38,15 +40,40 @@ const USERS_COLLECTION = "users";
 const DRIVER_REGISTRY_COLLECTION = "driverRegistry";
 const MERGE_EVENTS_COLLECTION = "accountMergeEvents";
 
+const log = getLogger("domain.identity");
+
 /**
- * Maximum number of duplicate-owned water requests an account merge will relink
- * in its single atomic batch (Firestore's hard limit is 500 writes per batch).
- * A merge of an account owning more than this is rejected BEFORE any write so it
- * fails closed rather than committing the role change and then failing on the
- * oversized relink batch. Implausible at Saba's scale (a resident never owns
- * hundreds of requests); full end-to-end merge atomicity is tracked by #49.
+ * Firestore's hard limit on the number of writes in a single transaction or
+ * batched write.
  */
-const MAX_MERGE_REQUEST_RELINKS = 500;
+const FIRESTORE_MAX_TXN_WRITES = 500;
+
+/**
+ * Non-request writes the atomic merge transaction can perform besides the
+ * per-request `customerId` relinks: the canonical role update, the duplicate
+ * admin-revocation update, the shared last-admin invariant document, the
+ * driver-registry relink, and the `accountMergeEvents` audit record. The merge
+ * caps request relinks so that this fixed overhead plus the relinks can never
+ * exceed {@link FIRESTORE_MAX_TXN_WRITES}.
+ */
+const MERGE_TXN_NON_REQUEST_WRITES = 5;
+
+/**
+ * Maximum number of duplicate-owned water requests an account merge will relink.
+ * Since issue #49 the entire merge — canonical role change, duplicate admin
+ * revocation, driver-registry relink, request relinks, AND the
+ * `accountMergeEvents` audit record — commits in ONE Firestore transaction, so
+ * this cap leaves headroom for the fixed non-request writes and the whole
+ * transaction stays within {@link FIRESTORE_MAX_TXN_WRITES}. A merge of an
+ * account owning more than this is rejected BEFORE any write
+ * (`MERGE_TOO_MANY_REQUESTS`) so it fails closed rather than exceeding the write
+ * limit mid-commit. Implausible at Saba's scale (a resident never owns hundreds
+ * of requests). The only merge state that is NOT part of the transaction is the
+ * external Firebase Auth account deletion, which cannot join a Firestore
+ * transaction — see the note in {@link mergeUserAccounts}.
+ */
+const MAX_MERGE_REQUEST_RELINKS =
+  FIRESTORE_MAX_TXN_WRITES - MERGE_TXN_NON_REQUEST_WRITES;
 
 // ---------------------------------------------------------------------------
 // Account lookup
@@ -374,6 +401,17 @@ export interface MergeUserAccountsResult {
 /**
  * Consolidates two authenticated accounts into one canonical account.
  *
+ * Atomicity (issue #49): every Firestore effect of the merge — canonical role
+ * change, duplicate admin revocation, shared last-admin invariant
+ * participation, driver-registry relink, request-ownership relinks, AND the
+ * `accountMergeEvents` audit record — commits in ONE Firestore transaction, so
+ * no sensitive state can commit without its durable business-history event.
+ * The one merge side effect that cannot join that transaction is the external
+ * Firebase Auth account deletion (Firebase Auth is not a Firestore participant);
+ * it runs after the commit and its outcome is recorded on the audit record by a
+ * best-effort update — the sole remaining non-atomic boundary, documented in
+ * ADR 0010.
+ *
  * Safety rules:
  *   1. Water request ownership (`customerId`) is relinked from duplicate
  *      to canonical. Historical actor fields (createdBy,
@@ -382,18 +420,23 @@ export interface MergeUserAccountsResult {
  *   2. Driver Registry link: if the duplicate account is linked to a
  *      registry entry and the canonical account is not, the link is
  *      moved to canonical. If BOTH are linked to different entries, the
- *      merge is blocked.
+ *      merge is blocked. The relink is applied inside the transaction
+ *      against a fresh read, so a concurrent unlink cannot strand it.
  *   3. Roles: "union" mode unions only resident/viewer. Admin,
  *      dispatcher, and driver roles must be transferred through
  *      "explicit" mode with a deliberate role list. The driver role is
  *      further gated by the Driver Registry link state.
- *   4. The duplicate Firebase Auth user is deleted only after all
- *      Firestore relinking succeeds. If deletion fails, the merge record
- *      is still written and the error is surfaced so staff can retry or
- *      delete the duplicate account manually.
- *   5. An `accountMergeEvents/{eventId}` audit record is created with
- *      both original uids, the acting admin, the role decision, and
- *      relink counts.
+ *   4. The duplicate Firebase Auth user is deleted only after the Firestore
+ *      transaction commits, so a transaction failure never deletes an Auth
+ *      account for a merge that did not happen. If deletion fails, the merge
+ *      still succeeded (all Firestore state + audit committed) and the error is
+ *      surfaced and recorded so staff can retry or delete the account manually.
+ *   5. The `accountMergeEvents/{eventId}` audit record (both original uids, the
+ *      acting admin, the role decision, relink counts, whether the duplicate's
+ *      admin role was revoked, and any Auth-deletion error) is written INSIDE
+ *      the transaction, so it cannot be lost while the merge's state changes
+ *      commit. `duplicateAuthDeleted`/`error` are filled in by the post-commit
+ *      best-effort update described above.
  */
 export async function mergeUserAccounts(
   input: MergeUserAccountsInput,
@@ -421,9 +464,11 @@ export async function mergeUserAccounts(
 
   const db = getAdminDb();
   const auth = getAdminAuth();
-  const now = FieldValue.serverTimestamp();
 
-  // Resolve final role list.
+  // Resolve final role list. "union" uses the preview's non-sensitive union;
+  // "explicit" uses the admin's exact choice — the only way to move admin/
+  // dispatcher/driver. The last-admin SAFETY decision below never trusts the
+  // preview; it re-reads live state inside the transaction.
   let finalRoles: UserRole[];
   if (roleMergePolicy === "explicit") {
     finalRoles = [...new Set(explicitRoles!)].sort();
@@ -440,48 +485,87 @@ export async function mergeUserAccounts(
   const canonicalRef = db.collection(USERS_COLLECTION).doc(canonicalUid);
   const duplicateRef = db.collection(USERS_COLLECTION).doc(duplicateUid);
 
-  // Fetch the duplicate's requests up front so we can fail closed BEFORE any
-  // write when there are too many to relink in a single atomic batch. Without
-  // this, an oversized relink batch could reject AFTER the role transaction had
-  // already committed, stranding a partial merge (review #70 / Aikido). Full
-  // end-to-end merge atomicity across role write, request relink, Auth deletion
-  // and audit remains tracked by #49.
-  const duplicateRequestSnap = await db
+  // Fail closed BEFORE opening the transaction if the duplicate owns more
+  // requests than can be relinked within Firestore's per-transaction write
+  // limit (alongside the fixed merge writes). A cheap aggregation count avoids
+  // reading every request document just to reject; the authoritative check is
+  // repeated INSIDE the transaction against the transactionally-consistent set.
+  const duplicateRequestCountSnap = await db
     .collection(REQUESTS_COLLECTION)
     .where("customerId", "==", duplicateUid)
+    .count()
     .get();
-  const requestsRelinked = duplicateRequestSnap.size;
-  if (requestsRelinked > MAX_MERGE_REQUEST_RELINKS) {
+  if (duplicateRequestCountSnap.data().count > MAX_MERGE_REQUEST_RELINKS) {
     throw new Error("MERGE_TOO_MANY_REQUESTS");
   }
 
-  // Last-admin invariant (issue #70 + the "phantom admin" fix). The canonical
-  // role write ALWAYS happens inside this transaction — never an unprotected
-  // batch — and whether the merge reduces the usable admin population is decided
-  // from FRESH reads of the canonical and duplicate documents and the live admin
-  // set, NOT from the non-transactional `preview`. The preview is UI input only;
-  // letting it gate the write path would let a canonical or duplicate that
-  // concurrently gained `admin` (between preview and commit) slip past the guard
-  // (review #70 / Aikido).
-  //
-  // A merge reduces usable admins in two ways, both handled here atomically:
+  // Stable audit-record id + timestamp across transaction retries.
+  const mergeEventRef = db.collection(MERGE_EVENTS_COLLECTION).doc();
+  const mergeCreatedAt = new Date().toISOString();
+
+  // Whether the duplicate registry entry should be relinked to canonical is
+  // decided from the (UI) preview, but the relink itself is performed inside
+  // the transaction against a fresh read.
+  const duplicateDriverIdToRelink =
+    preview.duplicateDriverId && !preview.canonicalDriverId
+      ? preview.duplicateDriverId
+      : null;
+
+  // ONE transaction commits every Firestore effect of the merge so no sensitive
+  // state can commit without its durable audit record (issue #49). The
+  // last-admin invariant (issue #70 + the "phantom admin" fix) is preserved:
+  // whether the merge reduces the usable admin population is decided from FRESH
+  // reads of the canonical/duplicate documents and the live admin set — NEVER
+  // the non-transactional `preview` (which is UI input only; letting it gate
+  // the write path would let a canonical or duplicate that concurrently gained
+  // `admin` slip past the guard — review #70 / Aikido). A merge reduces usable
+  // admins in two ways, both handled atomically here:
   //   1. the canonical loses `admin` (finalRoles omits it while it held it);
   //   2. the duplicate is decommissioned — its Firebase Auth identity is deleted
   //      below — so if it holds `admin` that role is revoked from the leftover
   //      document to avoid a counted-but-unusable "phantom admin". Other roles
   //      are preserved for historical linkage.
-  // When either applies, the transaction also reads+writes the shared
+  // When either applies, the transaction reads+writes the shared
   // `systemInvariants/adminRole` document (serializing against concurrent
   // `removeRole`s and merges) and rejects with `LAST_ADMIN` if zero usable
-  // admins would remain. It runs before any other merge write, so a rejection
-  // fails closed with no partial state and no audit record.
+  // admins would remain. Any rejection aborts the whole transaction, so the
+  // merge fails closed with no partial state and no audit record.
   let duplicateAdminRevoked = false;
+  let requestsRelinked = 0;
+  let driverRegistryRelinked: 0 | 1 = 0;
+  const now = FieldValue.serverTimestamp();
+
   await db.runTransaction(async (txn) => {
-    // All reads first (Firestore requires all reads before all writes).
+    // ---- All reads first (Firestore requires all reads before all writes) ----
     const canonicalSnap = await txn.get(canonicalRef);
     if (!canonicalSnap.exists) throw new Error("USER_NOT_FOUND");
     const duplicateSnap = await txn.get(duplicateRef);
     if (!duplicateSnap.exists) throw new Error("USER_NOT_FOUND");
+
+    // Authoritative, transactionally-consistent set of requests to relink.
+    const duplicateRequestSnap = await txn.get(
+      db
+        .collection(REQUESTS_COLLECTION)
+        .where("customerId", "==", duplicateUid),
+    );
+    // Re-check against the live set: if the duplicate acquired more requests
+    // since the pre-check, still fail closed rather than exceed the write limit.
+    if (duplicateRequestSnap.size > MAX_MERGE_REQUEST_RELINKS) {
+      throw new Error("MERGE_TOO_MANY_REQUESTS");
+    }
+
+    // Driver-registry relink target, read inside the transaction so a
+    // concurrent unlink/relink cannot strand a stale write.
+    let registryRelinkRef: DocumentReference | null = null;
+    if (duplicateDriverIdToRelink) {
+      const regRef = db
+        .collection(DRIVER_REGISTRY_COLLECTION)
+        .doc(duplicateDriverIdToRelink);
+      const regSnap = await txn.get(regRef);
+      if (regSnap.exists && regSnap.data()!.linkedUserId === duplicateUid) {
+        registryRelinkRef = regRef;
+      }
+    }
 
     const canonicalRolesLive = toUserRoles(canonicalSnap.data()!.roles);
     const duplicateRolesLive = toUserRoles(duplicateSnap.data()!.roles);
@@ -508,8 +592,13 @@ export async function mergeUserAccounts(
       afterAdminCount = afterAdmins.size;
     }
 
-    // Writes.
+    // ---- All writes after reads ----
+    // Reset per-attempt so a transaction retry cannot carry stale values.
+    duplicateAdminRevoked = false;
+    driverRegistryRelinked = 0;
+
     txn.update(canonicalRef, { roles: finalRoles, updatedAt: now });
+
     if (duplicateLosesAdmin) {
       txn.update(duplicateRef, {
         roles: duplicateRolesLive.filter((r) => r !== "admin"),
@@ -517,6 +606,7 @@ export async function mergeUserAccounts(
       });
       duplicateAdminRevoked = true;
     }
+
     if (reducesAdmins) {
       recordAdminInvariantParticipation(
         db,
@@ -526,71 +616,78 @@ export async function mergeUserAccounts(
         actorId,
       );
     }
+
+    if (registryRelinkRef) {
+      txn.update(registryRelinkRef, {
+        linkedUserId: canonicalUid,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
+      driverRegistryRelinked = 1;
+    }
+
+    for (const doc of duplicateRequestSnap.docs) {
+      txn.update(doc.ref, { customerId: canonicalUid, updatedAt: now });
+    }
+    requestsRelinked = duplicateRequestSnap.size;
+
+    // Audit record — committed in the SAME transaction as every state change
+    // above (issue #49). `duplicateAuthDeleted` starts false because the
+    // external Auth deletion happens only after this transaction commits; it is
+    // filled in by the best-effort update below.
+    const mergeEventData: Omit<AccountMergeEvent, "id"> = {
+      canonicalUserId: canonicalUid,
+      duplicateUserId: duplicateUid,
+      actorId,
+      createdAt: mergeCreatedAt, // stored as string for simplicity; could use timestamp
+      reason: reason.trim(),
+      roleMergePolicy,
+      mergedRoles: finalRoles,
+      duplicateAuthDeleted: false,
+      duplicateAdminRevoked,
+      counts: {
+        requestsRelinked,
+        driverRegistryRelinked,
+      },
+      error: null,
+    };
+    txn.set(mergeEventRef, mergeEventData);
   });
 
-  // Relink driver registry if applicable.
-  let driverRegistryRelinked: 0 | 1 = 0;
-  if (preview.duplicateDriverId && !preview.canonicalDriverId) {
-    const regRef = db
-      .collection(DRIVER_REGISTRY_COLLECTION)
-      .doc(preview.duplicateDriverId);
-    await regRef.update({
-      linkedUserId: canonicalUid,
-      updatedAt: now,
-      updatedBy: actorId,
-    });
-    driverRegistryRelinked = 1;
-  }
-
-  // Relink water request ownership. The canonical role write already happened in
-  // the transaction above, so this batch carries request updates only (bounded
-  // above by MAX_MERGE_REQUEST_RELINKS, so it always fits one atomic commit).
-  if (!duplicateRequestSnap.empty) {
-    const batch = db.batch();
-    for (const doc of duplicateRequestSnap.docs) {
-      batch.update(doc.ref, {
-        customerId: canonicalUid,
-        updatedAt: now,
-      });
-    }
-    await batch.commit();
-  }
-
-  // Delete duplicate Auth account if possible. This must come after the
-  // Firestore relinking so a partial failure does not leave orphaned
-  // references pointing to a still-existing duplicate uid.
+  // Delete the duplicate Firebase Auth account — the one merge side effect that
+  // cannot join the Firestore transaction. It runs AFTER the commit so a
+  // transaction failure never deletes an Auth account for a merge that did not
+  // happen, and no Firestore reference is left pointing at a still-existing
+  // duplicate uid. If deletion fails the merge still succeeded (all Firestore
+  // state + audit committed); the error is surfaced and recorded below.
   let duplicateAuthDeleted = false;
   let deleteError: string | null = null;
   try {
     await auth.deleteUser(duplicateUid);
     duplicateAuthDeleted = true;
   } catch (err: unknown) {
-    const message =
+    deleteError =
       err instanceof Error
         ? err.message
         : "Failed to delete duplicate auth user";
-    deleteError = message;
   }
 
-  // Write merge audit record.
-  const mergeEventRef = db.collection(MERGE_EVENTS_COLLECTION).doc();
-  const mergeEventData: Omit<AccountMergeEvent, "id"> = {
-    canonicalUserId: canonicalUid,
-    duplicateUserId: duplicateUid,
-    actorId,
-    createdAt: new Date().toISOString(), // stored as string for simplicity; could use timestamp
-    reason: reason.trim(),
-    roleMergePolicy,
-    mergedRoles: finalRoles,
-    duplicateAuthDeleted,
-    duplicateAdminRevoked,
-    counts: {
-      requestsRelinked,
-      driverRegistryRelinked,
-    },
-    error: deleteError,
-  };
-  await mergeEventRef.set(mergeEventData);
+  // Record the external Auth-deletion outcome on the already-durable audit
+  // record. This update is intentionally best-effort and NOT atomic with the
+  // deletion — Firebase Auth cannot participate in a Firestore transaction — so
+  // a rare failure here leaves `duplicateAuthDeleted: false`/`error: null` on
+  // the record even though the merge's authoritative Firestore state is fully
+  // committed. This is the sole documented external-system boundary (ADR 0010).
+  try {
+    await mergeEventRef.update({ duplicateAuthDeleted, error: deleteError });
+  } catch (updateErr) {
+    log.warn("identity.merge.audit_auth_outcome_update_failed", {
+      canonicalUserId: canonicalUid,
+      duplicateUserId: duplicateUid,
+      duplicateAuthDeleted,
+      error: serializeError(updateErr),
+    });
+  }
 
   // Refresh canonical profile and return.
   const updatedCanonical = await getUserProfile(canonicalUid);

@@ -361,18 +361,22 @@ export async function registerPerson(
     updatedAt: now,
   };
 
-  await ref.set(newData);
-
-  // Audit event
-  await ref.collection("roleEvents").add({
-    type: "person_registered",
-    actorId: registeredBy,
-    createdAt: now,
-    metadata: {
-      roles: finalRoles,
-      phone: phone.trim(),
-      email: email?.trim() || null,
-    },
+  // Creating a staff-registered person establishes an operational identity and
+  // grants roles; the `person_registered` roleEvent is the durable record of
+  // that role grant. The account document and its audit event commit together
+  // or not at all (issue #49), mirroring `createDriver`.
+  await db.runTransaction(async (txn) => {
+    txn.create(ref, newData);
+    txn.set(ref.collection("roleEvents").doc(), {
+      type: "person_registered",
+      actorId: registeredBy,
+      createdAt: now,
+      metadata: {
+        roles: finalRoles,
+        phone: phone.trim(),
+        email: email?.trim() || null,
+      },
+    });
   });
 
   const created = await ref.get();

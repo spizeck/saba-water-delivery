@@ -599,26 +599,32 @@ export async function restrictDriver(
   const { driverId, restrictedBy, reason } = input;
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
-  const doc = await ref.get();
-  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
 
-  const now = FieldValue.serverTimestamp();
-  await ref.update({
-    eligibilityStatus: "ineligible",
-    availabilityStatus: "offline",
-    ineligibilityReason: reason,
-    restrictedAt: now,
-    restrictedBy,
-    updatedAt: now,
-    updatedBy: restrictedBy,
-  });
+  // Restricting a driver's delivery access is a required audit event
+  // (TECHNICAL.md "Auditability"): the eligibility change and the
+  // `driver_access_restricted` event commit together or not at all (issue #49).
+  await db.runTransaction(async (txn) => {
+    const doc = await txn.get(ref);
+    if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
 
-  await ref.collection("events").add({
-    type: "driver_access_restricted",
-    actorId: restrictedBy,
-    actorRole: "admin",
-    createdAt: now,
-    metadata: { reason },
+    const now = FieldValue.serverTimestamp();
+    txn.update(ref, {
+      eligibilityStatus: "ineligible",
+      availabilityStatus: "offline",
+      ineligibilityReason: reason,
+      restrictedAt: now,
+      restrictedBy,
+      updatedAt: now,
+      updatedBy: restrictedBy,
+    });
+
+    txn.set(ref.collection("events").doc(), {
+      type: "driver_access_restricted",
+      actorId: restrictedBy,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: { reason },
+    });
   });
 
   const updated = await ref.get();
@@ -636,25 +642,32 @@ export async function restoreDriver(
   const { driverId, restoredBy } = input;
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(driverId);
-  const doc = await ref.get();
-  if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
 
-  const now = FieldValue.serverTimestamp();
-  await ref.update({
-    eligibilityStatus: "eligible",
-    ineligibilityReason: null,
-    restrictedAt: null,
-    restrictedBy: null,
-    updatedAt: now,
-    updatedBy: restoredBy,
-  });
+  // Restoring delivery access clears `restrictedAt`/`restrictedBy` on the
+  // document, so the `driver_access_restored` event is the SOLE durable record
+  // of who reinstated the driver and when. It must commit atomically with the
+  // eligibility change (issue #49).
+  await db.runTransaction(async (txn) => {
+    const doc = await txn.get(ref);
+    if (!doc.exists) throw new Error("DRIVER_NOT_FOUND");
 
-  await ref.collection("events").add({
-    type: "driver_access_restored",
-    actorId: restoredBy,
-    actorRole: "admin",
-    createdAt: now,
-    metadata: null,
+    const now = FieldValue.serverTimestamp();
+    txn.update(ref, {
+      eligibilityStatus: "eligible",
+      ineligibilityReason: null,
+      restrictedAt: null,
+      restrictedBy: null,
+      updatedAt: now,
+      updatedBy: restoredBy,
+    });
+
+    txn.set(ref.collection("events").doc(), {
+      type: "driver_access_restored",
+      actorId: restoredBy,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: null,
+    });
   });
 
   const updated = await ref.get();
@@ -1305,37 +1318,45 @@ export async function setMeterAssignment(
 
   const db = getAdminDb();
   const driverRef = db.collection(REGISTRY_COLLECTION).doc(driverId);
-  const driverDoc = await driverRef.get();
-  if (!driverDoc.exists) throw new Error("DRIVER_NOT_FOUND");
-
   const meterRef = driverRef.collection("meters").doc(stationId);
-  const existing = await meterRef.get();
-  const now = FieldValue.serverTimestamp();
 
-  await meterRef.set({
-    meterCode: meterCode.trim(),
-    meterNumber,
-    updatedAt: now,
-    updatedBy: actorId,
-  });
+  // Meter assignment changes are required audit history (TECHNICAL.md
+  // "Auditability"): the meter write and its `meter_assignment_added/updated`
+  // event commit together or not at all (issue #49). The previous meter
+  // values live only on the audit event, so a lost event would drop the
+  // before/after diff.
+  await db.runTransaction(async (txn) => {
+    const driverDoc = await txn.get(driverRef);
+    if (!driverDoc.exists) throw new Error("DRIVER_NOT_FOUND");
 
-  await driverRef.collection("events").add({
-    type: existing.exists
-      ? "meter_assignment_updated"
-      : "meter_assignment_added",
-    actorId,
-    actorRole: "admin",
-    createdAt: now,
-    metadata: {
-      stationId,
-      previous: existing.exists
-        ? {
-            meterCode: existing.data()!.meterCode,
-            meterNumber: existing.data()!.meterNumber,
-          }
-        : null,
-      updated: { meterCode: meterCode.trim(), meterNumber },
-    },
+    const existing = await txn.get(meterRef);
+    const now = FieldValue.serverTimestamp();
+
+    txn.set(meterRef, {
+      meterCode: meterCode.trim(),
+      meterNumber,
+      updatedAt: now,
+      updatedBy: actorId,
+    });
+
+    txn.set(driverRef.collection("events").doc(), {
+      type: existing.exists
+        ? "meter_assignment_updated"
+        : "meter_assignment_added",
+      actorId,
+      actorRole: "admin",
+      createdAt: now,
+      metadata: {
+        stationId,
+        previous: existing.exists
+          ? {
+              meterCode: existing.data()!.meterCode,
+              meterNumber: existing.data()!.meterNumber,
+            }
+          : null,
+        updated: { meterCode: meterCode.trim(), meterNumber },
+      },
+    });
   });
 
   const updated = await meterRef.get();
@@ -1355,24 +1376,31 @@ export async function removeMeterAssignment(
   const db = getAdminDb();
   const driverRef = db.collection(REGISTRY_COLLECTION).doc(driverId);
   const meterRef = driverRef.collection("meters").doc(stationId);
-  const existing = await meterRef.get();
-  if (!existing.exists) return;
 
-  const previous = existing.data()!;
-  await meterRef.delete();
+  // Removing a meter assignment deletes the meter document, so the
+  // `meter_assignment_removed` event is the SOLE durable record that the
+  // assignment ever existed and was removed. The delete and the event must
+  // commit atomically (issue #49).
+  await db.runTransaction(async (txn) => {
+    const existing = await txn.get(meterRef);
+    if (!existing.exists) return;
 
-  await driverRef.collection("events").add({
-    type: "meter_assignment_removed",
-    actorId,
-    actorRole: "admin",
-    createdAt: FieldValue.serverTimestamp(),
-    metadata: {
-      stationId,
-      previous: {
-        meterCode: previous.meterCode,
-        meterNumber: previous.meterNumber,
+    const previous = existing.data()!;
+    txn.delete(meterRef);
+
+    txn.set(driverRef.collection("events").doc(), {
+      type: "meter_assignment_removed",
+      actorId,
+      actorRole: "admin",
+      createdAt: FieldValue.serverTimestamp(),
+      metadata: {
+        stationId,
+        previous: {
+          meterCode: previous.meterCode,
+          meterNumber: previous.meterNumber,
+        },
       },
-    },
+    });
   });
 }
 

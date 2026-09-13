@@ -426,14 +426,25 @@ export async function closeDeliveryRun(
     };
   }
 
-  const now = FieldValue.serverTimestamp();
-  await batchRef.update({ status: "completed", updatedAt: now });
-  await batchRef.collection("events").add({
-    type: "dispatch_batch_closed",
-    actorId,
-    actorRole: "dispatcher",
-    createdAt: now,
-    metadata: { reason: "manual_close" },
+  // The batch document records the completed status but not who closed it or
+  // why; the `dispatch_batch_closed` event is the sole record of that
+  // deliberate staff action, so the status change and the event commit
+  // together or not at all (issue #49). Re-check the status inside the
+  // transaction so a concurrent close records only one event.
+  await db.runTransaction(async (txn) => {
+    const freshSnap = await txn.get(batchRef);
+    if (!freshSnap.exists) return;
+    if (freshSnap.data()!.status === "completed") return;
+
+    const now = FieldValue.serverTimestamp();
+    txn.update(batchRef, { status: "completed", updatedAt: now });
+    txn.set(batchRef.collection("events").doc(), {
+      type: "dispatch_batch_closed",
+      actorId,
+      actorRole: "dispatcher",
+      createdAt: now,
+      metadata: { reason: "manual_close" },
+    });
   });
 
   return { ok: true };

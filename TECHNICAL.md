@@ -1503,12 +1503,19 @@ accounts. `getAccountMergePreview()` returns comparison data including
 role lists, driver registry links, and duplicate-owned request counts.
 `mergeUserAccounts()` performs the merge with these safeguards:
 
-- **Request ownership** (`customerId`) relinked from duplicate to canonical in a
-  single atomic batch. A merge whose duplicate owns more than
-  `MAX_MERGE_REQUEST_RELINKS` (500, Firestore's batch limit) requests is rejected
-  (`MERGE_TOO_MANY_REQUESTS`) **before** any write, so an oversized relink can
-  never fail after the role transaction has committed (implausible at Saba's
-  scale; full cross-step merge atomicity is tracked by #49).
+- **Single-transaction Firestore atomicity** (issue #49): every Firestore effect
+  of the merge — canonical role change, duplicate `admin` revocation, last-admin
+  invariant participation, driver-registry relink, request-ownership
+  (`customerId`) relinks, and the `accountMergeEvents` audit record — commits in
+  **one Firestore transaction**, so no merge state can commit without its durable
+  audit record and no partial relink is possible. Historical actor fields on
+  requests (`createdBy`, `assignedDriverId`, …) are NOT rewritten — they remain
+  historical truth.
+- **Request ownership** relinks are bounded by `MAX_MERGE_REQUEST_RELINKS`
+  (`FIRESTORE_MAX_TXN_WRITES` − the fixed per-merge writes = 495) so the whole
+  transaction stays within Firestore's 500-write limit. A merge whose duplicate
+  owns more than that is rejected (`MERGE_TOO_MANY_REQUESTS`) **before** any
+  write (implausible at Saba's scale).
 - **Driver registry link** moved only if the canonical account is not
   already linked to a different registry entry; if both accounts are
   linked to different entries, the merge is blocked.
@@ -1520,29 +1527,37 @@ role lists, driver registry links, and duplicate-owned request counts.
     only way to transfer sensitive roles.
 - **Last-admin invariant** (issue #70): a merge that reduces the usable admin
   population runs through the shared last-admin invariant protocol (see "Admin
-  role safety") in a transaction *before* any other merge write. This applies
-  both when the chosen roles demote the canonical out of `admin`, **and** when
-  the duplicate being decommissioned carries `admin`: in the latter case the
-  merge **revokes** `admin` from the leftover duplicate document (its Auth
-  identity is about to be deleted) so it cannot linger as a counted-but-unusable
-  "phantom admin," and counts that revocation in the check. A merge that would
-  leave zero usable admins fails closed with `LAST_ADMIN` — no roles changed, no
-  requests relinked, no Auth deletion, no `accountMergeEvents` record. Whether a
-  merge reduces admins is decided from **fresh reads** of the canonical and
-  duplicate documents (and the live admin set) **inside** the transaction, never
-  from the non-transactional preview — the preview is UI input only, so a
-  canonical or duplicate that concurrently gained `admin` cannot slip past the
-  guard. The canonical role write itself always occurs in this transaction.
-  Merges that touch no admin are unaffected.
-- **Duplicate Firebase Auth account** is deleted only after Firestore
-  relinking succeeds. If deletion fails, the audit record captures the
-  error so staff can retry or clean up manually. The duplicate's `users`
-  document is intentionally retained for historical linkage, but with any
-  `admin` role already revoked (above) so it is never a usable administrator.
-- **Audit record** is written to `accountMergeEvents/{eventId}` with
-  canonical/duplicate uids, actor, reason, role decision, driver link
-  decision, relink counts, whether the duplicate's `admin` role was revoked
-  (`duplicateAdminRevoked`), and any deletion error.
+  role safety") as part of the merge transaction's reads, before any of its
+  writes. This applies both when the chosen roles demote the canonical out of
+  `admin`, **and** when the duplicate being decommissioned carries `admin`: in
+  the latter case the merge **revokes** `admin` from the leftover duplicate
+  document (its Auth identity is about to be deleted) so it cannot linger as a
+  counted-but-unusable "phantom admin," and counts that revocation in the check.
+  A merge that would leave zero usable admins fails closed with `LAST_ADMIN` —
+  the transaction aborts, so no roles change, no requests relink, no Auth
+  deletion runs, and no `accountMergeEvents` record is written. Whether a merge
+  reduces admins is decided from **fresh reads** of the canonical and duplicate
+  documents (and the live admin set) **inside** the transaction, never from the
+  non-transactional preview — the preview is UI input only, so a canonical or
+  duplicate that concurrently gained `admin` cannot slip past the guard. Merges
+  that touch no admin are unaffected.
+- **Duplicate Firebase Auth account** is deleted only after the Firestore
+  transaction commits — the **one merge side effect that cannot join the
+  transaction**, because Firebase Auth is not a Firestore participant. Running it
+  after the commit means a transaction failure never deletes an Auth account for
+  a merge that did not happen. If deletion fails the merge still succeeded (all
+  Firestore state + audit committed); the error is surfaced and recorded so staff
+  can retry or delete the account manually. The duplicate's `users` document is
+  intentionally retained for historical linkage, with any `admin` role already
+  revoked (above) so it is never a usable administrator.
+- **Audit record** (`accountMergeEvents/{eventId}`) is written **inside the
+  merge transaction** — canonical/duplicate uids, actor, reason, role decision,
+  driver link decision, relink counts, and whether the duplicate's `admin` role
+  was revoked (`duplicateAdminRevoked`) — so it cannot be lost while the merge's
+  state changes commit. The external Auth-deletion outcome
+  (`duplicateAuthDeleted` / `error`) is filled in by a best-effort update after
+  the commit; that update is the sole non-atomic step, documented in
+  [ADR 0010](docs/adr/0010-audit-events-vs-application-logs.md).
 
 ## Provider linking vs. account merging
 
