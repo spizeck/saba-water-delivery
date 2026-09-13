@@ -54,7 +54,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   },
   "allowScripts": {
     "@firebase/util@1.15.3": true,
