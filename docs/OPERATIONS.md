@@ -350,10 +350,13 @@ rules):
 - claimed-request ownership (assigned driver exists, is not archived, and — for
   non-batch loads — the driver's lock points back);
 - Delivery Run membership both directions: batch↔request existence, a member
-  that is not in its run's `originalRequestIds`, a member whose driver differs
-  from the run's driver, and a batch status cache that disagrees with its
-  members (the Delivery Run `activeRequestId` exception in ADR 0008 is honored —
-  valid runs are never flagged);
+  that is not in its run's `originalRequestIds`, and a current member whose
+  driver relationship with the run is broken — the batch has no `driverId`, the
+  member has no `assignedDriverId`, or the two disagree (a current member is
+  always assigned to the run's driver, so any of these is a critical,
+  delivery-misdirecting contradiction), plus a batch status cache that disagrees
+  with its members (the Delivery Run `activeRequestId` exception in ADR 0008 is
+  honored — valid runs are never flagged);
 - resident/request ownership (`customerId` → an existing user; intentionally
   unregistered `customerId: null` requests are NOT flagged);
 - preferred-driver references on an active hold (missing/archived registry — a
@@ -386,9 +389,19 @@ user / batch sets plus the ACTIVE (unresolved) water requests, then resolves any
 request referenced by a driver lock or a batch so a "missing reference" finding
 always means a genuine absence. It reports its `scan status` as `operational`
 (terminal history not scanned), `complete` (with `--full-scan`), or `truncated`
-(a `--max-records` cap cut a read short — results are partial). Use
-`--full-scan` for an exhaustive check including terminal/historical requests;
-`--page-size` / `--max-records` tune the read bounds.
+(a limit cut a read short — results are partial). Use `--full-scan` for an
+exhaustive check including terminal/historical requests; `--page-size` /
+`--max-records` tune the read bounds.
+
+`--max-records` is a bound on the **total** `waterRequests` documents read — the
+initially scanned page **plus** the referenced-request backfill — not a
+per-phase cap. If referenced ids exceed the budget the initial scan left, the
+extra ids are left **unresolved** rather than read: they are counted, they mark
+the `waterRequests` scan `truncated`, and — critically — they are treated as
+**not scanned, never as missing**, so a tight budget can never manufacture a
+false "missing reference" finding. Raise `--max-records` (or scope the target)
+to resolve them. A `truncated` result is reported as such and exits `3`, so an
+incomplete scan is never presented as a clean pass.
 
 **Target safety.** The tool requires an explicit, unambiguous target and never
 falls back between the emulator and the cloud:
@@ -423,11 +436,17 @@ entry point.
 
 **Exit codes** (for scripted/operational use): `0` = the intended scan completed
 without truncation and found no `critical`/`warning` findings; `1` = one or more
-`critical`/`warning` findings; `2` = configuration/target/auth failure; `3` = no
+`critical`/`warning` findings; `2` = configuration/target/auth failure — this
+covers both up-front target/argument errors **and** a failure during the read
+itself (permission denied, an unavailable target, a bad database id, a read
+error): the data is certified neither clean nor dirty, and the resolved
+target/database is included in the message (never credentials); `3` = no
 `critical`/`warning` findings but the scan was **truncated** by a limit (so a
 clean bill of health cannot be certified). `info`-only findings do not, by
 themselves, make the exit non-zero. A truncated or operational-scope run says so
 in its output rather than printing a misleading "no inconsistencies found."
+`--json` mode emits a machine-readable `{ "ok": false, "error": …, "exitCode": 2 }`
+document on such a failure.
 
 **Investigating a finding.** Read the `code` and the opaque IDs, then inspect
 those documents (and their audit-event subcollections) to understand how the

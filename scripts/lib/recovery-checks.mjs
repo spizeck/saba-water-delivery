@@ -90,12 +90,26 @@ export function deriveBatchStatus(memberStatuses) {
 // Individual checks (each pure; each returns IntegrityFinding[])
 // ---------------------------------------------------------------------------
 
-/** Driver registry entries whose `activeRequestId` lock is stale. */
-export function findStaleDriverLocks(drivers, requestsById) {
+/**
+ * Driver registry entries whose `activeRequestId` lock is stale.
+ *
+ * @param unresolvedRequestIds request ids that were referenced but NOT scanned
+ *   because a bounded scan exhausted its budget. A lock pointing at such an id
+ *   is skipped (not classified as `request_missing`): the diagnostic must never
+ *   turn "not scanned" into "missing". Defaults to empty (the DR validator and
+ *   full scans resolve every referenced request, so nothing is skipped).
+ */
+export function findStaleDriverLocks(
+  drivers,
+  requestsById,
+  unresolvedRequestIds = new Set(),
+) {
   /** @type {IntegrityFinding[]} */
   const findings = [];
   for (const driver of drivers) {
     if (!driver.activeRequestId) continue;
+    // Not scanned due to the record budget — cannot be classified as missing.
+    if (unresolvedRequestIds.has(driver.activeRequestId)) continue;
     const reason = classifyDriverLock(
       driver.linkedUserId ?? null,
       requestsById.get(driver.activeRequestId),
@@ -197,11 +211,15 @@ export function findBatchMembershipIssues(
   requests,
   requestsById,
   batchesById,
+  unresolvedRequestIds = new Set(),
 ) {
   /** @type {IntegrityFinding[]} */
   const findings = [];
   for (const batch of batches) {
     for (const requestId of batch.originalRequestIds ?? []) {
+      // Not scanned due to the record budget — absence here is unknown, not
+      // proven missing, so it must not become a false finding.
+      if (unresolvedRequestIds.has(requestId)) continue;
       if (!requestsById.has(requestId)) {
         findings.push({
           severity: "warning",
@@ -260,19 +278,32 @@ export function findOrphanedRequestOwners(requests, usersById) {
  * `originalRequestIds` but has its `dispatchBatchId` cleared — ADR 0008 — so a
  * request in `originalRequestIds` that no longer points back is NOT flagged).
  *
- * Flags, for a request whose `dispatchBatchId` points at an existing batch:
+ * Flags, for a request whose `dispatchBatchId` points at an existing batch (a
+ * CURRENT member):
  *   - the batch's `originalRequestIds` does not include it (a request can only
  *     acquire `dispatchBatchId` via `createDispatchBatch`, which always adds it
  *     to `originalRequestIds`, so this is an impossible two-way contradiction);
- *   - its `assignedDriverId` is not the batch's `driverId` (a current member is
- *     always assigned to the run's driver; reassigning to a different driver
- *     clears `dispatchBatchId`).
+ *   - the batch has no `driverId`, or the member has no `assignedDriverId`, or
+ *     the two disagree. Verified against the domain code (not just ADR wording):
+ *     `createDispatchBatch()` sets `batch.driverId` and every member's
+ *     `assignedDriverId` to the SAME uid and never nulls `batch.driverId`; the
+ *     only transitions that clear a request's `assignedDriverId`
+ *     (reassign-to-another-driver, cancel, dispute-reopen — see
+ *     `waterRequests.ts`) also clear its `dispatchBatchId`. So a CURRENT member
+ *     always has both driver fields set and equal — any null or divergent value
+ *     is an impossible, delivery-misdirecting state and is critical.
  * And per batch, a status cache that disagrees with its current members.
+ *
+ * @param unresolvedRequestIds request ids referenced but NOT scanned due to a
+ *   bounded scan's budget. A batch with any such member is skipped for the
+ *   status-drift derivation, since its live member set cannot be fully known
+ *   (again: never turn "not scanned" into a finding). Defaults to empty.
  */
 export function findBatchOwnershipInconsistencies(
   batches,
   requests,
   batchesById,
+  unresolvedRequestIds = new Set(),
 ) {
   /** @type {IntegrityFinding[]} */
   const findings = [];
@@ -296,18 +327,32 @@ export function findBatchOwnershipInconsistencies(
         detail: `request points at batch ${batchId} but is absent from its originalRequestIds`,
       });
     }
+    // A current member must be assigned to the run's driver, with both fields
+    // present and equal (see the domain-verified invariant above). Distinguish
+    // the three broken forms so operators know which side is wrong.
     if (
-      batch.driverId != null &&
-      request.assignedDriverId != null &&
+      batch.driverId == null ||
+      request.assignedDriverId == null ||
       request.assignedDriverId !== batch.driverId
     ) {
+      const reason =
+        batch.driverId == null
+          ? "batch_missing_driver"
+          : request.assignedDriverId == null
+            ? "member_missing_driver"
+            : "driver_mismatch";
       findings.push({
         severity: "critical",
         category: "batch_member_driver_mismatch",
-        code: "batch_ownership.driver_mismatch",
+        code: `batch_ownership.${reason}`,
         id: request.id,
         relatedIds: [batchId],
-        detail: `batch member assignedDriverId differs from the run's driverId (batch ${batchId})`,
+        detail:
+          reason === "batch_missing_driver"
+            ? `current member points at batch ${batchId} which has no driverId`
+            : reason === "member_missing_driver"
+              ? `current member of batch ${batchId} has no assignedDriverId`
+              : `batch member assignedDriverId differs from the run's driverId (batch ${batchId})`,
       });
     }
 
@@ -319,6 +364,14 @@ export function findBatchOwnershipInconsistencies(
   // Batch status cache vs. derived status from current members.
   for (const batch of batches) {
     if (batch.status !== "active" && batch.status !== "completed") continue;
+    // If any member was left unscanned by the budget, the live member set is
+    // unknown — do not derive (and possibly mis-report) a status drift.
+    if (
+      (batch.originalRequestIds ?? []).some((id) =>
+        unresolvedRequestIds.has(id),
+      )
+    )
+      continue;
     const members = currentMembersByBatch.get(batch.id) ?? [];
     const derived = deriveBatchStatus(members.map((m) => m.status));
     if (batch.status !== derived) {
@@ -583,22 +636,37 @@ export function runRecoveryChecks({
  *   batches?: Record<string, unknown>[],
  *   users?: Record<string, unknown>[],
  * }} input
+ * @param {{ unresolvedRequestIds?: Iterable<string> }} [options]
+ *   `unresolvedRequestIds` are request ids referenced by a loaded driver/batch
+ *   that a bounded scan did NOT read because its record budget was exhausted.
+ *   Checks that infer a "missing" reference skip these ids, so a truncated
+ *   scan can never report "not scanned" as "missing". Defaults to none.
  */
-export function runIntegrityChecks({
-  drivers = [],
-  requests = [],
-  batches = [],
-  users = [],
-}) {
+export function runIntegrityChecks(
+  { drivers = [], requests = [], batches = [], users = [] },
+  options = {},
+) {
   const { requestsById, batchesById, usersById, driversByUserId } =
     buildIndexes({ drivers, requests, batches, users });
+  const unresolvedRequestIds = new Set(options.unresolvedRequestIds ?? []);
 
   const findings = [
-    ...findStaleDriverLocks(drivers, requestsById),
+    ...findStaleDriverLocks(drivers, requestsById, unresolvedRequestIds),
     ...findClaimedRequestDriverMismatches(requests, driversByUserId),
-    ...findBatchMembershipIssues(batches, requests, requestsById, batchesById),
+    ...findBatchMembershipIssues(
+      batches,
+      requests,
+      requestsById,
+      batchesById,
+      unresolvedRequestIds,
+    ),
     ...findOrphanedRequestOwners(requests, usersById),
-    ...findBatchOwnershipInconsistencies(batches, requests, batchesById),
+    ...findBatchOwnershipInconsistencies(
+      batches,
+      requests,
+      batchesById,
+      unresolvedRequestIds,
+    ),
     ...findPreferredDriverIssues(requests, driversByUserId),
     ...findRoleRegistryInconsistencies(drivers, users, usersById),
     ...findRequestStateInconsistencies(requests),

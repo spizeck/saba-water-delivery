@@ -3432,9 +3432,19 @@ architecture is:
   sets and, by default, only ACTIVE water requests — the growing terminal
   history is scanned only with `--full-scan` — then resolves any request
   referenced by a driver lock or a batch by id, so a "missing reference" finding
-  reflects genuine absence rather than operational-mode scoping. Reads are capped
-  by `--max-records`; a truncated run is reported as such and exits `3` rather
-  than a false clean pass.
+  reflects genuine absence rather than operational-mode scoping. `--max-records`
+  bounds the **total** `waterRequests` documents read (scanned page **plus**
+  referenced backfill), not each phase: referenced ids beyond the remaining
+  budget are left **unresolved**, recorded, and handed to `runIntegrityChecks`
+  as `unresolvedRequestIds` so a check never treats a *not-scanned* reference as
+  *missing* (and a batch with an unread member is skipped for status-drift
+  derivation). Any such shortfall marks the scan `truncated`, which exits `3`
+  rather than a false clean pass.
+- **Fail-closed read errors.** `runDiagnosticScan` wraps the read phase: a
+  target/permission/database/read failure returns a config/target/auth failure
+  (exit `2`) — never a silent exit `0`/`1` or an uncontrolled crash — with the
+  resolved target/database in the message and no credentials. The pure checks
+  run only on a dataset that assembled successfully.
 - **Target safety** (`scripts/lib/integrity-target.mjs`, building on
   `recovery-target.mjs`): an explicit, unambiguous target is required; a stale
   `FIRESTORE_EMULATOR_HOST` alongside cloud config is rejected; a cloud scan

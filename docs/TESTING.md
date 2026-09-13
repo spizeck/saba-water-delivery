@@ -335,7 +335,11 @@ Vitest covers the pure domain logic extensively, including:
     legitimate Delivery Run exception, a terminal batch member that keeps its
     `dispatchBatchId`, a valid preferred-driver hold with an offline driver, and
     an intentionally unregistered request) that must NOT be flagged, and asserts
-    the severity model.
+    the severity model. Also covers the **strengthened batch-member driver
+    invariant** — a current member whose batch has no `driverId`, whose own
+    `assignedDriverId` is missing, or whose driver differs from the run's are all
+    critical, while a valid current member is not — and that a referenced request
+    left **unscanned by the record budget is never reported as "missing"**.
   - `scripts/lib/__tests__/integrity-target.test.ts` — target/production safety:
     no target rejected, ambiguous emulator+cloud rejected, cloud requires
     `--production`, `--production` against the emulator rejected, ADC requires an
@@ -343,9 +347,15 @@ Vitest covers the pure domain logic extensively, including:
     resolver cannot silently fall back between emulator and cloud.
   - `scripts/lib/__tests__/integrity-scan.test.ts` — bounded scanning
     (operational vs `--full-scan`, referenced-doc resolution so pagination
-    cannot cause false "missing" findings, truncation reporting), the exit-code
-    contract, and a **read-only proof**: the Firestore reader driven against a
-    fake db whose every write method throws still completes using only reads.
+    cannot cause false "missing" findings, truncation reporting), the **total
+    `--max-records` budget** (initial scan **plus** referenced backfill: the
+    backfill spends only the remaining budget, exceeding it marks the scan
+    truncated, total request reads never exceed the budget, and a truncated but
+    clean run still exits `3`), the exit-code contract, **fail-closed read
+    errors** (`runDiagnosticScan` maps a reader/scan exception to a config/target
+    failure — exit `2` — not a finding or a crash), and a **read-only proof**:
+    the Firestore reader driven against a fake db whose every write method throws
+    still completes using only reads.
   - `scripts/lib/__tests__/activeRequestRuleParity.test.ts` — pins the operator
     tooling's standalone copies of `classifyDriverLock` / `deriveBatchStatus` to
     the canonical `checkActiveRequestValidity` / `computeDispatchBatchStatus` so

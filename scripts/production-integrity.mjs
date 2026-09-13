@@ -50,9 +50,8 @@ import { runIntegrityChecks } from "./lib/recovery-checks.mjs";
 import { resolveIntegrityTarget } from "./lib/integrity-target.mjs";
 import { argValue } from "./lib/recovery-target.mjs";
 import {
-  assembleDataset,
-  computeExitCode,
   makeFirestoreReader,
+  runDiagnosticScan,
 } from "./lib/integrity-scan.mjs";
 
 const argv = process.argv.slice(2);
@@ -136,15 +135,55 @@ const maxRecords = parsePositiveInt("--max-records");
 
 // ---------------------------------------------------------------------------
 // Assemble the bounded dataset (READ-ONLY) and run the pure invariant checks.
+// A target/permission/database/read failure during the scan is a config/access
+// failure (exit 2) — never a silent exit 0/1 or an uncontrolled crash.
 // ---------------------------------------------------------------------------
 
-const { dataset, scan } = await assembleDataset(makeFirestoreReader(db), {
-  fullScan,
-  pageSize,
-  maxRecords,
-});
-const { findings, summary } = runIntegrityChecks(dataset);
-const exitCode = computeExitCode(summary, scan);
+/**
+ * Reports a scan/read/target failure as a config/target/auth failure (exit 2).
+ * Includes the resolved target for context; never prints credentials, the raw
+ * error object, or a stack.
+ */
+function failScan(failure) {
+  const where =
+    `target=${target.mode} ` +
+    `project=${resolvedProject ?? "(unspecified)"} ` +
+    `database=${target.databaseId ?? "(default)"}`;
+  if (jsonMode) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: false,
+          error: { phase: failure.phase, message: failure.message },
+          target: {
+            mode: target.mode,
+            project: resolvedProject ?? null,
+            database: target.databaseId ?? "(default)",
+            production: Boolean(target.production),
+          },
+          exitCode: 2,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.error(
+      `Integrity scan could not complete (${where}): ${failure.message}\n` +
+        "This is a target/access/read failure, not an integrity result — the " +
+        "data was NOT certified either way.\nSee docs/OPERATIONS.md.",
+    );
+  }
+  process.exit(2);
+}
+
+const result = await runDiagnosticScan(
+  makeFirestoreReader(db),
+  runIntegrityChecks,
+  { fullScan, pageSize, maxRecords },
+);
+if (!result.ok) failScan(result.failure);
+const { scan, findings, summary, exitCode } = result;
 
 if (jsonMode) {
   console.log(
@@ -190,6 +229,13 @@ console.log(
       ? ` (+${scan.counts.requestsResolvedByReference} resolved by reference)`
       : ""),
 );
+if (scan.counts.requestsUnresolvedByBudget) {
+  console.log(
+    `  note: ${scan.counts.requestsUnresolvedByBudget} referenced request(s) were ` +
+      "NOT read (record budget reached); they are treated as not-scanned, not " +
+      "missing. Raise --max-records to resolve them.",
+  );
+}
 if (scan.mode === "operational") {
   console.log(
     "  note: operational scope — terminal request history (confirmed/cancelled) " +

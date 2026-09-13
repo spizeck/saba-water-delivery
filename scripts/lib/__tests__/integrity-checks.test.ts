@@ -306,6 +306,181 @@ describe("delivery-run membership both directions (#3, #4)", () => {
   });
 });
 
+describe("batch-member driver invariant (#3, strengthened)", () => {
+  // Domain-verified (createDispatchBatch / dispatcherReassign / cancel /
+  // dispute-reopen in waterRequests.ts): a CURRENT batch member always has both
+  // batch.driverId and its own assignedDriverId set and equal. All three broken
+  // forms are impossible, delivery-misdirecting states → critical.
+  const driver2 = {
+    id: "reg-2",
+    linkedUserId: "driver-2",
+    activeRequestId: null,
+    archivedAt: null,
+  };
+
+  it("flags a current member whose batch has no driverId (critical)", () => {
+    const { findings } = runIntegrityChecks({
+      drivers: [driver2],
+      batches: [
+        {
+          id: "batch-1",
+          driverId: null,
+          originalRequestIds: ["req-2"],
+          status: "active",
+        },
+      ],
+      requests: [
+        {
+          id: "req-2",
+          status: "claimed",
+          assignedDriverId: "driver-2",
+          customerId: null,
+          dispatchBatchId: "batch-1",
+        },
+      ],
+    });
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        code: "batch_ownership.batch_missing_driver",
+        severity: "critical",
+        id: "req-2",
+        relatedIds: ["batch-1"],
+      }),
+    );
+  });
+
+  it("flags a current member with no assignedDriverId (critical)", () => {
+    const { findings } = runIntegrityChecks({
+      batches: [
+        {
+          id: "batch-1",
+          driverId: "driver-2",
+          originalRequestIds: ["req-2"],
+          status: "active",
+        },
+      ],
+      requests: [
+        {
+          // terminal member (not "claimed") so this isolates the batch check
+          // from the separate claimed-ownership.no_driver rule
+          id: "req-2",
+          status: "confirmed",
+          assignedDriverId: null,
+          customerId: null,
+          dispatchBatchId: "batch-1",
+        },
+      ],
+    });
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        code: "batch_ownership.member_missing_driver",
+        severity: "critical",
+        id: "req-2",
+        relatedIds: ["batch-1"],
+      }),
+    );
+  });
+
+  it("flags a current member whose driver differs from the run driver (critical)", () => {
+    const { findings } = runIntegrityChecks({
+      drivers: [driver2],
+      batches: [
+        {
+          id: "batch-1",
+          driverId: "driver-2",
+          originalRequestIds: ["req-2"],
+          status: "active",
+        },
+      ],
+      requests: [
+        {
+          id: "req-2",
+          status: "claimed",
+          assignedDriverId: "someone-else",
+          customerId: null,
+          dispatchBatchId: "batch-1",
+        },
+      ],
+    });
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        code: "batch_ownership.driver_mismatch",
+        severity: "critical",
+        id: "req-2",
+      }),
+    );
+  });
+
+  it("does NOT flag a valid current member assigned to the run driver", () => {
+    const { findings } = runIntegrityChecks({
+      drivers: [driver2],
+      users: [{ uid: "driver-2", roles: ["resident", "driver"] }],
+      batches: [
+        {
+          id: "batch-1",
+          driverId: "driver-2",
+          originalRequestIds: ["req-2"],
+          status: "active",
+        },
+      ],
+      requests: [
+        {
+          id: "req-2",
+          status: "claimed",
+          assignedDriverId: "driver-2",
+          customerId: null,
+          dispatchBatchId: "batch-1",
+          preferredDriverId: null,
+        },
+      ],
+    });
+    expect(
+      findings.filter((f) => f.category === "batch_member_driver_mismatch"),
+    ).toEqual([]);
+  });
+});
+
+describe("bounded-scan budget: not-scanned is never reported as missing (#52)", () => {
+  it("does NOT flag referenced ids left unscanned by the record budget as missing", () => {
+    const input = {
+      drivers: [
+        {
+          id: "reg-1",
+          linkedUserId: "d1",
+          activeRequestId: "unread-req",
+          archivedAt: null,
+        },
+      ],
+      users: [{ uid: "d1", roles: ["resident", "driver"] }],
+      batches: [
+        {
+          id: "b1",
+          driverId: "d1",
+          originalRequestIds: ["unread-req", "also-unread"],
+          status: "active",
+        },
+      ],
+      requests: [], // neither referenced request was scanned
+    };
+
+    // Without the unresolved set, both references look genuinely missing.
+    const naive = runIntegrityChecks(input);
+    expect(codes(naive.findings)).toContain(
+      "stale_driver_lock.request_missing",
+    );
+    expect(codes(naive.findings)).toContain(
+      "batch_membership.original_request_missing",
+    );
+
+    // Marked unresolved-by-budget, neither missing finding fires — and the
+    // batch's status drift is suppressed too, since its member set is unknown.
+    const guarded = runIntegrityChecks(input, {
+      unresolvedRequestIds: ["unread-req", "also-unread"],
+    });
+    expect(guarded.findings).toEqual([]);
+  });
+});
+
 describe("resident/request ownership (#4/#5)", () => {
   it("flags a registered request whose owner user is missing (warning)", () => {
     const { findings } = runIntegrityChecks({

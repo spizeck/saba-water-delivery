@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 
+import { runIntegrityChecks } from "../recovery-checks.mjs";
 import {
   assembleDataset,
   computeExitCode,
   makeFirestoreReader,
+  runDiagnosticScan,
 } from "../integrity-scan.mjs";
 
 /**
  * Tests for the bounded, read-only scan layer (issue #52):
  *   - `assembleDataset` operational vs full-scan behavior, referenced-doc
- *     resolution (so pagination cannot cause false "missing" findings), and
- *     truncation reporting — exercised with a fake reader.
+ *     resolution (so pagination cannot cause false "missing" findings),
+ *     budget-bounded referenced backfill, and truncation reporting — exercised
+ *     with a fake reader.
  *   - `makeFirestoreReader` is provably READ-ONLY: driven against a fake db
  *     whose every write method throws, the scan completes using only reads.
+ *   - `runDiagnosticScan` maps a scan/read/target failure to exit 2 (config/
+ *     target/auth failure) rather than to a finding (exit 1) or a crash.
  *   - `computeExitCode` contract.
  */
 
@@ -116,6 +121,179 @@ describe("assembleDataset", () => {
     expect(scan.truncated).toBe(true);
     expect(scan.scanStatus).toBe("truncated");
     expect(scan.truncatedCollections).toContain("waterRequests");
+  });
+});
+
+// --- maxRecords is a TOTAL budget: initial scan + referenced backfill --------
+
+describe("assembleDataset — --max-records bounds initial scan AND backfill", () => {
+  // 4 active requests are scanned; 3 terminal requests are only referenced (by
+  // a batch's originalRequestIds), so they must be resolved via backfill.
+  const budgetData = {
+    driverRegistry: [],
+    users: [],
+    dispatchBatches: [
+      {
+        id: "b1",
+        driverId: "d1",
+        originalRequestIds: ["a1", "a2", "a3", "a4", "t1", "t2", "t3"],
+        status: "active",
+      },
+    ],
+    waterRequests: [
+      { id: "a1", status: "claimed", assignedDriverId: "d1" },
+      { id: "a2", status: "claimed", assignedDriverId: "d1" },
+      { id: "a3", status: "claimed", assignedDriverId: "d1" },
+      { id: "a4", status: "claimed", assignedDriverId: "d1" },
+      { id: "t1", status: "confirmed", assignedDriverId: "d1" },
+      { id: "t2", status: "confirmed", assignedDriverId: "d1" },
+      { id: "t3", status: "confirmed", assignedDriverId: "d1" },
+    ],
+  };
+
+  it("spends most of the budget on the scanned page and only the remainder on backfill", async () => {
+    const reader = fakeReader(budgetData);
+    // 4 active scanned + budget 5 => only 1 referenced request may be resolved.
+    const { scan } = await assembleDataset(reader, { maxRecords: 5 });
+
+    expect(scan.counts.requestsScanned).toBe(4);
+    expect(scan.counts.requestsResolvedByReference).toBe(1);
+    // Backfill honored the remaining budget (1), not all 3 referenced ids.
+    const backfillCall = reader.calls.getByIds.find(
+      (c) => c.name === "waterRequests",
+    );
+    expect(backfillCall?.ids).toHaveLength(1);
+  });
+
+  it("marks the scan truncated when referenced ids exceed the remaining budget", async () => {
+    const reader = fakeReader(budgetData);
+    const { dataset, scan } = await assembleDataset(reader, { maxRecords: 5 });
+
+    expect(scan.truncated).toBe(true);
+    expect(scan.scanStatus).toBe("truncated");
+    expect(scan.truncatedCollections).toContain("waterRequests");
+    expect(scan.counts.requestsUnresolvedByBudget).toBe(2);
+    // The two unread referenced ids are recorded for the checks to skip.
+    expect([...dataset.unresolvedRequestIds].sort()).toEqual(["t2", "t3"]);
+  });
+
+  it("never reads more waterRequests than the advertised budget", async () => {
+    const reader = fakeReader(budgetData);
+    const { dataset } = await assembleDataset(reader, { maxRecords: 5 });
+    // Total request docs in the dataset = scanned page + backfill <= budget.
+    expect(dataset.requests.length).toBeLessThanOrEqual(5);
+    expect(dataset.requests).toHaveLength(5); // 4 scanned + 1 resolved
+  });
+
+  it("resolves all referenced ids when the budget is ample (no truncation)", async () => {
+    const reader = fakeReader(budgetData);
+    const { dataset, scan } = await assembleDataset(reader, {
+      maxRecords: 100,
+    });
+    expect(scan.truncated).toBe(false);
+    expect(scan.counts.requestsUnresolvedByBudget).toBe(0);
+    expect(dataset.unresolvedRequestIds).toEqual([]);
+    expect(dataset.requests).toHaveLength(7);
+  });
+
+  it("a budget-truncated but otherwise-clean run exits 3 (not 0, not a false missing finding)", async () => {
+    // Clean data: one active member + two terminal members of a well-formed
+    // batch; a tight budget leaves one terminal member unread.
+    const cleanTruncatable = {
+      driverRegistry: [
+        { id: "reg1", linkedUserId: "d1", activeRequestId: null },
+      ],
+      users: [{ id: "d1", roles: ["resident", "driver"] }],
+      dispatchBatches: [
+        {
+          id: "b1",
+          driverId: "d1",
+          originalRequestIds: ["a1", "t1", "t2"],
+          status: "active",
+        },
+      ],
+      waterRequests: [
+        {
+          id: "a1",
+          status: "claimed",
+          assignedDriverId: "d1",
+          dispatchBatchId: "b1",
+          customerId: null,
+          preferredDriverId: null,
+        },
+        {
+          id: "t1",
+          status: "confirmed",
+          assignedDriverId: "d1",
+          dispatchBatchId: "b1",
+          customerId: null,
+          preferredDriverId: null,
+        },
+        {
+          id: "t2",
+          status: "confirmed",
+          assignedDriverId: "d1",
+          dispatchBatchId: "b1",
+          customerId: null,
+          preferredDriverId: null,
+        },
+      ],
+    };
+    const reader = fakeReader(cleanTruncatable);
+    // 1 active scanned + budget 2 => resolve only t1; t2 stays unresolved.
+    const result = await runDiagnosticScan(reader, runIntegrityChecks, {
+      maxRecords: 2,
+    });
+    if (!result.ok) throw new Error("expected the scan to succeed");
+    // No false "original_request_missing" for the unread t2, no false driver
+    // findings, no false status drift — the run is clean but truncated.
+    expect(result.findings).toEqual([]);
+    expect(result.scan.truncated).toBe(true);
+    expect(result.exitCode).toBe(3);
+  });
+});
+
+// --- Scan/read/target failures map to exit 2 (item 1) -----------------------
+
+describe("runDiagnosticScan failure semantics", () => {
+  it("maps a reader/scan exception to a config/target/auth failure (exit 2)", async () => {
+    const throwingReader = {
+      async paginate() {
+        throw new Error(
+          "7 PERMISSION_DENIED: Missing or insufficient permissions.",
+        );
+      },
+      async queryByStatusIn() {
+        throw new Error("unreachable");
+      },
+      async getByIds() {
+        return [];
+      },
+    };
+    const result = await runDiagnosticScan(throwingReader, runIntegrityChecks, {
+      fullScan: true,
+    });
+    expect(result.exitCode).toBe(2); // NOT 1 (findings) and NOT an uncontrolled exit
+    if (result.ok) throw new Error("expected the scan to fail");
+    expect(result.failure.phase).toBe("scan");
+    expect(result.failure.message).toContain("PERMISSION_DENIED");
+    // No dataset/findings are produced from a failed scan.
+    expect("findings" in result).toBe(false);
+  });
+
+  it("returns a normal clean result (exit 0) when the scan succeeds", async () => {
+    const reader = fakeReader({
+      driverRegistry: [],
+      users: [],
+      dispatchBatches: [],
+      waterRequests: [],
+    });
+    const result = await runDiagnosticScan(reader, runIntegrityChecks, {
+      fullScan: true,
+    });
+    if (!result.ok) throw new Error("expected the scan to succeed");
+    expect(result.exitCode).toBe(0);
+    expect(result.findings).toEqual([]);
   });
 });
 
