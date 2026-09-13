@@ -21,6 +21,7 @@
     "test:e2e:headed": "firebase emulators:exec --project demo-saba-water-delivery --only auth,firestore \"playwright test --headed\"",
     "test:e2e:report": "playwright show-report",
     "verify:recovery": "node scripts/verify-recovery.mjs",
+    "diagnose:integrity": "node scripts/production-integrity.mjs",
     "docs:check-links": "node scripts/check-doc-links.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
   },

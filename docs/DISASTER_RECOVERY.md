@@ -612,6 +612,25 @@ The `GOOGLE_APPLICATION_CREDENTIALS` value is a **file path**, not the secret
 itself; keep the key file readable only by the operator and delete it when the
 drill/recovery is complete. Do not paste the key's contents into a terminal.
 
+**This validator vs. the routine production integrity diagnostic.** A separate
+tool, `scripts/production-integrity.mjs` (issue #52; see
+[OPERATIONS.md](./OPERATIONS.md) "Checking data integrity"), answers the same
+"is the data internally consistent?" question for **routine** use against live
+data. The two share the exact same pure checks (in `recovery-checks.mjs`), but
+serve different purposes and have different defaults:
+
+| | `verify-recovery.mjs` (this validator) | `production-integrity.mjs` (#52) |
+| --- | --- | --- |
+| Purpose | Gate a **restore drill** / validate a recovered copy | **Routine** read-only check of live operational data |
+| Checks | `runRecoveryChecks` (DR subset) | `runIntegrityChecks` (superset: + batch two-way/driver/status, preferred-driver, role↔registry, request-state) |
+| Scan | Full-collection `.get()` (fine for a restored copy) | **Bounded** by default (active data; `--full-scan` for history); reports partial/truncated |
+| Cloud target | Isolated/test project or named recovery DB | Requires deliberate `--production` + explicit project |
+| Severity | Flat findings | `critical`/`warning`/`info` + a distinct exit code for a truncated scan |
+
+Do not repurpose this DR validator's full-collection reads as a routine
+production diagnostic — use `production-integrity.mjs` for that. Both are
+strictly read-only; neither repairs anything.
+
 ### Manual validation checklist
 
 - Representative **users** exist with expected roles (spot-check a resident, a

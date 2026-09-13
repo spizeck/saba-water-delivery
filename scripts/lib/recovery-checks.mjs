@@ -1,24 +1,55 @@
 /**
- * Pure, read-only cross-document consistency checks for disaster-recovery
- * validation (issue #35).
+ * Pure, read-only cross-document consistency checks.
  *
  * These functions take plain arrays of Firestore document data and return a
  * flat list of findings. They NEVER read Firestore, never mutate anything, and
  * contain no secrets or personal data — findings carry only opaque document
- * IDs and a short categorical reason. This module is the single source of the
- * check logic, imported by both the operator script (`scripts/verify-recovery.mjs`)
- * and its Vitest tests.
+ * IDs (Firestore doc ids / Firebase uids) and a short categorical reason. This
+ * module is the SINGLE SOURCE OF TRUTH for the lifecycle/consistency rules,
+ * imported by:
+ *   - the disaster-recovery validator `scripts/verify-recovery.mjs` (issue #35),
+ *     which runs the `runRecoveryChecks` subset; and
+ *   - the read-only production integrity diagnostic
+ *     `scripts/production-integrity.mjs` (issue #52), which runs the fuller
+ *     `runIntegrityChecks` set.
+ * Both consume the same pure check functions here, so the overlapping rules can
+ * never drift into two implementations.
+ *
+ * Finding shape: `{ severity, category, code, id, relatedIds?, detail }`.
+ *   - `severity`: "critical" | "warning" | "info"
+ *   - `category`: stable human grouping (kept unchanged for the checks the DR
+ *      validator has always emitted, so its tests/output are unaffected)
+ *   - `code`: dotted machine-readable reason
+ *   - `id`: the primary opaque record id the finding is about
+ *   - `relatedIds`: other opaque ids involved (optional)
+ *   - `detail`: short operator-facing string — opaque ids only, never PII
  *
  * The `classifyDriverLock` rule mirrors `checkActiveRequestValidity` in
  * `src/lib/domain/activeRequestValidation.ts` (the runtime self-healing rule):
  * a driver's `activeRequestId` is valid only when the referenced request
- * exists, is `claimed`, and is assigned to that same driver. Kept as a small
- * standalone copy so this operator tooling has no build step and no dependency
- * on the application's TypeScript modules; if the canonical rule changes, update
- * both. See docs/DISASTER_RECOVERY.md.
+ * exists, is `claimed`, and is assigned to that same driver. It is kept as a
+ * small standalone copy so this operator tooling has no build step and no
+ * dependency on the application's TypeScript modules; if the canonical rule
+ * changes, update both. A regression test
+ * (`scripts/lib/__tests__/activeRequestRuleParity.test.ts`) imports both and
+ * fails if they diverge, so the duplication cannot drift silently. Likewise the
+ * batch-status rule below mirrors `computeDispatchBatchStatus`. See
+ * docs/DISASTER_RECOVERY.md and docs/OPERATIONS.md.
  */
 
-/** @typedef {{ category: string, id: string, detail: string }} RecoveryFinding */
+/**
+ * @typedef {"critical" | "warning" | "info"} Severity
+ * @typedef {{
+ *   severity: Severity,
+ *   category: string,
+ *   code: string,
+ *   id: string,
+ *   relatedIds?: string[],
+ *   detail: string,
+ * }} IntegrityFinding
+ */
+
+const SEVERITY_ORDER = ["critical", "warning", "info"];
 
 /**
  * Classifies a driver's `activeRequestId` lock. Returns null when valid, or a
@@ -44,9 +75,24 @@ export function classifyDriverLock(driverLinkedUserId, request) {
   }
 }
 
+/**
+ * Derives a batch's operational status ("active"/"completed") from its CURRENT
+ * member statuses. Mirrors `computeDispatchBatchStatus` in
+ * `src/lib/domain/dispatchBatchSelection.ts` (a run is "active" while any
+ * current member is still "claimed"). Kept standalone for the no-build-step
+ * operator tooling; a parity test pins the two together.
+ */
+export function deriveBatchStatus(memberStatuses) {
+  return memberStatuses.some((s) => s === "claimed") ? "active" : "completed";
+}
+
+// ---------------------------------------------------------------------------
+// Individual checks (each pure; each returns IntegrityFinding[])
+// ---------------------------------------------------------------------------
+
 /** Driver registry entries whose `activeRequestId` lock is stale. */
 export function findStaleDriverLocks(drivers, requestsById) {
-  /** @type {RecoveryFinding[]} */
+  /** @type {IntegrityFinding[]} */
   const findings = [];
   for (const driver of drivers) {
     if (!driver.activeRequestId) continue;
@@ -56,8 +102,14 @@ export function findStaleDriverLocks(drivers, requestsById) {
     );
     if (reason) {
       findings.push({
+        // Stale locks are self-healing: reconcileActiveRequest clears them on
+        // the next offer/availability read, so they are surfaced as warnings,
+        // not live-contradiction criticals.
+        severity: "warning",
         category: "stale_driver_lock",
+        code: `stale_driver_lock.${reason}`,
         id: driver.id,
+        relatedIds: [driver.activeRequestId],
         detail: `activeRequestId=${driver.activeRequestId} reason=${reason}`,
       });
     }
@@ -74,18 +126,20 @@ export function findStaleDriverLocks(drivers, requestsById) {
  * The back-pointer check is skipped for batch (Delivery Run) loads on purpose:
  * `createDispatchBatch()` deliberately leaves `driverRegistry.activeRequestId`
  * unchanged so a driver can hold several batch loads at once (the documented
- * exception to the one-active-request lock — see TECHNICAL.md "Batch Dispatch").
- * Requiring the back-pointer there would flag every valid batch as inconsistent.
+ * exception to the one-active-request lock — ADR 0008 / TECHNICAL.md "Batch
+ * Dispatch"). Requiring the back-pointer there would flag every valid batch.
  */
 export function findClaimedRequestDriverMismatches(requests, driversByUserId) {
-  /** @type {RecoveryFinding[]} */
+  /** @type {IntegrityFinding[]} */
   const findings = [];
   for (const request of requests) {
     if (request.status !== "claimed") continue;
 
     if (!request.assignedDriverId) {
       findings.push({
+        severity: "critical",
         category: "claimed_request_driver_mismatch",
+        code: "claimed_ownership.no_driver",
         id: request.id,
         detail: "claimed request has no assignedDriverId",
       });
@@ -95,16 +149,22 @@ export function findClaimedRequestDriverMismatches(requests, driversByUserId) {
     const driver = driversByUserId.get(request.assignedDriverId);
     if (!driver) {
       findings.push({
+        severity: "critical",
         category: "claimed_request_driver_mismatch",
+        code: "claimed_ownership.driver_registry_missing",
         id: request.id,
+        relatedIds: [request.assignedDriverId],
         detail: "assignedDriverId has no linked driver registry entry",
       });
       continue;
     }
     if (driver.archivedAt) {
       findings.push({
+        severity: "critical",
         category: "claimed_request_driver_mismatch",
+        code: "claimed_ownership.driver_archived",
         id: request.id,
+        relatedIds: [driver.id],
         detail: "assigned driver registry entry is archived",
       });
       continue;
@@ -113,8 +173,13 @@ export function findClaimedRequestDriverMismatches(requests, driversByUserId) {
     // lock, so only require the back-pointer for non-batch claimed requests.
     if (!request.dispatchBatchId && driver.activeRequestId !== request.id) {
       findings.push({
+        // The assignment itself is correct; the lock just does not point back
+        // and is reconciled lazily, so this is a warning, not a critical.
+        severity: "warning",
         category: "claimed_request_driver_mismatch",
+        code: "claimed_ownership.active_request_id_mismatch",
         id: request.id,
+        relatedIds: [driver.id],
         detail: "assigned driver's activeRequestId does not point back",
       });
     }
@@ -133,14 +198,17 @@ export function findBatchMembershipIssues(
   requestsById,
   batchesById,
 ) {
-  /** @type {RecoveryFinding[]} */
+  /** @type {IntegrityFinding[]} */
   const findings = [];
   for (const batch of batches) {
     for (const requestId of batch.originalRequestIds ?? []) {
       if (!requestsById.has(requestId)) {
         findings.push({
+          severity: "warning",
           category: "batch_missing_request",
+          code: "batch_membership.original_request_missing",
           id: batch.id,
+          relatedIds: [requestId],
           detail: `originalRequestIds references missing request ${requestId}`,
         });
       }
@@ -149,8 +217,11 @@ export function findBatchMembershipIssues(
   for (const request of requests) {
     if (request.dispatchBatchId && !batchesById.has(request.dispatchBatchId)) {
       findings.push({
+        severity: "warning",
         category: "request_batch_missing",
+        code: "batch_membership.batch_missing",
         id: request.id,
+        relatedIds: [request.dispatchBatchId],
         detail: `dispatchBatchId references missing batch ${request.dispatchBatchId}`,
       });
     }
@@ -160,17 +231,20 @@ export function findBatchMembershipIssues(
 
 /**
  * Registered requests (a non-null `customerId`) whose owning `users/{uid}`
- * document is missing — a resident/request ownership break that a restore
- * should surface.
+ * document is missing — a resident/request ownership break. Intentionally
+ * unregistered/manual requests (`customerId == null`) are NOT flagged.
  */
 export function findOrphanedRequestOwners(requests, usersById) {
-  /** @type {RecoveryFinding[]} */
+  /** @type {IntegrityFinding[]} */
   const findings = [];
   for (const request of requests) {
     if (request.customerId && !usersById.has(request.customerId)) {
       findings.push({
+        severity: "warning",
         category: "orphaned_request_owner",
+        code: "resident_ownership.user_missing",
         id: request.id,
+        relatedIds: [request.customerId],
         detail: `customerId=${request.customerId} has no users/{uid} document`,
       });
     }
@@ -179,9 +253,289 @@ export function findOrphanedRequestOwners(requests, usersById) {
 }
 
 /**
- * Runs every read-only recovery check over the supplied snapshot of collections
- * and returns the combined findings plus a per-category summary. Input arrays
- * hold only the fields the checks need; anything else is ignored.
+ * Two-way Delivery-run membership/driver integrity, beyond simple existence
+ * (which `findBatchMembershipIssues` covers). Current membership is a request's
+ * `dispatchBatchId` pointing at the batch; `originalRequestIds` is the
+ * immutable original assignment (a member that LEFT the run keeps its slot in
+ * `originalRequestIds` but has its `dispatchBatchId` cleared — ADR 0008 — so a
+ * request in `originalRequestIds` that no longer points back is NOT flagged).
+ *
+ * Flags, for a request whose `dispatchBatchId` points at an existing batch:
+ *   - the batch's `originalRequestIds` does not include it (a request can only
+ *     acquire `dispatchBatchId` via `createDispatchBatch`, which always adds it
+ *     to `originalRequestIds`, so this is an impossible two-way contradiction);
+ *   - its `assignedDriverId` is not the batch's `driverId` (a current member is
+ *     always assigned to the run's driver; reassigning to a different driver
+ *     clears `dispatchBatchId`).
+ * And per batch, a status cache that disagrees with its current members.
+ */
+export function findBatchOwnershipInconsistencies(
+  batches,
+  requests,
+  batchesById,
+) {
+  /** @type {IntegrityFinding[]} */
+  const findings = [];
+
+  // Current members grouped by batch id (live membership = dispatchBatchId).
+  /** @type {Map<string, Record<string, unknown>[]>} */
+  const currentMembersByBatch = new Map();
+  for (const request of requests) {
+    const batchId = request.dispatchBatchId;
+    if (!batchId || !batchesById.has(batchId)) continue; // dangling handled elsewhere
+    const batch = batchesById.get(batchId);
+
+    const originalIds = batch.originalRequestIds ?? [];
+    if (!originalIds.includes(request.id)) {
+      findings.push({
+        severity: "critical",
+        category: "batch_member_not_in_original",
+        code: "batch_ownership.member_not_in_original",
+        id: request.id,
+        relatedIds: [batchId],
+        detail: `request points at batch ${batchId} but is absent from its originalRequestIds`,
+      });
+    }
+    if (
+      batch.driverId != null &&
+      request.assignedDriverId != null &&
+      request.assignedDriverId !== batch.driverId
+    ) {
+      findings.push({
+        severity: "critical",
+        category: "batch_member_driver_mismatch",
+        code: "batch_ownership.driver_mismatch",
+        id: request.id,
+        relatedIds: [batchId],
+        detail: `batch member assignedDriverId differs from the run's driverId (batch ${batchId})`,
+      });
+    }
+
+    if (!currentMembersByBatch.has(batchId))
+      currentMembersByBatch.set(batchId, []);
+    currentMembersByBatch.get(batchId).push(request);
+  }
+
+  // Batch status cache vs. derived status from current members.
+  for (const batch of batches) {
+    if (batch.status !== "active" && batch.status !== "completed") continue;
+    const members = currentMembersByBatch.get(batch.id) ?? [];
+    const derived = deriveBatchStatus(members.map((m) => m.status));
+    if (batch.status !== derived) {
+      findings.push({
+        // Status is a maintained cache (ADR 0008) that transitions are meant to
+        // keep in sync; a mismatch can be transient during concurrent writes,
+        // so it is a warning cleanup signal, not a live contradiction.
+        severity: "warning",
+        category: "batch_status_drift",
+        code: `batch_status.${batch.status}_but_derived_${derived}`,
+        id: batch.id,
+        detail: `batch.status=${batch.status} but current members derive ${derived}`,
+      });
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * Preferred-driver references that cannot be honored, scoped to requests still
+ * ACTIVELY holding for a preferred driver (`preferred_driver_hold`). A
+ * preferred driver being merely offline or temporarily ineligible is a VALID
+ * operational state (the hold waits or is released lazily) and is NOT flagged.
+ */
+export function findPreferredDriverIssues(requests, driversByUserId) {
+  /** @type {IntegrityFinding[]} */
+  const findings = [];
+  for (const request of requests) {
+    if (request.status !== "preferred_driver_hold") continue;
+    if (!request.preferredDriverId) continue;
+    const driver = driversByUserId.get(request.preferredDriverId);
+    if (!driver) {
+      findings.push({
+        severity: "warning",
+        category: "preferred_driver_missing_registry",
+        code: "preferred_driver.no_registry",
+        id: request.id,
+        relatedIds: [request.preferredDriverId],
+        detail: `preferred_driver_hold references preferredDriverId with no driver registry entry`,
+      });
+      continue;
+    }
+    if (driver.archivedAt) {
+      findings.push({
+        severity: "warning",
+        category: "preferred_driver_archived",
+        code: "preferred_driver.archived",
+        id: request.id,
+        relatedIds: [driver.id],
+        detail: `preferred_driver_hold references an archived driver registry entry`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * User role ↔ Driver Registry linkage integrity. Linking a driver account adds
+ * the `driver` role and sets `linkedUserId`; unlinking removes both; a user is
+ * linked to at most one registry entry (`linkDriverAccount` enforces this).
+ * `eligibilityStatus` is deliberately NOT coupled to role existence here.
+ *
+ * @param drivers all driver registry entries (archived included)
+ * @param users all user docs (need `roles`)
+ * @param usersById map uid -> user doc
+ */
+export function findRoleRegistryInconsistencies(drivers, users, usersById) {
+  /** @type {IntegrityFinding[]} */
+  const findings = [];
+
+  // Registry -> user direction, plus duplicate-link detection.
+  /** @type {Map<string, string[]>} liveLinked: linkedUserId -> [registry ids] */
+  const liveLinked = new Map();
+  for (const driver of drivers) {
+    const linkedUserId = driver.linkedUserId ?? null;
+    if (!linkedUserId) continue;
+
+    if (!driver.archivedAt) {
+      if (!liveLinked.has(linkedUserId)) liveLinked.set(linkedUserId, []);
+      liveLinked.get(linkedUserId).push(driver.id);
+    }
+
+    const user = usersById.get(linkedUserId);
+    if (!user) {
+      findings.push({
+        severity: "warning",
+        category: "role_registry_linked_user_missing",
+        code: "role_registry.linked_user_missing",
+        id: driver.id,
+        relatedIds: [linkedUserId],
+        detail: `registry linkedUserId=${linkedUserId} has no users/{uid} document`,
+      });
+      continue;
+    }
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    if (!roles.includes("driver")) {
+      findings.push({
+        severity: "warning",
+        category: "role_registry_missing_driver_role",
+        code: "role_registry.linked_user_missing_driver_role",
+        id: driver.id,
+        relatedIds: [linkedUserId],
+        detail: `registry is linked to a user that lacks the "driver" role`,
+      });
+    }
+  }
+
+  for (const [linkedUserId, registryIds] of liveLinked) {
+    if (registryIds.length > 1) {
+      findings.push({
+        severity: "warning",
+        category: "role_registry_duplicate_link",
+        code: "role_registry.duplicate_link",
+        id: linkedUserId,
+        relatedIds: registryIds,
+        detail: `user is linked by ${registryIds.length} live driver registry entries`,
+      });
+    }
+  }
+
+  // User -> registry direction: a `driver` role with no linking registry entry
+  // (archived or not). A user linked only to an archived registry entry is
+  // still considered linked (archiving neither unlinks nor removes the role).
+  const linkedUserIds = new Set(
+    drivers.filter((d) => d.linkedUserId).map((d) => d.linkedUserId),
+  );
+  for (const user of users) {
+    const uid = user.uid ?? user.id;
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    if (roles.includes("driver") && !linkedUserIds.has(uid)) {
+      findings.push({
+        severity: "warning",
+        category: "role_registry_driver_role_without_registry",
+        code: "role_registry.driver_role_without_registry",
+        id: uid,
+        detail: `user has the "driver" role but no linked driver registry entry`,
+      });
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * Impossible/stale request-state field combinations that the lifecycle should
+ * never produce (distinct from the stale-lock and batch checks above):
+ *   - a pre-claim request (requested / preferred_driver_hold / available) that
+ *     still carries an `assignedDriverId` (claiming sets it; requeue/reopen
+ *     clears it);
+ *   - a `cancelled` request that still carries a `dispatchBatchId` (cancelling
+ *     a batch member clears its membership).
+ * Terminal states still holding an active driver lock are covered by
+ * `findStaleDriverLocks`; delivered/confirmed/disputed batch members keeping
+ * their `dispatchBatchId` is VALID (the run stays a complete record).
+ */
+export function findRequestStateInconsistencies(requests) {
+  /** @type {IntegrityFinding[]} */
+  const findings = [];
+  const preClaim = new Set(["requested", "preferred_driver_hold", "available"]);
+  for (const request of requests) {
+    if (preClaim.has(request.status) && request.assignedDriverId) {
+      findings.push({
+        severity: "warning",
+        category: "request_state_preclaim_assignment",
+        code: "request_state.preclaim_with_assignment",
+        id: request.id,
+        relatedIds: [request.assignedDriverId],
+        detail: `status=${request.status} still carries assignedDriverId`,
+      });
+    }
+    if (request.status === "cancelled" && request.dispatchBatchId) {
+      findings.push({
+        severity: "warning",
+        category: "request_state_cancelled_with_batch",
+        code: "request_state.cancelled_with_batch",
+        id: request.id,
+        relatedIds: [request.dispatchBatchId],
+        detail: `cancelled request still carries dispatchBatchId`,
+      });
+    }
+  }
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Shared index builders + summary
+// ---------------------------------------------------------------------------
+
+function buildIndexes({ drivers, requests, batches, users }) {
+  const requestsById = new Map(requests.map((r) => [r.id, r]));
+  const batchesById = new Map(batches.map((b) => [b.id, b]));
+  const usersById = new Map(users.map((u) => [u.uid ?? u.id, u]));
+  // Last-wins on duplicate linkedUserId; duplicate detection is handled
+  // explicitly in findRoleRegistryInconsistencies.
+  const driversByUserId = new Map(
+    drivers.filter((d) => d.linkedUserId).map((d) => [d.linkedUserId, d]),
+  );
+  return { requestsById, batchesById, usersById, driversByUserId };
+}
+
+function summarize(findings, counts) {
+  /** @type {Record<string, number>} */
+  const byCategory = {};
+  /** @type {Record<string, number>} */
+  const bySeverity = { critical: 0, warning: 0, info: 0 };
+  for (const finding of findings) {
+    byCategory[finding.category] = (byCategory[finding.category] ?? 0) + 1;
+    bySeverity[finding.severity] = (bySeverity[finding.severity] ?? 0) + 1;
+  }
+  return { total: findings.length, byCategory, bySeverity, counts };
+}
+
+/**
+ * Disaster-recovery check subset (issue #35). Unchanged set of checks so the DR
+ * validator's behavior and tests are unaffected; findings now also carry
+ * `severity`/`code` (additive).
  *
  * @param {{
  *   drivers?: Record<string, unknown>[],
@@ -196,12 +550,8 @@ export function runRecoveryChecks({
   batches = [],
   users = [],
 }) {
-  const requestsById = new Map(requests.map((r) => [r.id, r]));
-  const batchesById = new Map(batches.map((b) => [b.id, b]));
-  const usersById = new Map(users.map((u) => [u.uid ?? u.id, u]));
-  const driversByUserId = new Map(
-    drivers.filter((d) => d.linkedUserId).map((d) => [d.linkedUserId, d]),
-  );
+  const { requestsById, batchesById, usersById, driversByUserId } =
+    buildIndexes({ drivers, requests, batches, users });
 
   const findings = [
     ...findStaleDriverLocks(drivers, requestsById),
@@ -210,23 +560,66 @@ export function runRecoveryChecks({
     ...findOrphanedRequestOwners(requests, usersById),
   ];
 
-  /** @type {Record<string, number>} */
-  const byCategory = {};
-  for (const finding of findings) {
-    byCategory[finding.category] = (byCategory[finding.category] ?? 0) + 1;
-  }
+  return {
+    findings,
+    summary: summarize(findings, {
+      drivers: drivers.length,
+      requests: requests.length,
+      batches: batches.length,
+      users: users.length,
+    }),
+  };
+}
+
+/**
+ * Full production integrity check set (issue #52): the DR subset PLUS two-way
+ * batch ownership/driver/status, preferred-driver, role↔registry, and
+ * request-state invariants. Composes the SAME pure check functions as
+ * `runRecoveryChecks` for the overlapping rules — one source of truth.
+ *
+ * @param {{
+ *   drivers?: Record<string, unknown>[],
+ *   requests?: Record<string, unknown>[],
+ *   batches?: Record<string, unknown>[],
+ *   users?: Record<string, unknown>[],
+ * }} input
+ */
+export function runIntegrityChecks({
+  drivers = [],
+  requests = [],
+  batches = [],
+  users = [],
+}) {
+  const { requestsById, batchesById, usersById, driversByUserId } =
+    buildIndexes({ drivers, requests, batches, users });
+
+  const findings = [
+    ...findStaleDriverLocks(drivers, requestsById),
+    ...findClaimedRequestDriverMismatches(requests, driversByUserId),
+    ...findBatchMembershipIssues(batches, requests, requestsById, batchesById),
+    ...findOrphanedRequestOwners(requests, usersById),
+    ...findBatchOwnershipInconsistencies(batches, requests, batchesById),
+    ...findPreferredDriverIssues(requests, driversByUserId),
+    ...findRoleRegistryInconsistencies(drivers, users, usersById),
+    ...findRequestStateInconsistencies(requests),
+  ];
+
+  // Deterministic ordering: severity (critical→warning→info), then category,
+  // then id — so operators and tests can reason about the output.
+  findings.sort(
+    (a, b) =>
+      SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) ||
+      a.category.localeCompare(b.category) ||
+      String(a.id).localeCompare(String(b.id)),
+  );
 
   return {
     findings,
-    summary: {
-      total: findings.length,
-      byCategory,
-      counts: {
-        drivers: drivers.length,
-        requests: requests.length,
-        batches: batches.length,
-        users: users.length,
-      },
-    },
+    summary: summarize(findings, {
+      drivers: drivers.length,
+      requests: requests.length,
+      batches: batches.length,
+      users: users.length,
+    }),
   };
 }

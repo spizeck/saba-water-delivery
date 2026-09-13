@@ -334,6 +334,112 @@ maintainer:
   it has not been configured, the app is still correct — expired counters
   are ignored on read — the collection just retains a few stale documents.
 
+### Checking data integrity (read-only diagnostic)
+
+`scripts/production-integrity.mjs` (issue #52) answers one question for an
+authorized maintainer — **"is the live operational Firestore data internally
+consistent?"** — before staff hit a failure. It is **read-only**: it performs
+NO `update`/`set`/`delete`, no batch, no transaction, and never invokes any
+reconciliation/repair tool. **Repair is never automatic.**
+
+**What it checks** (cross-document invariants, using the app's real lifecycle
+rules):
+
+- driver-registry active-assignment locks (`activeRequestId`) — reusing the same
+  rule as the runtime self-healing check;
+- claimed-request ownership (assigned driver exists, is not archived, and — for
+  non-batch loads — the driver's lock points back);
+- Delivery Run membership both directions: batch↔request existence, a member
+  that is not in its run's `originalRequestIds`, a member whose driver differs
+  from the run's driver, and a batch status cache that disagrees with its
+  members (the Delivery Run `activeRequestId` exception in ADR 0008 is honored —
+  valid runs are never flagged);
+- resident/request ownership (`customerId` → an existing user; intentionally
+  unregistered `customerId: null` requests are NOT flagged);
+- preferred-driver references on an active hold (missing/archived registry — a
+  merely offline or ineligible preferred driver is a VALID state and is not
+  flagged);
+- user role ↔ Driver Registry linkage (missing linked user, linked user lacking
+  the `driver` role, `driver` role with no registry link, duplicate live links);
+- impossible request-state fields (a pre-claim request still carrying an
+  `assignedDriverId`; a cancelled request still carrying a `dispatchBatchId`).
+
+**What it does NOT check / is NOT:** it is not a schema validator, does not
+inspect Firebase Auth, does not verify backups or run a restore, and is **not**
+monitoring/alerting — it is a point-in-time, on-demand check a maintainer runs.
+It does not replace [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) backup
+verification, the disaster-recovery validator, or the planned uptime alerting
+(#62).
+
+**Severity:** `critical` = a live operational contradiction likely to block or
+misdirect a delivery (e.g. a claimed request assigned to a missing driver, a
+two-way batch ownership contradiction); `warning` = a stale/malformed reference
+not currently blocking a specific delivery (e.g. a self-healing stale lock, an
+archived/missing preferred driver, a role/registry inconsistency); `info` =
+cleanup candidate with no operational consequence. Findings print **opaque IDs
+only** (Firestore doc ids / Firebase uids) — never names, emails, phones,
+delivery directions, notes, or secrets.
+
+**Bounded by default.** To avoid unbounded scans of the growing request history,
+the default run scans **operational** data only: the full (small) driver /
+user / batch sets plus the ACTIVE (unresolved) water requests, then resolves any
+request referenced by a driver lock or a batch so a "missing reference" finding
+always means a genuine absence. It reports its `scan status` as `operational`
+(terminal history not scanned), `complete` (with `--full-scan`), or `truncated`
+(a `--max-records` cap cut a read short — results are partial). Use
+`--full-scan` for an exhaustive check including terminal/historical requests;
+`--page-size` / `--max-records` tune the read bounds.
+
+**Target safety.** The tool requires an explicit, unambiguous target and never
+falls back between the emulator and the cloud:
+
+```bash
+# Emulator (safe, local — e.g. seeded/restored data in the Firestore emulator):
+firebase emulators:exec --only firestore "node scripts/production-integrity.mjs"
+
+# Cloud production — requires the deliberate --production flag AND an explicit
+# project. Credentials come from a key FILE (never inline JSON on the command
+# line). Pass --database if the target is not (default).
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
+  node scripts/production-integrity.mjs --production --project=<gcp-project> [--database=<db>]
+
+# Full historical scan + machine-readable output:
+node scripts/production-integrity.mjs --production --project=<id> --full-scan --json
+```
+
+It refuses to run when: no target is configured; `FIRESTORE_EMULATOR_HOST` is
+set alongside cloud configuration (a stale emulator variable must never silently
+pass a cloud check against an empty emulator); a cloud target is requested
+without `--production`; ADC mode has no explicit project (no implicit default);
+or inline service-account JSON is passed. It prints the resolved
+project/database before scanning. `npm run diagnose:integrity` is the same
+entry point.
+
+> **Configuration note:** the current project/credentials are the same
+> developer-owned Firebase infrastructure the rest of the app uses; there is no
+> separate government configuration model yet. Pass `--project` explicitly to be
+> certain which project you are scanning. Long-term infrastructure
+> ownership/handover is tracked separately and is not part of #52.
+
+**Exit codes** (for scripted/operational use): `0` = the intended scan completed
+without truncation and found no `critical`/`warning` findings; `1` = one or more
+`critical`/`warning` findings; `2` = configuration/target/auth failure; `3` = no
+`critical`/`warning` findings but the scan was **truncated** by a limit (so a
+clean bill of health cannot be certified). `info`-only findings do not, by
+themselves, make the exit non-zero. A truncated or operational-scope run says so
+in its output rather than printing a misleading "no inconsistencies found."
+
+**Investigating a finding.** Read the `code` and the opaque IDs, then inspect
+those documents (and their audit-event subcollections) to understand how the
+state arose. For a stale driver lock specifically, the runtime self-heals it and
+the targeted `scripts/reconcile-stale-driver-locks.mjs` tool can bulk-clear
+prelaunch leftovers (see
+[`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "Stale driver activeRequestId").
+For broader data damage, treat it as a **data-recovery** situation and follow
+[`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) — do not improvise writes. Only
+use a targeted reconciliation tool when you understand the specific finding; the
+diagnostic itself never repairs anything.
+
 ### Backups and data recovery
 
 Backing up and restoring the water-delivery **data** (the Firestore database
