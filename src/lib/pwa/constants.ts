@@ -1,3 +1,4 @@
+import { getAppOrigin } from "@/lib/config/appOrigin";
 import type { UserRole } from "@/lib/domain/types";
 
 export type PwaPortal = "driver" | "resident";
@@ -28,20 +29,13 @@ export const PWA_ROLES: Record<PwaPortal, UserRole> = {
 /**
  * Deterministic production origin used for QR codes and PWA install links.
  *
- * Set `NEXT_PUBLIC_APP_URL` to the canonical public URL so QR codes always
- * point to production and never to a temporary preview deployment. The value
- * is read at build time for server-rendered QR code pages; while the pilot uses
- * the Vercel production domain as its fallback, this variable must be updated
- * when the permanent government DNS name becomes available.
+ * Re-exported from the centralized configuration boundary (`@/lib/config`,
+ * issue #54) so QR codes, install links, and email links all resolve the app
+ * origin identically (validated, trailing-slash normalized, one documented
+ * fallback). Set `NEXT_PUBLIC_APP_URL` to the canonical public URL so links
+ * never point to a temporary preview deployment.
  */
-export function getAppOrigin(): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (configured) {
-    return configured.replace(/\/$/, "");
-  }
-
-  return "https://saba-water-delivery.vercel.app";
-}
+export { getAppOrigin };
 
 /** Absolute public URL for a PWA install portal. */
 export function getPwaInstallUrl(portal: PwaPortal): string {

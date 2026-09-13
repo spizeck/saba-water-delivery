@@ -8,6 +8,7 @@ import {
   type DocumentSnapshot,
 } from "firebase-admin/firestore";
 
+import { getAppOrigin } from "@/lib/config/appOrigin";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { toUserRoles } from "@/lib/auth/roles";
 import { getLogger, serializeError } from "@/lib/logging";
@@ -763,12 +764,8 @@ export interface AccountInvitationResult {
 }
 
 function getAppUrl(): string {
-  // Allow override for local development / custom domains; fall back to
-  // the known production deployment.
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    "https://saba-water-delivery.vercel.app"
-  );
+  // Canonical, validated, trailing-slash-normalized app origin (issue #54).
+  return getAppOrigin();
 }
 
 /**

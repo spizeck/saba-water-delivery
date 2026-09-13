@@ -101,56 +101,65 @@ Never commit real values. Copy `.env.example` to `.env.local` for local
 development and configure the same variables in Vercel (Project
 Settings → Environment Variables) for production.
 
-### Public Firebase configuration (safe to expose to the browser)
+### Canonical configuration table
 
-| Variable | Purpose | Where obtained |
-| --- | --- | --- |
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase client SDK config | Firebase Console → Project settings → General → Your apps → Web app |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client SDK config | Same as above |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase client SDK config | Same as above |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase client SDK config | Same as above |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase client SDK config | Same as above |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase client SDK config | Same as above |
+This table is the single canonical reference for every environment variable the
+application consumes. It mirrors the machine-readable registry in
+[`src/lib/config/serverConfig.ts`](../src/lib/config/serverConfig.ts) (issue #54,
+[ADR 0016](./adr/0016-centralized-configuration-model.md)) — keep the two in sync
+when adding a variable. **Class:** `public` = build-time inlined and visible in
+the browser bundle (safe by design); `server` = server-only non-secret;
+`secret` = server-only and must never reach the browser, logs, or diagnostics.
+**Required in:** `feature` means required only once that integration is enabled
+(any one of its variables set). **Redeploy?** On Vercel every env change needs a
+redeploy to take effect; `build` marks values additionally **inlined into the
+build** (client/CSP), so they cannot be changed without rebuilding.
 
-### Server secrets (never expose to the browser)
+| Variable | Purpose | Class | Required in | Behavior if missing | Redeploy? |
+| --- | --- | --- | --- | --- | --- |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase client SDK | public | Production, Preview | Client renders "not configured" | Yes (build) |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client SDK / sign-in + CSP origin | public | Production, Preview | Client renders "not configured" | Yes (build) |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase client SDK | public | Production, Preview | Client renders "not configured" | Yes (build) |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase client SDK | public | optional | Unused today | Yes (build) |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase client SDK | public | optional | Unused today | Yes (build) |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase client SDK | public | Production, Preview | Client renders "not configured" | Yes (build) |
+| `NEXT_PUBLIC_APP_URL` | Public origin for QR codes, PWA install, and email links | public | recommended (Production/Preview) | Falls back to the documented pilot origin; a malformed value also falls back | Yes (build) |
+| `FIREBASE_ADMIN_PROJECT_ID` | Firebase Admin SDK | server | Production, Preview | Server "not configured"; use throws a sanitized error → readiness `not_ready` | Yes |
+| `FIREBASE_ADMIN_CLIENT_EMAIL` | Firebase Admin SDK | server | Production, Preview | As above (validated as an email) | Yes |
+| `FIREBASE_ADMIN_PRIVATE_KEY` | Firebase Admin SDK | **secret** | Production, Preview | As above (validated as a PEM key) | Yes |
+| `FIREBASE_DATABASE_ID` | Named Firestore DB (disaster-recovery override) | server | optional | Uses the project's `(default)` DB; a malformed id throws a sanitized error on use | Yes |
+| `CRON_SECRET` | Authorizes the continuity-report cron request | **secret** | Production | Route **fails closed** (503) | Yes |
+| `RATE_LIMIT_HASH_SECRET` | HMAC salt for rate-limit bucket keys | **secret** | Production, Preview | Limiter **fails open** (allows + logs `rate_limit.secret_missing`); never hashes with a public salt | Yes |
+| `CSP_REPORT_ONLY` | Emit `Content-Security-Policy-Report-Only` instead of enforcing | server | optional | CSP is **enforced** (the default) | Yes (build) |
+| `RESEND_API_KEY` | Resend API key for outbound email | **secret** | feature (email) | Email features disabled (best-effort, logged) | Yes |
+| `CONTINUITY_REPORT_EMAIL_FROM` | Continuity-report sender (Resend-verified domain) | server | feature (email) | Continuity-report email disabled | Yes |
+| `CONTINUITY_REPORT_EMAIL_TO` | Continuity-report recipients (comma-separated) | server | feature (email) | Continuity-report email disabled | Yes |
+| `DELIVERY_CONFIRMATION_EMAIL_FROM` | Sender for delivery-review emails | server | optional | Falls back to `CONTINUITY_REPORT_EMAIL_FROM` | Yes |
+| `ACCOUNT_SETUP_EMAIL_FROM` | Sender for account-setup invitations | server | optional | Falls back to `CONTINUITY_REPORT_EMAIL_FROM` | Yes |
+| `WHATSAPP_ACCESS_TOKEN` | Meta Graph API auth | **secret** | feature (whatsapp) | WhatsApp ordering disabled | Yes |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta Cloud API number id | server | feature (whatsapp) | WhatsApp ordering disabled | Yes |
+| `WHATSAPP_APP_SECRET` | Verifies inbound webhook signatures | **secret** | feature (whatsapp) | WhatsApp ordering disabled | Yes |
+| `WHATSAPP_VERIFY_TOKEN` | Verifies the webhook subscription handshake | **secret** | feature (whatsapp) | WhatsApp ordering disabled | Yes |
+| `LOG_LEVEL` | Minimum structured-log level (`debug`/`info`/`warn`/`error`) | server | optional | `info` in production, `debug` otherwise | Yes |
 
-| Variable | Purpose | Secret? | Where obtained | Configured where |
-| --- | --- | --- | --- | --- |
-| `FIREBASE_ADMIN_PROJECT_ID` | Firebase Admin SDK | No | Service account JSON | Vercel + `.env.local` |
-| `FIREBASE_ADMIN_CLIENT_EMAIL` | Firebase Admin SDK | No | Service account JSON | Vercel + `.env.local` |
-| `FIREBASE_ADMIN_PRIVATE_KEY` | Firebase Admin SDK | **Yes** | Service account JSON (Firebase Console → Project settings → Service accounts → Generate new private key) | Vercel + `.env.local` |
-| `CRON_SECRET` | Authorizes the nightly continuity-report cron request | **Yes** | Generate yourself (`openssl rand -hex 32`) | Vercel only |
-| `RESEND_API_KEY` | Sends the continuity-report email | **Yes** | Resend dashboard → API Keys | Vercel + `.env.local` (if testing email locally) |
-| `CONTINUITY_REPORT_EMAIL_FROM` | Sender address for the continuity report | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
-| `CONTINUITY_REPORT_EMAIL_TO` | Recipient list for the continuity report (comma-separated) | No | Government distribution list or shared operational inbox | Vercel + `.env.local` |
-| `DELIVERY_CONFIRMATION_EMAIL_FROM` | Optional sender for resident delivery-review messages; falls back to `CONTINUITY_REPORT_EMAIL_FROM` | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
-| `ACCOUNT_SETUP_EMAIL_FROM` | Optional sender for dispatcher-sent account-setup invitations; falls back to `CONTINUITY_REPORT_EMAIL_FROM` | No | Must be on a domain verified in Resend | Vercel + `.env.local` |
-| `WHATSAPP_ACCESS_TOKEN` | Authorizes outbound Meta Graph API calls | **Yes** | Meta App Dashboard → WhatsApp → API Setup (or a System User token) | Vercel + `.env.local` |
-| `WHATSAPP_PHONE_NUMBER_ID` | Identifies which Cloud API number sends/receives messages | No | Meta App Dashboard → WhatsApp → API Setup | Vercel + `.env.local` |
-| `WHATSAPP_APP_SECRET` | Verifies inbound webhook signatures | **Yes** | Meta App Dashboard → App Settings → Basic | Vercel + `.env.local` |
-| `WHATSAPP_VERIFY_TOKEN` | Verifies the webhook subscription handshake | **Yes** (chosen by you) | Generate yourself (`openssl rand -hex 32`) | Vercel **and** Meta App Dashboard webhook configuration |
+Ambient variables provided by the platform — `VERCEL_ENV`, `VERCEL_DEPLOYMENT_ID`,
+`NODE_ENV`, `GCLOUD_PROJECT`/`GOOGLE_CLOUD_PROJECT` — are set by Vercel/Node and
+are not configured by hand. The emulator/test-only variables
+(`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`, the
+`NEXT_PUBLIC_FIREBASE_*_EMULATOR_HOST` values, demo project ids) **must never** be
+set in a deployed Vercel environment — a hard guard in
+[`src/lib/firebase/admin.ts`](../src/lib/firebase/admin.ts) refuses to run
+emulator mode there.
 
-Without the Firebase variables set, the app still builds and runs,
-showing a clear "not configured" state instead of failing. Without the
-continuity-report or WhatsApp variables set, those specific features
-degrade gracefully (see [`INTEGRATIONS.md`](./INTEGRATIONS.md)) rather
-than breaking the rest of the application.
-
-### Optional operational configuration
-
-| Variable | Purpose | Secret? | Default |
-| --- | --- | --- | --- |
-| `LOG_LEVEL` | Minimum level for structured operational logs (`debug`, `info`, `warn`, `error`). | No | `info` in production, `debug` otherwise |
-
-`LOG_LEVEL` is **optional** — the app runs without it. Leave it unset for
-normal operation (production logs at `info` and above, so it is not noisy).
-Set it to `debug` in Vercel Project Settings → Environment Variables and
-redeploy when you need verbose diagnostics while investigating an issue, then
-remove it. Operational logs are captured by Vercel from the application's
-output and are privacy-preserving by design; see `TECHNICAL.md`
-("Operational logging and observability") and
-[`OPERATIONS.md`](./OPERATIONS.md) for what they contain and how to use
-request IDs to diagnose a failure.
+Without the Firebase variables set, the app still builds and runs, showing a
+clear "not configured" state instead of failing (CI builds with no secrets on
+purpose). Without the email or WhatsApp variables set, those specific features
+degrade gracefully (see [`INTEGRATIONS.md`](./INTEGRATIONS.md)) rather than
+breaking the rest of the application. A **partially** configured integration (some
+but not all of its variables set) is treated as a misconfiguration — the missing
+variables become required — and is reported by the sanitized configuration status
+in `serverConfig.getServerConfigStatus()`. `LOG_LEVEL` is optional; set it to
+`debug` in Vercel and redeploy when investigating an issue, then remove it.
 
 ## Firebase
 

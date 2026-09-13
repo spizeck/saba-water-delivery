@@ -1,3 +1,4 @@
+import { getAppOrigin } from "@/lib/config/appOrigin";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
 export interface DeliveryConfirmationEmailConfig {
@@ -22,9 +23,8 @@ export function getDeliveryConfirmationEmailConfig(): DeliveryConfirmationEmailC
   const from =
     process.env.DELIVERY_CONFIRMATION_EMAIL_FROM?.trim() ||
     process.env.CONTINUITY_REPORT_EMAIL_FROM?.trim();
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
-    "https://saba-water-delivery.vercel.app";
+  // Canonical, validated app origin (issue #54) — single source of truth.
+  const appUrl = getAppOrigin();
   if (!apiKey || !from) return null;
   return { apiKey, from, appUrl };
 }
