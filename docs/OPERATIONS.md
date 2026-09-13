@@ -459,6 +459,43 @@ For broader data damage, treat it as a **data-recovery** situation and follow
 use a targeted reconciliation tool when you understand the specific finding; the
 diagnostic itself never repairs anything.
 
+### Notification outbox (delivery-confirmation email)
+
+Delivery-confirmation email is delivered from a **durable notification outbox**
+with automatic retry (issue #53; see TECHNICAL.md "Durable notification outbox"
+and [ADR 0017](./adr/0017-notification-outbox-and-retry.md)). What an operator
+needs to know:
+
+- **It never affects delivery.** A provider outage cannot roll back a delivery or
+  block a driver; the delivery commits and the notification is retried
+  separately. The notification obligation is created in the same transaction as
+  the delivery, so it is never lost to a crash.
+- **Automatic retry.** A transient Resend failure is retried with bounded
+  exponential backoff (~1m, 5m, 15m, 1h, 3h; capped attempts) before becoming a
+  terminal failure. Delivery is **at-least-once with provider de-duplication, not
+  exactly-once** — a retry after a crash reuses the same Resend idempotency key,
+  so a duplicate email is only possible in the rare case a retry lands outside
+  Resend's de-duplication window.
+- **Worker cron.** The protected route `GET /api/cron/notifications` (authorized
+  by `CRON_SECRET`, same as the continuity report) processes a bounded batch each
+  run. `vercel.json` schedules it every 10 minutes. **The achievable retry
+  cadence depends on the Vercel plan's cron granularity** — a plan limited to
+  daily crons will retry only daily. The worker is safe to run at any cadence
+  (and safe to invoke manually), and `nextAttemptAt` is a lower bound, so
+  adjusting the schedule or triggering the route from an external scheduler
+  changes only timeliness, never correctness.
+- **Configuration disabled.** If Resend is not configured, a delivery-confirmation
+  notification becomes a terminal `configuration_disabled` failure (visible
+  below) rather than retrying uselessly. Fix the Resend configuration, then use
+  the manual retry.
+- **Operator visibility + manual retry.** Sign in as an admin and open
+  **`/admin/notifications`**. It shows per-state counts and the list of
+  permanently failed notifications (opaque request ids, attempt count, sanitized
+  failure category — never recipient email, message body, or secrets). "Retry"
+  re-queues a failed notification with a fresh attempt budget; a notification
+  already marked sent is never resent. The action is admin-only and
+  server-authoritative.
+
 ### Backups and data recovery
 
 Backing up and restoring the water-delivery **data** (the Firestore database

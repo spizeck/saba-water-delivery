@@ -74,11 +74,24 @@ of each message.
   `CONTINUITY_REPORT_EMAIL_FROM` (must be on a Resend-verified domain
   for real government use), `CONTINUITY_REPORT_EMAIL_TO`; optional
   `DELIVERY_CONFIRMATION_EMAIL_FROM` overrides the shared sender.
-- **Failure impact:** continuity-report failures are logged and return 502.
-  Delivery-confirmation failures are recorded on the request audit event after
-  delivery has committed and do not alter delivery status, driver availability,
-  or the 24-hour deadline. Unregistered and unclaimed requestors are not sent
-  authenticated confirmation links. See
+- **Failure impact:** continuity-report failures are logged and return 502; the
+  report is reconstructible operational reporting and is **not** placed in the
+  durable outbox. Account-setup invitations remain best-effort (the admin sees
+  the send result synchronously and can re-invite).
+- **Delivery-confirmation email is durable (issue #53).** It is delivered from
+  the durable notification outbox with automatic bounded retry (see
+  [ADR 0017](./adr/0017-notification-outbox-and-retry.md) and
+  TECHNICAL.md "Durable notification outbox"): the intent is created inside the
+  delivery transaction, sent asynchronously by the protected worker cron, and
+  retried on transient provider failure. A notification failure never alters
+  delivery status, driver availability, or the 24-hour deadline. Unregistered and
+  unclaimed requestors are never sent authenticated confirmation links. Delivery
+  is **at-least-once with Resend idempotency-key de-duplication, not
+  exactly-once.** If Resend is unconfigured the notification becomes a terminal
+  `configuration_disabled` failure (visible to operators, not retried in a loop)
+  rather than blocking delivery. Permanently failed notifications are visible and
+  manually retriable at `/admin/notifications`. See
+  [`OPERATIONS.md`](./OPERATIONS.md) "Notification outbox" and
   [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "Resend failure."
 
 ## Facebook Login

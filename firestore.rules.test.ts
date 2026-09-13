@@ -139,6 +139,11 @@ async function seed() {
         processedAt: new Date(),
       }),
       setDoc(doc(db, "accountMergeEvents/merge-a"), { actorId: "admin-a" }),
+      setDoc(doc(db, "notificationOutbox/notif-a"), {
+        type: "delivery_confirmation_email",
+        requestId: "request-a",
+        state: "failed",
+      }),
       setDoc(doc(db, "unknownCollection/unknown-a"), { secret: true }),
     ]);
   });
@@ -359,6 +364,16 @@ describe("locked collections and catch-all", () => {
     await assertFails(getDoc(doc(db, "systemInvariants/adminRole")));
     await assertFails(
       setDoc(doc(db, "systemInvariants/adminRole"), { adminCount: 0 }),
+    );
+    // Durable notification outbox (issue #53) is server-only; even an admin
+    // client is denied direct read and write. Operator visibility/manual retry
+    // go through admin-only server-authorized domain code, not client access.
+    await assertFails(getDoc(doc(db, "notificationOutbox/notif-a")));
+    await assertFails(
+      setDoc(doc(db, "notificationOutbox/notif-b"), { state: "pending" }),
+    );
+    await assertFails(
+      updateDoc(doc(db, "notificationOutbox/notif-a"), { state: "pending" }),
     );
     await assertFails(getDoc(doc(db, "driverRegistryUniqueKeys/name-key")));
     await assertFails(

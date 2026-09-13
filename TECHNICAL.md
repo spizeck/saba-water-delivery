@@ -1591,20 +1591,28 @@ driver offer/assignment, dispatcher detail, continuity report, and delivery-run
 PDF. PDF renderers truncate the displayed note to 240 characters so free text
 cannot consume the run sheet.
 
-Both `markWaterDelivered()` and `markWaterDeliveredByStaff()` call the shared
-`notifyDeliveryConfirmation()` only after the delivery transaction commits.
-The notifier creates the deterministic
-`deliveryConfirmationEmailClaims/{requestId}` document; Firestore create
-semantics permit only one sender to claim a request. Resend also receives
-`delivery-confirmation-{requestId}` as its idempotency key. The claim and an
-append-only request event record `pending`, `sent`, `failed`, or `skipped`, the
-recipient, provider ID, and a non-secret error.
+Both `markWaterDelivered()` and `markWaterDeliveredByStaff()` create a durable
+delivery-confirmation notification **intent inside the same delivery
+transaction** (issue #53 — see "Durable notification outbox" below and
+[ADR 0017](docs/adr/0017-notification-outbox-and-retry.md)), so the obligation to
+notify commits atomically with the delivery and cannot be lost to a crash
+between committing state and enqueuing the send. Only a request with a
+`customerId` gets an intent — an unregistered/manual request (`customerId: null`)
+gets none, because it has no authenticated resident confirmation path. Sending
+is asynchronous, performed by the outbox worker; it never blocks the delivery
+transaction on Resend and can never roll back delivery or retain a driver lock.
 
-Only a request with `customerId` linked to a claimed profile and a current
-profile email is eligible. Unregistered and staff-created unclaimed records are
-recorded as skipped because they have no authenticated resident confirmation
-path. Sending occurs after the request is already delivered and all failures are
-contained, so notification cannot roll back delivery or retain a driver lock.
+The worker recomputes eligibility at send time (registered, claimed profile,
+current email, still delivered) exactly as before, and passes Resend the stable
+`delivery-confirmation-{requestId}` idempotency key. This **supersedes the former
+`deliveryConfirmationEmailClaims/{requestId}` collection**: the outbox's
+deterministic per-request document now provides both once-only creation (the
+intent is created only if absent, so a re-delivery neither duplicates nor
+aborts) and automatic retry. Historical `deliveryConfirmationEmailClaims`
+documents are inert (no code reads them) and are left in place; they are not
+migrated and never suppress a new outbox retry (a different collection). Failures
+under the old one-shot notifier are not resurrected — the mechanism is
+forward-looking.
 
 The CTA uses `/resident/review/{requestId}`. That server route preserves an
 existing session and otherwise redirects through
@@ -1616,6 +1624,61 @@ returns to that exact review route; authorization is unchanged.
 Configuration reuses `RESEND_API_KEY` and defaults the sender to
 `CONTINUITY_REPORT_EMAIL_FROM`; `DELIVERY_CONFIRMATION_EMAIL_FROM` optionally
 overrides it. `NEXT_PUBLIC_APP_URL` supplies the CTA origin.
+
+---
+
+# Durable notification outbox (#53)
+
+Important transactional notifications are delivered from a durable Firestore
+outbox with automatic retry, so a transient Resend outage no longer silently
+loses an important notification. See
+[ADR 0017](docs/adr/0017-notification-outbox-and-retry.md) for the decision and
+delivery-guarantee analysis; the mechanics:
+
+- **Which notifications are durable.** Only **delivery-confirmation email**
+  today. Account-setup invitations remain best-effort (the admin sees the
+  send result synchronously and can re-invite); the continuity report is
+  reconstructible operational reporting and stays best-effort; WhatsApp is an
+  interactive reply within a webhook turn (and not production-provisioned), not a
+  Firestore-generated obligation. The model is extensible to future durable types
+  without a schema change.
+- **Collection `notificationOutbox/{type}__{requestId}`** — a deterministic id so
+  a logical notification is one document across retries. It stores only stable
+  references (`requestId`, `customerId` — opaque ids) plus non-PII state/timing:
+  `type`, `providerIdempotencyKey`, `state`, `attemptCount`, `nextAttemptAt`,
+  `lastAttemptAt`, `sentAt`, `providerMessageId`, sanitized `failureCategory`/
+  `failureReason`, and lease fields. **No recipient email, message body,
+  directions, token, or secret is stored** — the recipient and content are
+  recomputed from the referenced request/profile at send time.
+- **State machine:** `pending` → `processing` (leased) → `sent` (terminal) or
+  `failed` (terminal). Only an admin manual retry moves `failed` back to
+  `pending`. See `src/lib/notifications/outboxPolicy.ts`.
+- **Atomic intent.** The intent is created in the delivery transaction (read the
+  deterministic doc in the read phase, `txn.create` if absent in the write
+  phase). It is never created by a separate post-commit write, so the
+  crash-between-commit-and-enqueue window does not exist.
+- **Worker.** `processNotificationOutbox()` runs a bounded pass: it claims due
+  work with a Firestore lease transaction, sends **outside** any transaction
+  (never holding a transaction open across Resend), and records the outcome in a
+  second transaction guarded by lease ownership. Driven by the protected
+  `GET /api/cron/notifications` cron (`CRON_SECRET`, same convention as the
+  continuity report). Safe to run concurrently and at any cadence.
+- **Retry policy.** Bounded exponential backoff with jitter (~1m, 5m, 15m, 1h,
+  3h; `MAX_ATTEMPTS` total), then terminal `failed`. `nextAttemptAt` is the
+  eligibility lower bound. The total horizon (~4.3h) is kept below Resend's
+  idempotency window (~24h).
+- **Failure classification.** Transient (network/5xx/rate-limit) retries;
+  permanent (provider input rejection), `configuration_disabled` (Resend
+  unconfigured — terminal, no hammering; manual retry after config repair), and
+  `recipient_ineligible` (unregistered/unclaimed/no email) are terminal.
+- **Idempotency / delivery guarantee.** Every attempt reuses the deterministic
+  `delivery-confirmation-{requestId}` provider key, so a retry after a
+  provider-accept/local-crash gap is de-duplicated by Resend within its window.
+  This is **at-least-once processing with provider-level de-duplication**, not
+  exactly-once.
+- **Operator visibility.** Admin-only `/admin/notifications` lists permanently
+  failed notifications (sanitized, opaque ids) with a server-authoritative manual
+  retry; `notificationOutbox` is deny-by-default to clients.
 
 ---
 

@@ -203,10 +203,12 @@ or staff confirmation, dispute, cancellation, priority changes, and
 related system events. Every meaningful state transition is recorded
 here with actor, role, and timestamp.
 
-A `delivery_confirmation_email` event records whether the post-delivery
-notification was sent, failed, or skipped. The separate deterministic
-`deliveryConfirmationEmailClaims/{requestId}` document provides the atomic
-local duplicate-send claim.
+Post-delivery notification outcome is no longer recorded as a per-attempt
+`delivery_confirmation_email` request event. It now lives in the durable
+`notificationOutbox/{id}` document (issue #53 — see below), which is the
+authoritative record of the delivery-confirmation notification's state, attempts,
+and sanitized failure. The delivery state-transition events themselves
+(`marked_delivered`, `marked_delivered_by_dispatcher[_batch]`) are unchanged.
 
 New event type: `customer_history_linked` — admin-initiated relink of an
 unregistered request to a registered user. Records previous/new
@@ -227,13 +229,50 @@ server action, or UI implements uploading, listing, or viewing them.
 Treat this as reserved schema for a planned feature (see `PRODUCT.md`
 "Proof of Delivery"), not as working functionality.
 
-## `deliveryConfirmationEmailClaims/{requestId}`
+## `notificationOutbox/{id}`
 
-**Purpose:** server-only idempotency claim for the one delivery-confirmation
-email associated with a request. The deterministic document ID is the request
-ID. Fields record `status` (`pending`, `sent`, `failed`, or `skipped`), provider
-ID, recipient, non-secret error, and timestamps. Clients have no access; only
-Admin SDK notification code reads or writes this collection.
+**Purpose:** durable, retriable outbox for important transactional notifications
+(issue #53; [ADR 0017](./adr/0017-notification-outbox-and-retry.md)). Today the
+only type is delivery-confirmation email. The deterministic document id is
+`{type}__{requestId}` (e.g. `delivery_confirmation_email__<requestId>`), so one
+logical notification maps to exactly one document across retries.
+
+Created **inside the delivery transaction** for a registered requestor
+(`customerId` present), so the notification obligation commits atomically with
+the delivery. Processed asynchronously by the protected worker cron
+(`/api/cron/notifications`), never inside that transaction. Clients have no
+access (deny-by-default); only Admin SDK code reads or writes it, and operator
+visibility/manual retry go through admin-only server-authorized domain code.
+
+**Privacy:** stores only stable references and non-PII state — never the
+recipient email, message body, delivery directions, confirmation token, or any
+secret. Recipient/content are recomputed from the referenced request/profile at
+send time.
+
+Fields:
+
+- `type` — notification kind (`delivery_confirmation_email`).
+- `requestId` — opaque water-request id (the notification's subject).
+- `customerId` — opaque resident uid (recipient reference; recomputed to an email
+  at send time).
+- `providerIdempotencyKey` — deterministic Resend idempotency key
+  (`delivery-confirmation-{requestId}`), reused on every attempt.
+- `state` — `pending` | `processing` | `sent` | `failed`.
+- `attemptCount`, `nextAttemptAt`, `lastAttemptAt`, `sentAt`.
+- `providerMessageId` — Resend message id on success (nullable).
+- `failureCategory` / `failureReason` — sanitized category/code only, never a
+  provider body.
+- `leaseOwner` / `leaseExpiresAt` — worker lease for concurrency control.
+- `createdAt`, `updatedAt`.
+
+## `deliveryConfirmationEmailClaims/{requestId}` — legacy, superseded
+
+**Superseded by `notificationOutbox` (issue #53).** This server-only collection
+was the pre-outbox "send at most once" claim (deterministic per-request id, with
+`status`/provider id/recipient/error/timestamps). No current code reads or writes
+it. Historical documents are inert and intentionally not migrated — they live in
+a different collection and cannot suppress a new outbox retry. Clients never had
+access. New delivery-confirmation notifications use `notificationOutbox` instead.
 
 ## `driverOffers/{offerId}`
 
@@ -409,6 +448,9 @@ Composite indexes are defined in `firestore.indexes.json` and support:
 - Priority-ordered dispatch selection (`status` + `preferredDriverId`/`priorityRank` + `requestedAt`).
 - The general outstanding-request queue (`status` + `requestedAt`).
 - A batch's current member requests, in run-sheet order (`dispatchBatchId` + `batchSequence`).
+- Notification outbox worker queries (issue #53): due pending notifications
+  (`state` + `nextAttemptAt` + `createdAt`) and expired processing leases to
+  reclaim (`state` + `leaseExpiresAt`).
 
 `whatsappSessions` and `whatsappProcessedMessages` need no composite
 indexes — both are accessed only by direct document ID lookup.

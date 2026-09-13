@@ -173,6 +173,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Durable notification outbox (issue #53). Holds the retriable INTENT to
+    // send an important transactional notification (delivery-confirmation
+    // email today). Created inside the delivery transaction and processed by
+    // the protected worker cron — always via the Admin SDK, which bypasses
+    // these rules. No client (resident, driver, or staff) ever reads or writes
+    // it directly: operator visibility and manual retry go through
+    // admin-only, server-authorized domain code. Fully deny-by-default.
+    match /notificationOutbox/{notificationId} {
+      allow read, write: if false;
+    }
+
     // Abuse rate-limit counters (see TECHNICAL.md "Rate limiting"). Each
     // document is an opaque HMAC-hashed bucket with a fixed-window count,
     // written and read only by server-side code via the Admin SDK (which
