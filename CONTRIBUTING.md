@@ -122,9 +122,11 @@ fails without the fix. Broader test-coverage gaps are tracked in #67.
 - Changes touching **authentication, authorization, roles, resident
   data, audit history, or data integrity are security-sensitive** — say
   so explicitly in the PR's security section.
-- **Do not open a public issue for a suspected security vulnerability.**
-  See [`SECURITY.md`](./SECURITY.md) for the security policy and how to
-  report one.
+- **Do not post exploit details, secrets, or resident/customer PII in a
+  public issue.** [`SECURITY.md`](./SECURITY.md) is the repository's
+  security policy; it does not yet define a private reporting channel,
+  so raise suspected vulnerabilities with the maintainers directly
+  rather than disclosing them publicly.
 
 ## Firestore and data changes
 
