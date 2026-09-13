@@ -117,29 +117,49 @@ Do not trust role values submitted by clients.
 
 ## Admin role safety (last-admin invariant)
 
-Removing the `admin` role is guarded so the system can never be left with zero
-administrators:
+The system can never be left with zero administrators by any supported
+application mutation, including concurrent combinations of different mutation
+types. Two guards enforce this:
 
 - **Self-lockout:** an admin cannot remove their own `admin` role
   (`CANNOT_REMOVE_OWN_ADMIN`). This is deterministic and checked before the
   transaction.
-- **Last admin:** `removeRole` (`src/lib/domain/admin.ts`) enforces the
-  last-admin check **inside** the role-removal transaction, not before it. Every
-  admin removal reads the live admin set (`users` where `roles` array-contains
-  `admin`) **and** reads/writes a single shared invariant document,
+- **Last admin:** enforced **inside** the transaction of every admin-reducing
+  mutation via one shared serialization protocol (`src/lib/domain/admin.ts`:
+  `readAdminPopulationInTransaction` + `recordAdminInvariantParticipation`).
+  Each such mutation reads the live admin set (`users` where `roles`
+  array-contains `admin`) **and** reads/writes one shared invariant document,
   `systemInvariants/adminRole`, in the same transaction. That one document is a
-  deliberate point of contention: two concurrent removals of different admins
-  both touch it, so Firestore serializes them — the loser's transaction is
-  retried and, re-reading the now-smaller admin set, fails with `LAST_ADMIN`.
-  The count always comes from the live query (never a denormalized counter), so
-  it cannot drift; the invariant document is created lazily on first admin
-  removal and needs no migration or backfill. Proven by an emulator concurrency
-  test (`src/lib/domain/__tests__/adminRoleConcurrency.emulator.test.ts`); see
-  ADR 0005 and issue #48.
+  deliberate point of contention: concurrent admin-reducing mutations all touch
+  it, so Firestore serializes them — the loser's transaction is retried and,
+  re-reading the now-smaller admin set, fails with `LAST_ADMIN`. The count
+  always comes from the live query (never a denormalized counter), so it cannot
+  drift; the invariant document is created lazily on the first admin-reducing
+  mutation and needs no migration or backfill.
 
-  This guarantee is scoped to concurrent `removeRole` admin removals. Account
-  merges (`mergeUserAccounts`) are a separate, rarer, operator-confirmed path and
-  are not serialized by this document.
+Mutations that participate (issues #48 then #70):
+
+- `removeRole` when removing `admin` (#48).
+- `mergeUserAccounts` when the merge would demote the canonical account out of
+  `admin` — any union merge of an admin canonical (union never carries the
+  sensitive `admin` role forward), or an explicit merge whose role list omits
+  `admin` (#70). The merge performs that demotion in an invariant-protocol
+  transaction *before* its other writes, so a `LAST_ADMIN` rejection fails
+  closed with no partial state and no `accountMergeEvents` record. Non-demoting
+  merges are unchanged and never touch the invariant document.
+
+Cross-operation races (a `removeRole` racing an admin-demoting merge, or two
+admin-demoting merges) therefore cannot leave zero admins. Proven by
+`adminRoleConcurrency.emulator.test.ts` (#48) and
+`adminInvariantCrossMutation.emulator.test.ts` (#70); see ADR 0005.
+
+Paths that **cannot** reduce the admin population are outside the protocol by
+construction: `addRole` (only adds), staff registration (`registerPerson`,
+resident/driver only), and Driver-Registry link/unlink (only add/remove the
+literal `driver` role). There is no application path that deletes a user
+document. This guarantee covers supported application mutations only — it cannot
+protect against direct out-of-band privileged edits (Firebase Console, ad-hoc
+Admin SDK scripts) that bypass application code.
 
 ## Role vs Eligibility (Drivers)
 
@@ -200,23 +220,25 @@ Role changes are recorded here for audit. These are admin-only operations.
 
 ```ts
 {
-  revision: number        // bumped on every admin removal (the write that
-                          // creates transaction contention)
-  adminCount: number      // live admin count AFTER the last removal; recomputed
+  revision: number        // bumped on every admin-reducing mutation (the write
+                          // that creates transaction contention)
+  adminCount: number      // live admin count AFTER the last mutation; recomputed
                           // from the users query each time (observability only,
                           // not the source of truth for the guard)
   updatedAt: Timestamp
-  updatedBy: string       // actor uid of the last admin removal
+  updatedBy: string       // actor uid of the last admin-reducing mutation
 }
 ```
 
-A server-only singleton (one fixed document) used purely to **serialize admin
-role removals** so the last-admin invariant holds under concurrency — see "Admin
-role safety" above and ADR 0005. It is created lazily on the first admin removal
-(no migration/backfill), read and written only by `removeRole` via the Admin
-SDK, and fully deny-by-default in `firestore.rules` (the Admin SDK bypasses
-rules, so the transaction — not the rules — is the actual guarantee). Non-admin
-role removals never touch it.
+A server-only singleton (one fixed document) used purely to **serialize every
+admin-reducing mutation** so the last-admin invariant holds under concurrency
+across mutation types — see "Admin role safety" above and ADR 0005. It is
+created lazily on the first admin-reducing mutation (no migration/backfill),
+read and written only by trusted domain code via the Admin SDK (`removeRole` for
+#48; an admin-demoting `mergeUserAccounts` for #70), and fully deny-by-default in
+`firestore.rules` (the Admin SDK bypasses rules, so the transaction — not the
+rules — is the actual guarantee). Mutations that cannot reduce the admin count
+never touch it.
 
 ## driverRegistry/{driverId}
 
@@ -1472,6 +1494,14 @@ role lists, driver registry links, and duplicate-owned request counts.
     automatically.
   - `explicit` — admin selects the exact final role list; this is the
     only way to transfer sensitive roles.
+- **Last-admin invariant** (issue #70): when the chosen roles would demote the
+  canonical account out of `admin` (any union merge of an admin canonical, or an
+  explicit list omitting `admin`), the canonical role write runs through the
+  shared last-admin invariant protocol (see "Admin role safety") in a
+  transaction *before* any other merge write. A merge that would remove the last
+  admin fails closed with `LAST_ADMIN` — no roles changed, no requests relinked,
+  no Auth deletion, no `accountMergeEvents` record. Non-demoting merges are
+  unaffected.
 - **Duplicate Firebase Auth account** is deleted only after Firestore
   relinking succeeds. If deletion fails, the audit record captures the
   error so staff can retry or clean up manually.

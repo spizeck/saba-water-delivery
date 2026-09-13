@@ -347,6 +347,12 @@ export async function mergeAccounts(
             status: "error",
             message: "Select the final roles for explicit merge.",
           };
+        case "LAST_ADMIN":
+          return {
+            status: "error",
+            message:
+              "This merge would remove the last admin from the system. Keep the admin role or promote another admin first.",
+          };
         default:
           return { status: "error", message: err.message };
       }

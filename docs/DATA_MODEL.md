@@ -357,34 +357,39 @@ is through server-side admin operations in `src/lib/domain/identity.ts`.
 
 ## `systemInvariants/adminRole`
 
-**Purpose:** a server-only singleton that makes last-admin role removal
-concurrency-safe (issue #48). It holds no authoritative state of its own;
-it exists so that every admin removal reads and writes **one shared
-document** inside the role-removal transaction, giving Firestore a single
-point of contention that serializes concurrent admin removals. Two
-simultaneous removals of different admins therefore cannot both commit —
-the losing transaction is retried and, re-reading the now-smaller admin
-set, fails with `LAST_ADMIN`. See TECHNICAL.md "Admin role safety" and ADR
-0005.
+**Purpose:** a server-only singleton that makes the last-admin invariant
+concurrency-safe across **every supported admin-reducing mutation** (issue
+#48 for `removeRole`; issue #70 for an admin-demoting `mergeUserAccounts`).
+It holds no authoritative state of its own; it exists so that every
+admin-reducing mutation reads and writes **one shared document** inside its
+transaction, giving Firestore a single point of contention that serializes
+those mutations against one another. Two operations that would each remove
+an admin therefore cannot both commit — the losing transaction is retried
+and, re-reading the now-smaller admin set, fails with `LAST_ADMIN`. See
+TECHNICAL.md "Admin role safety" and ADR 0005.
 
 **Fields:**
 
-- `revision` — integer bumped on each admin removal (the write that creates
-  contention).
-- `adminCount` — the live admin count after the last removal, recomputed
+- `revision` — integer bumped on each admin-reducing mutation (the write
+  that creates contention).
+- `adminCount` — the live admin count after the last mutation, recomputed
   from the `users` query every time. Observability metadata only; the guard
   never trusts it as the source of truth, so it is self-healing and cannot
   drift.
-- `updatedAt` — timestamp of the last admin removal.
-- `updatedBy` — actor uid of the last admin removal.
+- `updatedAt` — timestamp of the last admin-reducing mutation.
+- `updatedBy` — actor uid of the last admin-reducing mutation.
 
-**Lifecycle:** created lazily on the first admin removal — no migration or
-backfill. Non-admin role removals never touch it.
+**Lifecycle:** created lazily on the first admin-reducing mutation — no
+migration or backfill. Mutations that cannot reduce the admin count never
+touch it.
 
 **Reads/writes:** fully deny-by-default in `firestore.rules`. All access is
-through `removeRole` in `src/lib/domain/admin.ts` via the Admin SDK. Because
-the Admin SDK bypasses rules, the transaction — not the rules — is the
-concurrency guarantee; the rule is defense in depth.
+through the shared invariant helpers in `src/lib/domain/admin.ts`
+(`readAdminPopulationInTransaction` / `recordAdminInvariantParticipation`),
+called by `removeRole` and by `mergeUserAccounts`
+(`src/lib/domain/identity.ts`) via the Admin SDK. Because the Admin SDK
+bypasses rules, the transaction — not the rules — is the concurrency
+guarantee; the rule is defense in depth.
 
 ## Indexes
 

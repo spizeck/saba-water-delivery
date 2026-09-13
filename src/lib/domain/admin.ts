@@ -1,6 +1,12 @@
 import "server-only";
 
-import { FieldValue } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  type DocumentReference,
+  type DocumentSnapshot,
+  type Firestore,
+  type Transaction,
+} from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import { toUserRoles } from "@/lib/auth/roles";
@@ -19,13 +25,97 @@ const USERS_COLLECTION = "users";
 const DRIVER_REGISTRY_COLLECTION = "driverRegistry";
 
 /**
- * Server-only singleton collection/document used to serialize admin-role
- * removals so the "never remove the last admin" invariant holds under
- * concurrency (issue #48). See {@link removeRole}. Denied to all clients in
- * `firestore.rules`; only trusted Admin SDK code touches it.
+ * Server-only singleton collection/document used to serialize admin-reducing
+ * mutations so the "never remove the last admin" invariant holds under
+ * concurrency. Introduced for `removeRole` (issue #48) and extended to every
+ * supported admin-reducing mutation — `mergeUserAccounts` included (issue #70).
+ * Denied to all clients in `firestore.rules`; only trusted Admin SDK code
+ * touches it.
  */
 export const SYSTEM_INVARIANTS_COLLECTION = "systemInvariants";
 export const ADMIN_ROLE_INVARIANT_DOC = "adminRole";
+
+// ---------------------------------------------------------------------------
+// Shared last-admin invariant protocol (issues #48, #70)
+// ---------------------------------------------------------------------------
+//
+// Every supported server-side mutation that can reduce the admin population
+// (today: `removeRole` and an admin-demoting `mergeUserAccounts`) runs through
+// this ONE protocol so they serialize against EACH OTHER, not just within their
+// own type. The protocol has two phases that bracket a transaction's own reads
+// and writes, because Firestore requires all reads before all writes:
+//
+//   1. readAdminPopulationInTransaction() — reads the shared invariant document
+//      AND the live admin set. The live `users` data is the source of truth for
+//      the count; the invariant document's stored `adminCount` is observability
+//      metadata only.
+//   2. recordAdminInvariantParticipation() — writes the invariant document, so
+//      the calling transaction both READ and WROTE that single document. Two
+//      concurrent admin-reducing transactions therefore contend on it and are
+//      serialized by Firestore; the loser is retried and re-evaluates against
+//      the now-smaller admin set, failing closed with LAST_ADMIN.
+//
+// Callers MUST invoke phase 1 before issuing any write, decide using the
+// returned live admin uids, and invoke phase 2 as part of their writes.
+
+/** Reference to the shared admin-role invariant singleton document. */
+export function adminRoleInvariantRef(db: Firestore): DocumentReference {
+  return db
+    .collection(SYSTEM_INVARIANTS_COLLECTION)
+    .doc(ADMIN_ROLE_INVARIANT_DOC);
+}
+
+export interface AdminPopulationRead {
+  invariantSnap: DocumentSnapshot;
+  /** uids of every user that currently holds the admin role (source of truth). */
+  adminUids: string[];
+}
+
+/**
+ * Phase 1 of the shared invariant protocol — see the block comment above. Reads
+ * the invariant singleton and the live admin set inside `txn`. Call this BEFORE
+ * the transaction issues any write.
+ */
+export async function readAdminPopulationInTransaction(
+  db: Firestore,
+  txn: Transaction,
+): Promise<AdminPopulationRead> {
+  const invariantSnap = await txn.get(adminRoleInvariantRef(db));
+  const adminSnap = await txn.get(
+    db.collection(USERS_COLLECTION).where("roles", "array-contains", "admin"),
+  );
+  return { invariantSnap, adminUids: adminSnap.docs.map((doc) => doc.id) };
+}
+
+/**
+ * Phase 2 of the shared invariant protocol — see the block comment above.
+ * Writes the invariant singleton so the calling transaction both read and wrote
+ * it (the deliberate contention point). `adminCountAfter` is the live admin
+ * count AFTER this mutation applies; it is recomputed from the live query every
+ * time (self-healing observability metadata) and is never the source of truth.
+ */
+export function recordAdminInvariantParticipation(
+  db: Firestore,
+  txn: Transaction,
+  invariantSnap: DocumentSnapshot,
+  adminCountAfter: number,
+  actorId: string,
+): void {
+  const priorRevision =
+    typeof invariantSnap.data()?.revision === "number"
+      ? (invariantSnap.data()!.revision as number)
+      : 0;
+  txn.set(
+    adminRoleInvariantRef(db),
+    {
+      revision: priorRevision + 1,
+      adminCount: adminCountAfter,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actorId,
+    },
+    { merge: true },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -237,30 +327,21 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
   // their own disjoint user documents and so never conflicted, leaving the
   // system with zero admins (issue #48).
   //
-  // Fix: every admin removal also reads and writes one shared singleton
-  // invariant document. That single document is the point of contention that
-  // makes Firestore serialize concurrent admin removals — the loser's
-  // transaction is retried and, re-reading the now-smaller admin set, is
-  // correctly rejected. The admin count is read from the live users query
-  // inside the transaction (never a denormalized counter), so it cannot drift
-  // and needs no backfill.
+  // Fix: every admin removal participates in the shared last-admin invariant
+  // protocol (read the invariant document + the live admin set, then write the
+  // invariant document in the same transaction). That single shared document is
+  // the point of contention that serializes this removal against every other
+  // admin-reducing mutation — concurrent removals AND admin-demoting account
+  // merges (issue #70) — so the loser is retried and, re-reading the
+  // now-smaller admin set, is correctly rejected. The admin count comes from
+  // the live users query (never a denormalized counter), so it cannot drift.
   await db.runTransaction(async (txn) => {
     const now = FieldValue.serverTimestamp();
     const isAdminRemoval = role === "admin";
-    const invariantRef = db
-      .collection(SYSTEM_INVARIANTS_COLLECTION)
-      .doc(ADMIN_ROLE_INVARIANT_DOC);
 
-    // All reads must precede all writes in a Firestore transaction. For an
-    // admin removal, read the invariant document (the contention point) and
-    // the live admin set before any write.
-    const invariantSnap = isAdminRemoval ? await txn.get(invariantRef) : null;
-    const adminSnap = isAdminRemoval
-      ? await txn.get(
-          db
-            .collection(USERS_COLLECTION)
-            .where("roles", "array-contains", "admin"),
-        )
+    // All reads must precede all writes in a Firestore transaction.
+    const population = isAdminRemoval
+      ? await readAdminPopulationInTransaction(db, txn)
       : null;
 
     // Re-read the user document inside the transaction so the write is based
@@ -273,12 +354,13 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
       throw new Error("ROLE_NOT_FOUND");
     }
 
-    if (isAdminRemoval) {
-      // The target still holds admin (validated just above) and so is one of
-      // the admins in adminSnap; removing it lowers the count by exactly one.
-      if (adminSnap!.size <= 1) {
-        throw new Error("LAST_ADMIN");
-      }
+    // The target still holds admin (validated just above) and so is one of the
+    // live admins; removing it drops the count by exactly one.
+    const adminsAfter = isAdminRemoval
+      ? population!.adminUids.filter((uid) => uid !== targetUid)
+      : [];
+    if (isAdminRemoval && adminsAfter.length < 1) {
+      throw new Error("LAST_ADMIN");
     }
 
     const newRoles = freshRoles.filter((r) => r !== role);
@@ -289,24 +371,12 @@ export async function removeRole(input: RemoveRoleInput): Promise<UserProfile> {
     });
 
     if (isAdminRemoval) {
-      const priorRevision =
-        typeof invariantSnap?.data()?.revision === "number"
-          ? (invariantSnap.data()!.revision as number)
-          : 0;
-      // Writing the invariant document puts it in this transaction's write set,
-      // so two racing admin removals conflict on it and are serialized. The
-      // stored `adminCount` is recomputed from the live query on every removal
-      // (self-healing observability metadata) and is never the source of truth
-      // for the guard above.
-      txn.set(
-        invariantRef,
-        {
-          revision: priorRevision + 1,
-          adminCount: adminSnap!.size - 1,
-          updatedAt: now,
-          updatedBy: actorId,
-        },
-        { merge: true },
+      recordAdminInvariantParticipation(
+        db,
+        txn,
+        population!.invariantSnap,
+        adminsAfter.length,
+        actorId,
       );
     }
 
