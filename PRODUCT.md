@@ -93,6 +93,7 @@ Residents can:
 - Optionally select a preferred driver.
 - View current request status.
 - View previous requests and deliveries.
+- Cancel their own request before it has been assigned for delivery.
 - Confirm that a delivery was received.
 - Report that a delivery marked delivered was not received.
 - Upload property photos to help drivers locate the delivery point (planned).
@@ -887,6 +888,30 @@ Exception states may include:
 - `DISPUTED`
 
 The exact implementation may use additional internal states if needed, but the resident-facing statuses should remain simple.
+
+## Cancelling a request
+
+A registered resident can cancel their own request themselves — without
+calling the water office — as long as it is still genuinely
+pre-dispatch: `requested`, `preferred_driver_hold`, or `available`.
+Once a driver has been assigned (`claimed` and every later state), the
+request is inside physical delivery operations and the resident can no
+longer cancel it — at that point only staff can cancel, through the
+existing staff workflow.
+
+Cancellation is a two-step action: the resident chooses "Cancel Request"
+and then explicitly confirms. If a driver has claimed the request in the
+meantime — for example the resident left an older page open — the
+cancellation is refused rather than silently undoing the driver's
+assignment.
+
+A cancelled request stays in the resident's history and in the
+operational record (it is never deleted), stops counting as an active
+request so the resident can request again immediately, and is removed
+from driver offers, the dispatch queue, and delivery-run eligibility.
+Unregistered (dispatcher-created) customers have no portal account, so
+they cannot use this self-service path — staff cancel for them as
+before.
 
 # Water Collection Tracking
 

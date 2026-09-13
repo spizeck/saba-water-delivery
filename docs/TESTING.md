@@ -206,6 +206,12 @@ Production/Preview.
   logout clears access and back-navigation cannot reopen the portal.
 - **resident-request** — 1-load happy path with notes (becomes the active
   request; Firestore state verified) and a 2-load quantity check.
+- **resident-cancel** — the resident cancels their own pre-dispatch request
+  through the two-step confirm (FireStore status + resident audit event
+  verified, request form returns), including a preferred-driver-hold
+  request; "Keep Request" backs out cleanly; a claimed request shows no
+  cancel option; and a stale-page cancel after a driver claim is rejected
+  with the assigned-for-delivery message without overwriting the claim.
 - **resident-profile** — a canonical village chosen and saved stays selected
   after the server action re-render and a full reload (the known remount bug).
 - **dispatcher-request** — search an existing resident, select, "Change"
@@ -280,6 +286,15 @@ Vitest covers the pure domain logic extensively, including:
 - Dispatch offer selection, decline/cooldown behavior, and avoiding
   re-offer loops.
 - Delivery confirmation timeout and auto-confirmation logic.
+- Resident self-service cancellation (issue #23): the pure pre-dispatch
+  eligibility predicate (`residentCancellation.ts`), and the emulator-backed
+  `residentCancellation.emulator.test.ts` (run by `npm run test:rules`)
+  covering the committed-state transaction guard — ownership, every
+  ineligible status, superficially-eligible-but-committed states
+  (assigned driver / delivery-run membership), the claim-vs-cancel and
+  cancel-vs-cancel races, atomic audit-event commit, and the downstream
+  effects (active slot freed for a new request, excluded from driver
+  offers and delivery-run eligibility).
 - Delivery-profile reminder decision logic, including mandatory review
   for noncanonical villages (e.g., `Lower Hells Gate`) and phone display
   formatting (`formatPhone.ts`).

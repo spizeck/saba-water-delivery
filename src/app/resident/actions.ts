@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { confirmDeliveryProfile, updateUserProfile } from "@/lib/domain/users";
 import {
+  cancelOwnWaterRequest,
   confirmWaterDelivery,
   createWaterRequest,
   disputeWaterDelivery,
@@ -336,5 +337,69 @@ export async function disputeDelivery(
   return {
     status: "success",
     message: "Issue reported. The water office will review.",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Resident self-service cancellation (issue #23)
+// ---------------------------------------------------------------------------
+
+export async function cancelOwnRequest(
+  _prevState: DeliveryResponseState,
+  formData: FormData,
+): Promise<DeliveryResponseState> {
+  const session = await requireRole("resident");
+
+  const rate = await checkRateLimit("request-cancel", {
+    type: "uid",
+    value: session.uid,
+  });
+  if (!rate.allowed) {
+    return { status: "error", message: RATE_LIMITED_MESSAGE };
+  }
+
+  // The client sends only the request id. The resident's identity comes
+  // from the verified session — a client-supplied customerId or status is
+  // never trusted, and the transaction inside cancelOwnWaterRequest
+  // re-verifies ownership and eligibility against committed state.
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  if (!requestId) {
+    return { status: "error", message: "Missing request ID." };
+  }
+
+  try {
+    await cancelOwnWaterRequest({
+      requestId,
+      customerId: session.uid,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "NOT_REQUEST_OWNER":
+          return { status: "error", message: "This is not your request." };
+        case "REQUEST_ALREADY_CANCELLED":
+          return {
+            status: "error",
+            message: "This request has already been cancelled.",
+          };
+        case "REQUEST_NOT_CANCELLABLE":
+          return {
+            status: "error",
+            message:
+              "This request can no longer be cancelled because it has already been assigned for delivery.",
+          };
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/resident");
+  return {
+    status: "success",
+    message: "Your water request has been cancelled.",
   };
 }

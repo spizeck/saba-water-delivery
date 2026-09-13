@@ -89,6 +89,7 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
   dispute_resolved_completed: "Dispute resolved (completed)",
   dispute_resolved_reopened: "Dispute resolved (reopened)",
   request_cancelled: "Request cancelled",
+  request_cancelled_by_resident: "Cancelled by resident",
   dispatcher_assigned: "Dispatcher assigned",
   dispatcher_reassigned: "Dispatcher reassigned",
   request_returned_to_queue: "Returned to dispatch queue",
@@ -343,6 +344,12 @@ const REQUEST_EVENT_FORMATTERS: Record<
     if (m.previousStatus)
       parts.push(`Previous status: ${capitalize(String(m.previousStatus))}`);
     return join(parts);
+  },
+
+  request_cancelled_by_resident: (m, o) => {
+    // Same metadata shape as a staff cancellation (previousStatus; no
+    // reason field — residents are not asked for one).
+    return REQUEST_EVENT_FORMATTERS.request_cancelled!(m, o);
   },
 
   dispatcher_assigned: (m, o) => {
