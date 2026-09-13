@@ -1545,11 +1545,17 @@ role lists, driver registry links, and duplicate-owned request counts.
   transaction commits — the **one merge side effect that cannot join the
   transaction**, because Firebase Auth is not a Firestore participant. Running it
   after the commit means a transaction failure never deletes an Auth account for
-  a merge that did not happen. If deletion fails the merge still succeeded (all
-  Firestore state + audit committed); the error is surfaced and recorded so staff
-  can retry or delete the account manually. The duplicate's `users` document is
-  intentionally retained for historical linkage, with any `admin` role already
-  revoked (above) so it is never a usable administrator.
+  a merge that did not happen. The merge **only attempts deletion; it does not
+  disable the identity**. So if deletion fails the merge still succeeded (all
+  Firestore state + audit committed), but the duplicate Auth identity **remains
+  able to authenticate until operational cleanup deletes it** — and because the
+  duplicate's `users` document is intentionally retained for historical linkage
+  with only `admin` revoked (above), a merged-away identity could still sign in
+  and act with any non-`admin` roles it still holds. The error is surfaced and
+  recorded so cleanup/reconciliation can retry deletion. Making this external
+  step durable/resumable — so a merged-away identity cannot keep authenticating —
+  is tracked separately in
+  [#73](https://github.com/spizeck/saba-water-delivery/issues/73).
 - **Audit record** (`accountMergeEvents/{eventId}`) is written **inside the
   merge transaction** — canonical/duplicate uids, actor, reason, role decision,
   driver link decision, relink counts, and whether the duplicate's `admin` role

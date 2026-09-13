@@ -428,9 +428,14 @@ export interface MergeUserAccountsResult {
  *      further gated by the Driver Registry link state.
  *   4. The duplicate Firebase Auth user is deleted only after the Firestore
  *      transaction commits, so a transaction failure never deletes an Auth
- *      account for a merge that did not happen. If deletion fails, the merge
- *      still succeeded (all Firestore state + audit committed) and the error is
- *      surfaced and recorded so staff can retry or delete the account manually.
+ *      account for a merge that did not happen. There is NO Auth-disable step —
+ *      only a delete attempt — so if deletion fails the merge still succeeded
+ *      (all Firestore state + audit committed) but the duplicate Auth identity
+ *      remains **able to authenticate** until operational cleanup deletes it,
+ *      and its retained `users/{duplicateUid}` document keeps its non-`admin`
+ *      roles. The error is surfaced and recorded so staff/reconciliation can
+ *      retry deletion. Durable/resumable reconciliation of this external step is
+ *      tracked separately (issue #73).
  *   5. The `accountMergeEvents/{eventId}` audit record (both original uids, the
  *      acting admin, the role decision, relink counts, whether the duplicate's
  *      admin role was revoked, and any Auth-deletion error) is written INSIDE
@@ -658,8 +663,12 @@ export async function mergeUserAccounts(
   // cannot join the Firestore transaction. It runs AFTER the commit so a
   // transaction failure never deletes an Auth account for a merge that did not
   // happen, and no Firestore reference is left pointing at a still-existing
-  // duplicate uid. If deletion fails the merge still succeeded (all Firestore
-  // state + audit committed); the error is surfaced and recorded below.
+  // duplicate uid. NOTE: this only DELETES; it does not disable the identity.
+  // If deletion fails the merge still succeeded (all Firestore state + audit
+  // committed), but the duplicate Auth identity remains ABLE TO AUTHENTICATE —
+  // with whatever non-`admin` roles its retained users doc still carries — until
+  // operational cleanup deletes it. The error is surfaced and recorded below so
+  // that cleanup/reconciliation (issue #73) can act on it.
   let duplicateAuthDeleted = false;
   let deleteError: string | null = null;
   try {

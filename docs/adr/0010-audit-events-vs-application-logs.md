@@ -97,13 +97,23 @@ into logs.
   is not a Firestore transaction participant. It runs after the commit (so a
   transaction failure never deletes an Auth account for a merge that did not
   happen), and its outcome (`duplicateAuthDeleted` / `error`) is written back to
-  the already-durable audit record by a best-effort update. A crash between the
-  Firestore commit and that update leaves a fully consistent, fully audited
-  merge whose only residue is a leftover (login-disabled) duplicate Auth account
-  and an audit record that still reads `duplicateAuthDeleted: false`; staff can
-  delete such an account manually. A durable/resumable reconciliation of that
-  external step is deliberately **out of scope for #49** and is a candidate
-  follow-up; #49 does not overstate it as atomic.
+  the already-durable audit record by a best-effort update. If that Auth
+  deletion fails (or the process crashes between the Firestore commit and it),
+  the merge's Firestore state and audit record are fully consistent, but the
+  duplicate's **Firebase Authentication identity is NOT disabled — the merge
+  performs no disable step, only a delete attempt** — so it remains able to
+  authenticate until operational cleanup deletes it. Its retained
+  `users/{duplicateUid}` document keeps whatever roles it held minus `admin`
+  (which the merge revokes), so a merged-away identity could still sign in and
+  act with those remaining roles. The audit record reads
+  `duplicateAuthDeleted: false` (or, if even that best-effort update did not
+  land, is stale) to flag the unresolved external step for cleanup. A
+  durable/resumable reconciliation of this external step — detecting unresolved
+  Auth outcomes, confirming the identity still exists, preventing continued
+  authentication, and recording the result idempotently — is deliberately **out
+  of scope for #49** and is tracked as a follow-up
+  ([#73](https://github.com/spizeck/saba-water-delivery/issues/73)); #49 neither
+  makes this step atomic nor claims the leftover identity is inert.
 - **Best-effort / operational events are intentionally NOT transactional.**
   Some events are operational telemetry, not required accountability history,
   and are deliberately left as best-effort appends: driver availability toggles
