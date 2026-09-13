@@ -361,6 +361,22 @@ Vitest covers the pure domain logic extensively, including:
     the canonical `checkActiveRequestValidity` / `computeDispatchBatchStatus` so
     the intentional (no-build-step) duplication cannot drift silently.
   All pure and synthetic: no Firestore, no production data, no PII.
+- Centralized configuration (issue #54), in `src/lib/config/__tests__/`:
+  - `validators.test.ts` — the pure validators (required/optional string, http(s)
+    URL normalization, boolean flag, CSV list, Firestore database id, email, PEM
+    private key), including missing/malformed/unsafe inputs, and that every
+    thrown `ConfigError` is sanitized (never contains the value).
+  - `deployment.test.ts` — the deployment-target matrix (production, preview,
+    test, development, local-production-build, emulator, and deployed-wins).
+  - `appOrigin.test.ts` — canonical app-origin resolution (fallback, origin
+    normalization/trailing slash, malformed → fallback, status).
+  - `serverConfig.test.ts` — the registry/status across valid production,
+    missing required secret, malformed value, disabled integration,
+    partially-configured integration, Preview requirements, local/test, emulator,
+    and a guarantee that **no secret value ever appears** in the serialized
+    status. Every case passes an explicit env, so results never depend on the
+    developer's shell configuration.
+  All pure and synthetic: env values are injected, never read from the machine.
 
 Server-only modules (Firestore/Admin SDK access) are generally thin
 wrappers around already-tested pure logic and are not independently

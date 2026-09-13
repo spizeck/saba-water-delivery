@@ -93,6 +93,7 @@ original date is uncertain the ADR says so.
 | [0013](./0013-testing-and-release-gates.md)                  | Testing strategy and release gates                                 | Accepted |
 | [0014](./0014-backup-and-disaster-recovery-strategy.md)      | Backup and disaster-recovery strategy                              | Accepted |
 | [0015](./0015-saba-operational-timezone.md)                  | Fixed Saba operational timezone (America/Puerto_Rico)              | Accepted |
+| [0016](./0016-centralized-configuration-model.md)            | Centralized, validated configuration boundary                      | Accepted |
 
 ## Especially dangerous assumptions preserved here
 
@@ -111,6 +112,9 @@ linked ADR first:
 - **Automated E2E must never touch deployed Firebase** ([0013](./0013-testing-and-release-gates.md)).
 - **Rate limiting is defense-in-depth and may fail open**; authentication and
   business authorization remain authoritative ([0012](./0012-security-and-observability-baseline.md)).
+- **Configuration validation reports state; it must not change failure
+  semantics** — the rate limiter still fails open and optional integrations stay
+  non-readiness-critical ([0016](./0016-centralized-configuration-model.md)).
 - **Health and readiness have intentionally different semantics** ([0012](./0012-security-and-observability-baseline.md)).
 - **Firestore backup/PITR protection is per database**, and a named recovery
   database does not inherit `(default)`'s protections; the continuity report is

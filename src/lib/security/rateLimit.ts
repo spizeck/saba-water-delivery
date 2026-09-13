@@ -9,6 +9,7 @@ import {
 } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
 
+import { isDeployedVercel } from "@/lib/config/deployment";
 import { AppRateLimitError } from "@/lib/errors";
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
@@ -224,10 +225,11 @@ function getDefaultStore(): RateLimitStore {
   return defaultStore;
 }
 
-/** True on Vercel Production/Preview — where a real secret is mandatory. */
+/** True on Vercel Production/Preview — where a real secret is mandatory.
+ * Sourced from the centralized deployment helper (issue #54) so this and the
+ * Firebase admin emulator guard agree on what "deployed" means. */
 function isDeployedVercelEnv(): boolean {
-  const env = process.env.VERCEL_ENV;
-  return env === "production" || env === "preview";
+  return isDeployedVercel();
 }
 
 type SecretResolution = { secret: string } | { missing: true };

@@ -2686,6 +2686,52 @@ flooding Vercel logs:
   `health.readiness.failed` event (check name + `serializeError`d cause) at
   `error`, visible in production. Successful probes emit no error/warn logs.
 
+## Configuration model (#54)
+
+Environment configuration is centralized behind a small set of explicit, typed
+boundaries in [`src/lib/config/`](src/lib/config) (see
+[ADR 0016](docs/adr/0016-centralized-configuration-model.md)) rather than a
+single universal config object:
+
+- **`validators.ts`** — pure, dependency-free parsers/validators (required/optional
+  string, http(s) URL → normalized origin, boolean flag, CSV list, Firestore
+  database id, email, PEM private key). They take raw strings, so they are tested
+  without touching `process.env` — a test cannot pass merely because the
+  developer's shell is configured.
+- **`errors.ts`** — `ConfigError(variable, reason)` whose message contains the
+  **name and reason only, never the value**, so it is always safe to log.
+- **`deployment.ts`** — one pure, env-injectable resolver for the deployment
+  target (`production`/`preview`/`test`/`development`), `isDeployed`, and
+  `isEmulator`, replacing the previously scattered `VERCEL_ENV` checks.
+- **`appOrigin.ts`** — the single `getAppOrigin()` used for QR codes, PWA install
+  links, and email links (validated, origin-normalized, one documented fallback).
+  Previously this lived in three places with inconsistent trailing-slash handling.
+- **`serverConfig.ts`** (`server-only`) — the canonical registry of every server
+  variable (classification, secret flag, per-environment required level), the
+  validated getters `getFirebaseAdminConfig()` / `getDatabaseId()` used by
+  `firebase/admin.ts`, and `getServerConfigStatus()` — a **sanitized**
+  `set | unset | invalid` + required-here summary (never any value) for a future
+  admin diagnostics surface.
+
+**Fail-closed vs. preserved semantics.** Required, malformed configuration is
+detected at the boundary with a sanitized error (e.g. the Admin credential is
+validated when the trusted server initializes, so a bad value fails on use, not
+at import — CI still builds with nothing set). This deliberately does **not**
+change existing failure semantics: rate limiting still **fails open** when its
+secret is absent in a deployed environment, and optional integrations (Resend,
+WhatsApp) stay optional and non-readiness-critical. A **partially** configured
+integration is distinguished from a disabled one — the missing variables become
+required in the status summary.
+
+**Client vs. server.** Public `NEXT_PUBLIC_*` Firebase config remains in
+`firebase/client.ts`; `serverConfig.ts` is `server-only`. Centralization never
+makes server configuration reachable from the browser. Some modules still read
+`process.env` directly by design (client Firebase config, the logger, the
+rate-limit fail-open resolver, feature readers that return `null`, and
+request-boundary reads); ADR 0016 lists these intentional exceptions. The
+canonical variable table lives in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and mirrors the registry.
+
 ## Security / privacy
 
 The responses are stable and categorical (`ok` / `unavailable` / `ready` /
