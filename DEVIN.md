@@ -606,12 +606,16 @@ The `/admin` portal provides user and role management. Only users with the
 - Admin cannot remove their own `admin` role (self-lockout protection).
 - The last-admin invariant is enforced inside the transaction of every
   admin-reducing mutation and serialized via the shared `systemInvariants/adminRole`
-  singleton, so no combination can leave zero admins: `removeRole` (#48) and an
-  admin-demoting `mergeUserAccounts` (#70) both participate via the shared
-  helpers in `src/lib/domain/admin.ts`. `addRole`, staff registration, and
-  driver link/unlink cannot reduce admins and stay outside the protocol. The
-  guarantee is for supported application mutations, not out-of-band privileged
-  edits (ADR 0005 / #48 / #70).
+  singleton, so no combination can leave zero **usable** admins: `removeRole`
+  (#48) and `mergeUserAccounts` (#70) both participate via the shared helpers in
+  `src/lib/domain/admin.ts`. A merge counts BOTH a canonical demotion and the
+  decommissioning of the duplicate: because the merge deletes the duplicate's
+  Auth identity, it revokes `admin` from the leftover duplicate doc so it is not
+  a counted-but-unusable "phantom admin" (`duplicateAdminRevoked` on the merge
+  event). A usable admin = `admin` role on a non-decommissioned identity.
+  `addRole`, staff registration, and driver link/unlink cannot reduce admins and
+  stay outside the protocol. The guarantee is for supported application
+  mutations, not out-of-band privileged edits (ADR 0005 / #48 / #70).
 - All role mutations happen server-side via Admin SDK.
 - Driver role removal is BLOCKED when active claimed deliveries exist.
   The admin must resolve/reassign deliveries through the dispatcher workflow first.

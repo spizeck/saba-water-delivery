@@ -28,25 +28,42 @@ not let holding the `driver` role by itself make someone an operational driver.
   operational driver. The `driver` role only grants access to the driver portal;
   it does not create a registry entry or confer eligibility.
 - **Admin safety constraints:** an admin cannot remove their own `admin` role,
-  and the system-wide invariant "at least one admin always remains" is enforced
-  **inside the transaction** of every supported admin-reducing mutation. Each
-  such mutation reads and writes one shared singleton invariant document
-  (`systemInvariants/adminRole`) in the same transaction as its role change,
-  giving Firestore one point of contention that serializes them against one
-  another; the live admin count is read from the `users` query inside the
-  transaction, not from a cached counter (so it cannot drift). The losing
-  transaction is retried, re-reads the now-smaller admin set, and fails with
-  `LAST_ADMIN` (see Operational implications). This protocol composes across
-  mutation types: a `removeRole` racing an admin-demoting `mergeUserAccounts`,
-  or two admin-demoting merges, cannot both succeed. Historical sequence:
-  originally (2026-08-18) the guard was a best-effort pre-transaction count that
-  was **not** race-proof; issue #48 (2026-09-12) first made `removeRole`
-  concurrency-safe with this protocol; issue #70 (2026-09-13) extended the same
-  protocol to every other supported admin-reducing application mutation
-  (`mergeUserAccounts`). The guarantee covers **supported application
-  mutations** only — it cannot protect against direct out-of-band privileged
-  edits (Firebase Console, ad-hoc Admin SDK scripts), which bypass application
-  code entirely.
+  and the system-wide invariant "at least one **usable** administrator always
+  remains" is enforced **inside the transaction** of every supported
+  admin-reducing mutation. Each such mutation reads and writes one shared
+  singleton invariant document (`systemInvariants/adminRole`) in the same
+  transaction as its role change, giving Firestore one point of contention that
+  serializes them against one another; the live admin set is read from the
+  `users` query inside the transaction, not from a cached counter (so it cannot
+  drift). The losing transaction is retried, re-reads the now-smaller admin set,
+  and fails with `LAST_ADMIN`. This protocol composes across mutation types: a
+  `removeRole` racing an admin-reducing `mergeUserAccounts`, or two such merges,
+  cannot both succeed (see Operational implications).
+  - **Usable vs. stale administrator.** `countAdmins()` counts `users`
+    documents carrying `admin` (authorization data). For that count to mean
+    "administrators who can actually sign in," the one mutation that destroys a
+    login identity — `mergeUserAccounts`, which deletes the duplicate account's
+    Firebase Auth identity — **revokes `admin` from that decommissioned duplicate
+    document** in the same invariant transaction, and the merge's last-admin
+    check counts both the canonical demotion and that duplicate revocation.
+    Without this, a merged-away duplicate that kept `admin` would be a "phantom
+    admin": counted, but unable to authenticate, so a merge could leave zero
+    usable admins while appearing to leave one. An **effective/usable
+    administrator** is therefore a `users` document holding `admin` whose login
+    identity has not been decommissioned.
+  - Historical sequence: originally (2026-08-18) the guard was a best-effort
+    pre-transaction count that was **not** race-proof; issue #48 (2026-09-12)
+    first made `removeRole` concurrency-safe with this protocol; issue #70
+    (2026-09-13) extended the same protocol to `mergeUserAccounts`, including the
+    duplicate-decommissioning ("phantom admin") case.
+  - The guarantee covers **supported application mutations** only. It cannot
+    protect against direct out-of-band privileged edits (Firebase Console,
+    ad-hoc Admin SDK scripts), which bypass application code. One benign residual
+    case is acknowledged, not prevented: an operator may deliberately pre-grant
+    `admin` to an account that has not yet claimed a login (`authStatus`
+    `unclaimed`) — a *pending* admin, recoverable by claiming the account, as
+    opposed to a *destroyed* identity. This is distinct from the phantom above
+    and is left as a documented nuance rather than blocked.
 
 ## Alternatives considered
 
@@ -71,7 +88,8 @@ not let holding the `driver` role by itself make someone an operational driver.
   transactionally and serialized via the `systemInvariants/adminRole` document,
   so no combination of supported admin-reducing application mutations
   (`removeRole`, admin-demoting `mergeUserAccounts`) can leave the system with
-  zero admins.
+  zero **usable** admins — a merged-away duplicate has its `admin` role revoked
+  so it cannot linger as a counted-but-unusable "phantom admin."
 
 ## Operational implications
 
@@ -89,15 +107,21 @@ not let holding the `driver` role by itself make someone an operational driver.
   combination can leave zero admins. The losing transaction is retried by the
   Admin SDK and rejected with `LAST_ADMIN`.
   - **#48 (2026-09-12)** first made concurrent `removeRole` admin removals safe.
-  - **#70 (2026-09-13)** extended the *same* protocol to `mergeUserAccounts`: a
-    merge that would demote the canonical account out of `admin` (any union
-    merge of an admin canonical, or an explicit merge dropping `admin`) now joins
-    the protocol, so a merge racing a `removeRole`, or two admin-demoting merges
-    racing, cannot both succeed.
+  - **#70 (2026-09-13)** extended the *same* protocol to `mergeUserAccounts`. A
+    merge reduces the usable admin population in two ways, both now inside the
+    protocol: (a) demoting the canonical out of `admin` (any union merge of an
+    admin canonical, or an explicit merge dropping `admin`); and (b)
+    **decommissioning the duplicate** — the merge deletes the duplicate's Auth
+    identity, so if the duplicate carried `admin` the merge **revokes** it from
+    the leftover duplicate document (the "phantom admin" fix) and counts that
+    revocation in the check. So a merge racing a `removeRole`, two admin-reducing
+    merges racing, or a single merge that would demote the canonical while its
+    only "remaining" admin is the duplicate being decommissioned, all fail closed.
   - Proven by emulator-backed regression tests
     (`adminRoleConcurrency.emulator.test.ts` for #48,
-    `adminInvariantCrossMutation.emulator.test.ts` for the cross-operation
-    races). Paths that cannot reduce the admin population — `addRole`, staff
+    `adminInvariantCrossMutation.emulator.test.ts` for cross-operation races,
+    `phantomAdmin.emulator.test.ts` for the duplicate-decommissioning case).
+    Paths that cannot reduce the admin population — `addRole`, staff
     registration (resident/driver only), and Driver-Registry link/unlink (which
     only touch the `driver` role) — are outside the protocol by construction.
   - **Scope:** the guarantee covers **supported application mutations**. It does

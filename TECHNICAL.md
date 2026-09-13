@@ -117,9 +117,13 @@ Do not trust role values submitted by clients.
 
 ## Admin role safety (last-admin invariant)
 
-The system can never be left with zero administrators by any supported
-application mutation, including concurrent combinations of different mutation
-types. Two guards enforce this:
+The system can never be left with zero **usable** administrators by any
+supported application mutation, including concurrent combinations of different
+mutation types. A **usable/effective administrator** is a `users` document that
+holds the `admin` role **and** whose login identity has not been decommissioned.
+`countAdmins()` counts documents carrying `admin` (authorization data); the
+mutations below keep that count aligned with usability (see "phantom admin").
+Two guards enforce the invariant:
 
 - **Self-lockout:** an admin cannot remove their own `admin` role
   (`CANNOT_REMOVE_OWN_ADMIN`). This is deterministic and checked before the
@@ -140,18 +144,29 @@ types. Two guards enforce this:
 Mutations that participate (issues #48 then #70):
 
 - `removeRole` when removing `admin` (#48).
-- `mergeUserAccounts` when the merge would demote the canonical account out of
-  `admin` — any union merge of an admin canonical (union never carries the
-  sensitive `admin` role forward), or an explicit merge whose role list omits
-  `admin` (#70). The merge performs that demotion in an invariant-protocol
-  transaction *before* its other writes, so a `LAST_ADMIN` rejection fails
-  closed with no partial state and no `accountMergeEvents` record. Non-demoting
-  merges are unchanged and never touch the invariant document.
+- `mergeUserAccounts` when it reduces the usable admin population (#70), which
+  happens in **two** ways — both handled in one invariant-protocol transaction
+  that runs *before* the merge's other writes, so a `LAST_ADMIN` rejection fails
+  closed with no partial state and no `accountMergeEvents` record:
+  - **Canonical demotion** — the merge would take `admin` off the canonical (any
+    union merge of an admin canonical, since union never carries the sensitive
+    `admin` role forward; or an explicit list omitting `admin`).
+  - **Duplicate decommissioning ("phantom admin")** — the merge deletes the
+    duplicate's Firebase Auth identity, so if the duplicate carried `admin` the
+    merge **revokes** `admin` from the leftover duplicate document and counts
+    that revocation in the last-admin check. Without this, the duplicate's
+    document would keep counting in `countAdmins()` even though it can no longer
+    sign in, letting a merge leave zero usable admins while appearing to leave
+    one. The duplicate's other roles are preserved for historical linkage; only
+    `admin` is revoked.
 
-Cross-operation races (a `removeRole` racing an admin-demoting merge, or two
-admin-demoting merges) therefore cannot leave zero admins. Proven by
-`adminRoleConcurrency.emulator.test.ts` (#48) and
-`adminInvariantCrossMutation.emulator.test.ts` (#70); see ADR 0005.
+  Merges that touch no admin are unchanged and never touch the invariant document.
+
+Cross-operation races — a `removeRole` racing an admin-reducing merge, or two
+admin-reducing merges — therefore cannot leave zero usable admins. Proven by
+`adminRoleConcurrency.emulator.test.ts` (#48),
+`adminInvariantCrossMutation.emulator.test.ts` (cross-operation), and
+`phantomAdmin.emulator.test.ts` (duplicate decommissioning); see ADR 0005.
 
 Paths that **cannot** reduce the admin population are outside the protocol by
 construction: `addRole` (only adds), staff registration (`registerPerson`,
@@ -159,7 +174,11 @@ resident/driver only), and Driver-Registry link/unlink (only add/remove the
 literal `driver` role). There is no application path that deletes a user
 document. This guarantee covers supported application mutations only — it cannot
 protect against direct out-of-band privileged edits (Firebase Console, ad-hoc
-Admin SDK scripts) that bypass application code.
+Admin SDK scripts) that bypass application code. One benign residual state is
+documented, not blocked: an operator may deliberately pre-grant `admin` to an
+account that has not yet claimed a login (`authStatus: "unclaimed"`) — a
+*pending* admin that becomes usable once claimed, distinct from the destroyed
+identity the phantom-admin fix addresses.
 
 ## Role vs Eligibility (Drivers)
 
@@ -1494,20 +1513,26 @@ role lists, driver registry links, and duplicate-owned request counts.
     automatically.
   - `explicit` — admin selects the exact final role list; this is the
     only way to transfer sensitive roles.
-- **Last-admin invariant** (issue #70): when the chosen roles would demote the
-  canonical account out of `admin` (any union merge of an admin canonical, or an
-  explicit list omitting `admin`), the canonical role write runs through the
-  shared last-admin invariant protocol (see "Admin role safety") in a
-  transaction *before* any other merge write. A merge that would remove the last
-  admin fails closed with `LAST_ADMIN` — no roles changed, no requests relinked,
-  no Auth deletion, no `accountMergeEvents` record. Non-demoting merges are
-  unaffected.
+- **Last-admin invariant** (issue #70): a merge that reduces the usable admin
+  population runs through the shared last-admin invariant protocol (see "Admin
+  role safety") in a transaction *before* any other merge write. This applies
+  both when the chosen roles demote the canonical out of `admin`, **and** when
+  the duplicate being decommissioned carries `admin`: in the latter case the
+  merge **revokes** `admin` from the leftover duplicate document (its Auth
+  identity is about to be deleted) so it cannot linger as a counted-but-unusable
+  "phantom admin," and counts that revocation in the check. A merge that would
+  leave zero usable admins fails closed with `LAST_ADMIN` — no roles changed, no
+  requests relinked, no Auth deletion, no `accountMergeEvents` record. Merges
+  that touch no admin are unaffected.
 - **Duplicate Firebase Auth account** is deleted only after Firestore
   relinking succeeds. If deletion fails, the audit record captures the
-  error so staff can retry or clean up manually.
+  error so staff can retry or clean up manually. The duplicate's `users`
+  document is intentionally retained for historical linkage, but with any
+  `admin` role already revoked (above) so it is never a usable administrator.
 - **Audit record** is written to `accountMergeEvents/{eventId}` with
   canonical/duplicate uids, actor, reason, role decision, driver link
-  decision, relink counts, and any deletion error.
+  decision, relink counts, whether the duplicate's `admin` role was revoked
+  (`duplicateAdminRevoked`), and any deletion error.
 
 ## Provider linking vs. account merging
 

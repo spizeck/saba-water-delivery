@@ -742,6 +742,14 @@ export interface AccountMergeEvent {
   mergedRoles: UserRole[];
   /** Whether the duplicate Auth account was deleted after relinking. */
   duplicateAuthDeleted: boolean;
+  /**
+   * Whether the `admin` role was revoked from the decommissioned duplicate user
+   * document as part of the merge (the duplicate's Auth identity is deleted, so
+   * a login-less account must not remain counted as an administrator — see the
+   * last-admin invariant in ADR 0005). Absent on records written before this
+   * was tracked; treat missing as `false`.
+   */
+  duplicateAdminRevoked?: boolean;
   /** Counts for the audit record. */
   counts: {
     requestsRelinked: number;

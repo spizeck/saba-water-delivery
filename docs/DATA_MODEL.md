@@ -346,6 +346,12 @@ deletion/update of the involved user documents.
 - `roleMergePolicy` — `"union"` or `"explicit"`.
 - `mergedRoles` — final role array written to the canonical user.
 - `duplicateAuthDeleted` — boolean.
+- `duplicateAdminRevoked` — boolean: whether the `admin` role was revoked
+  from the decommissioned duplicate user document as part of the merge (the
+  duplicate's Auth identity is deleted, so a login-less account must not
+  remain counted as an administrator — see the last-admin invariant in ADR
+  0005 / TECHNICAL.md "Admin role safety"). Absent on records written before
+  this was tracked; treat missing as `false`.
 - `counts.requestsRelinked` — number of `waterRequests` whose
   `customerId` was relinked.
 - `counts.driverRegistryRelinked` — `0` or `1`.

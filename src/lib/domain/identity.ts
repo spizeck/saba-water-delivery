@@ -4,6 +4,7 @@ import { type UserRecord } from "firebase-admin/auth";
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { toUserRoles } from "@/lib/auth/roles";
 
 import type {
   AccountMergeEvent,
@@ -423,41 +424,74 @@ export async function mergeUserAccounts(
   // The preview already warned about driver-registry state.
 
   const canonicalRef = db.collection(USERS_COLLECTION).doc(canonicalUid);
+  const duplicateRef = db.collection(USERS_COLLECTION).doc(duplicateUid);
 
-  // Last-admin invariant (issue #70). A merge that strips the `admin` role from
-  // the canonical account reduces the admin population exactly like
-  // `removeRole`, so it must compose with the SAME serialization protocol
-  // (`systemInvariants/adminRole`) rather than an independent lock — otherwise a
-  // merge racing a concurrent admin removal, or another admin-demoting merge,
-  // could still reach zero admins. Only the admin-demoting case takes this path;
-  // every other merge keeps its existing behavior below, unchanged.
+  // Last-admin invariant (issue #70, extended to close the "phantom admin" gap).
+  // A merge can reduce the *usable* administrator population in TWO ways, and
+  // both must participate in the shared serialization protocol
+  // (`systemInvariants/adminRole`) so the merge composes safely with concurrent
+  // `removeRole`s and other merges:
   //
-  // This runs FIRST, before any other merge write, so a LAST_ADMIN rejection
-  // fails closed with no partial state and no audit record. It performs the
-  // canonical role write itself (removed from the batch below for this case).
-  const demotesCanonicalAdmin =
-    preview.canonicalRoles.includes("admin") && !finalRoles.includes("admin");
-  if (demotesCanonicalAdmin) {
+  //   1. It can demote the CANONICAL out of `admin` (any union merge of an admin
+  //      canonical, since union never carries sensitive roles; or an explicit
+  //      list omitting `admin`).
+  //   2. It DECOMMISSIONS the DUPLICATE — the duplicate's Firebase Auth identity
+  //      is deleted below. If the duplicate carried `admin`, that role MUST be
+  //      revoked from the leftover duplicate user document; otherwise the doc
+  //      would keep counting in `countAdmins()` as an administrator that can no
+  //      longer sign in (a "phantom admin"), letting the merge leave zero
+  //      *usable* admins while appearing to leave one.
+  //
+  // The protected path runs FIRST, before any other merge write, so a
+  // LAST_ADMIN rejection fails closed with no partial state and no audit record.
+  // It performs the canonical role write AND the duplicate admin-revocation
+  // itself (both removed from the batch below for this case). A merge that
+  // touches no admin keeps its existing behavior unchanged.
+  const canonicalHadAdmin = preview.canonicalRoles.includes("admin");
+  const duplicateHadAdmin = preview.duplicateRoles.includes("admin");
+  const finalKeepsCanonicalAdmin = finalRoles.includes("admin");
+  const mergeReducesAdmins =
+    duplicateHadAdmin || (canonicalHadAdmin && !finalKeepsCanonicalAdmin);
+
+  let duplicateAdminRevoked = false;
+  if (mergeReducesAdmins) {
     await db.runTransaction(async (txn) => {
       // Reads first (Firestore requires all reads before all writes).
       const { invariantSnap, adminUids } =
         await readAdminPopulationInTransaction(db, txn);
       const canonicalSnap = await txn.get(canonicalRef);
       if (!canonicalSnap.exists) throw new Error("USER_NOT_FOUND");
+      const duplicateSnap = await txn.get(duplicateRef);
+      if (!duplicateSnap.exists) throw new Error("USER_NOT_FOUND");
 
-      // Decide against the LIVE admin set, not the (possibly stale) preview.
-      const canonicalIsAdmin = adminUids.includes(canonicalUid);
-      const adminsAfter = adminUids.filter((uid) => uid !== canonicalUid);
-      if (canonicalIsAdmin && adminsAfter.length < 1) {
-        throw new Error("LAST_ADMIN");
-      }
+      // The effective admin set AFTER this merge, decided against LIVE data:
+      //  - the canonical's roles become finalRoles;
+      //  - the duplicate is decommissioned, so it is never an admin afterwards.
+      const afterAdmins = new Set(adminUids);
+      afterAdmins.delete(canonicalUid);
+      afterAdmins.delete(duplicateUid);
+      if (finalKeepsCanonicalAdmin) afterAdmins.add(canonicalUid);
+      if (afterAdmins.size < 1) throw new Error("LAST_ADMIN");
 
       txn.update(canonicalRef, { roles: finalRoles, updatedAt: now });
+
+      // Revoke admin from the decommissioned duplicate (its Auth identity is
+      // deleted below) so a login-less account can never remain counted as an
+      // administrator. Other roles are preserved for historical linkage.
+      const duplicateRoles = toUserRoles(duplicateSnap.data()!.roles);
+      if (duplicateRoles.includes("admin")) {
+        txn.update(duplicateRef, {
+          roles: duplicateRoles.filter((r) => r !== "admin"),
+          updatedAt: now,
+        });
+        duplicateAdminRevoked = true;
+      }
+
       recordAdminInvariantParticipation(
         db,
         txn,
         invariantSnap,
-        canonicalIsAdmin ? adminsAfter.length : adminUids.length,
+        afterAdmins.size,
         actorId,
       );
     });
@@ -492,20 +526,21 @@ export async function mergeUserAccounts(
     });
   }
 
-  // Update canonical user roles. For an admin-demoting merge this write already
-  // happened transactionally above (as part of the last-admin invariant
-  // protocol), so it is NOT repeated here; every other merge keeps the original
-  // behavior of writing the roles in the same batch as the request relinks.
-  if (!demotesCanonicalAdmin) {
+  // Update canonical user roles. For an admin-reducing merge this write (and the
+  // duplicate admin-revocation) already happened transactionally above as part
+  // of the last-admin invariant protocol, so it is NOT repeated here; every
+  // other merge keeps the original behavior of writing the roles in the same
+  // batch as the request relinks.
+  if (!mergeReducesAdmins) {
     batch.update(canonicalRef, {
       roles: finalRoles,
       updatedAt: now,
     });
   }
 
-  // Commit only if there is something to write — an admin-demoting merge with no
+  // Commit only if there is something to write — an admin-reducing merge with no
   // duplicate requests leaves the batch empty (the roles write was done above).
-  if (!duplicateRequestSnap.empty || !demotesCanonicalAdmin) {
+  if (!duplicateRequestSnap.empty || !mergeReducesAdmins) {
     await batch.commit();
   }
 
@@ -536,6 +571,7 @@ export async function mergeUserAccounts(
     roleMergePolicy,
     mergedRoles: finalRoles,
     duplicateAuthDeleted,
+    duplicateAdminRevoked,
     counts: {
       requestsRelinked,
       driverRegistryRelinked,
@@ -586,6 +622,7 @@ export async function getRecentAccountMergeEvents(
       roleMergePolicy: data.roleMergePolicy,
       mergedRoles: data.mergedRoles,
       duplicateAuthDeleted: data.duplicateAuthDeleted,
+      duplicateAdminRevoked: data.duplicateAdminRevoked ?? false,
       counts: data.counts ?? null,
       error: data.error ?? null,
     } as AccountMergeEvent;

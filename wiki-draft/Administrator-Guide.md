@@ -16,7 +16,7 @@ Use an individual account for each administrator so actions can be attributed. A
 
 User Management can add/remove viewer, dispatcher, and admin roles. The baseline resident role cannot be removed. Driver role changes belong to Registry linking/unlinking. Application admin access does not grant Firebase, Vercel, DNS, or other infrastructure access; those memberships are part of [Production Handover](Production-Handover.md).
 
-Self-removal of admin access is blocked, and the system refuses any action that would remove the last remaining admin — whether by removing the admin role or by merging an admin account so it loses admin. The check is enforced inside each action's transaction and is safe even when such actions happen at the same time: at most one succeeds and at least one admin always remains, so administrative access can never be fully locked out. Government emergency-access arrangements remain tracked under [#61](https://github.com/spizeck/saba-water-delivery/issues/61).
+Self-removal of admin access is blocked, and the system refuses any action that would remove the last **usable** admin — whether by removing the admin role or by merging accounts. (A merge deletes the login of the account being merged away, so it also revokes that account's admin role: a merged-away account can never linger as an administrator that can no longer sign in.) The check is enforced inside each action's transaction and is safe even when such actions happen at the same time: at most one succeeds and at least one usable admin always remains, so administrative access can never be fully locked out. Government emergency-access arrangements remain tracked under [#61](https://github.com/spizeck/saba-water-delivery/issues/61).
 
 ## Driver Registry and eligibility
 
