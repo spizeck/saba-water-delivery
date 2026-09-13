@@ -1,0 +1,111 @@
+name: Production / operational issue
+description: Report an outage, degraded workflow, failed notifications, deployment or integration failure, or a data-integrity concern in a live environment.
+title: "[Ops]: "
+labels: [operations]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **This form records and tracks an operational issue — it does not
+        replace incident procedures.** During an active incident, follow
+        the canonical playbooks first:
+
+        - Outage response and manual continuity:
+          `docs/INCIDENT_RECOVERY.md`
+        - Lost/corrupted data and restores:
+          `docs/DISASTER_RECOVERY.md`
+        - Day-to-day operational checks:
+          `docs/OPERATIONS.md`
+
+        **Never paste secrets, credentials, tokens, `.env` contents, or
+        resident/customer personal information** (names, phone numbers,
+        addresses, delivery details) into this report — including inside
+        log excerpts. Redact first.
+  - type: input
+    id: observed-at
+    attributes:
+      label: When was this first observed?
+      description: Include the timezone — Saba operations use America/Puerto_Rico (AST, UTC-4).
+      placeholder: "Example: 2026-09-13 ~14:30 AST"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Affected environment
+      options:
+        - Production
+        - Vercel Preview
+        - Local / Firebase emulators
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: affected-workflow
+    attributes:
+      label: Affected workflow
+      multiple: true
+      options:
+        - Resident requests / confirmations
+        - Driver dispatch and delivery
+        - Dispatcher operations
+        - Administration (roles, Driver Registry, settings)
+        - Viewer / read-only oversight
+        - Sign-in / authentication
+        - Notifications (email / WhatsApp)
+        - Health / readiness endpoints
+        - Deployment / hosting
+        - Data integrity
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: User / operational impact
+      description: What is actually broken or degraded, and who is affected? Is water-delivery coordination still possible?
+    validations:
+      required: true
+  - type: dropdown
+    id: health-status
+    attributes:
+      label: Health / readiness result
+      description: Result of `GET /api/health` and `GET /api/readiness` on the affected deployment, if checked.
+      options:
+        - /api/health 200 and /api/readiness ready
+        - /api/health 200 but /api/readiness not_ready
+        - Endpoints unreachable / no response
+        - Not checked
+    validations:
+      required: false
+  - type: input
+    id: request-id
+    attributes:
+      label: Request ID or log reference
+      description: An `x-request-id` value, Vercel/Firebase log entry, or cron run reference — redacted of secrets and personal data.
+    validations:
+      required: false
+  - type: dropdown
+    id: ongoing
+    attributes:
+      label: Is the issue still ongoing?
+      options:
+        - "Yes — ongoing now"
+        - "No — resolved / intermittent"
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: actions-taken
+    attributes:
+      label: Actions already taken
+      description: Restart/retry attempts, failover to manual procedures, provider status checks, etc.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Recent deployments or configuration changes, related issues, anything else relevant.
+    validations:
+      required: false

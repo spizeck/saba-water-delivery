@@ -1,0 +1,134 @@
+name: Bug report
+description: Something in the application is not working as documented.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting a problem.
+
+        **Do not include secrets, credentials, tokens, or
+        resident/customer personal information** (names, phone numbers,
+        addresses, delivery details) in this report. Describe the behavior
+        with synthetic or redacted examples. For an active production
+        outage, use the *Production / operational issue* form instead —
+        and see `docs/INCIDENT_RECOVERY.md` for live-incident procedures.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: A one-line description of the problem.
+      placeholder: "Example: driver cannot mark a batch load delivered"
+    validations:
+      required: true
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected role or workflow
+      description: Which part of the system shows the problem?
+      multiple: true
+      options:
+        - Resident
+        - Driver
+        - Dispatcher
+        - Administrator
+        - Viewer
+        - Sign-in / authentication
+        - Notifications (email / WhatsApp)
+        - Other / multiple areas
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from sign-in or the relevant page.
+      placeholder: |-
+        1. Sign in as …
+        2. Open …
+        3. Select …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened? Link the relevant documentation if it defines the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include error messages (redacted) if shown.
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Production (live pilot)
+        - Vercel Preview deployment
+        - Local development / Firebase emulators
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - Every time
+        - Most times
+        - Sometimes
+        - Happened once
+        - Unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Operational impact
+      description: How much does this affect the water-delivery service?
+      options:
+        - Blocks a delivery workflow (no workaround)
+        - Degrades a workflow (workaround exists)
+        - Minor / cosmetic
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: request-id
+    attributes:
+      label: Request ID
+      description: If the app showed or returned a request ID (the `x-request-id` response header), include it — it lets maintainers find the log entry.
+      placeholder: "Example: req_…"
+    validations:
+      required: false
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Is this a regression?
+      description: Did this work correctly before?
+      options:
+        - "Yes — it worked before"
+        - "No — it has never worked"
+        - Not sure
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or log references
+      description: Attach screenshots or paste short log excerpts. Redact personal information, tokens, and internal hostnames first — never paste `.env` contents or secrets.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Browser/device, approximate time observed, related issues, or anything else that helps.
+    validations:
+      required: false
