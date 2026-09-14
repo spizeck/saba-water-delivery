@@ -423,12 +423,63 @@ describe("getNextOfferForDriver — legacy and missing ordering fields", () => {
 
   it("does not hide a request that is missing priorityRank entirely", async () => {
     await seedDriver(DRIVER);
-    // A document written before priorityRank existed (or a corrupt write)
-    // cannot appear in any priority-class-ordered query. It must still be
-    // reachable rather than permanently hidden.
+    // priorityRank is denormalized bookkeeping; the canonical comparator
+    // derives the bucket from dispatchPriority, so a document missing
+    // priorityRank must still land in its dispatchPriority bucket.
     await seedRequest("req-no-rank", { omitPriorityRank: true });
     const offer = await getNextOfferForDriver(DRIVER);
     expect(offer?.request.id).toBe("req-no-rank");
+  });
+
+  it("offers a critical request missing priorityRank ahead of valid normal work", async () => {
+    await seedDriver(DRIVER);
+    // The canonical comparator ranks by dispatchPriority, not stored
+    // priorityRank — a missing denormalized rank must not sink this
+    // request behind lower-priority work.
+    await seedRequest("req-normal", {
+      requestedAt: new Date(BASE_TIME),
+    });
+    await seedRequest("req-critical-no-rank", {
+      dispatchPriority: "critical",
+      omitPriorityRank: true,
+      requestedAt: new Date(BASE_TIME + 60_000),
+    });
+
+    const offer = await getNextOfferForDriver(DRIVER);
+    expect(offer?.request.id).toBe("req-critical-no-rank");
+  });
+
+  it("offers an urgent request missing priorityRank ahead of valid normal work", async () => {
+    await seedDriver(DRIVER);
+    await seedRequest("req-normal", {
+      requestedAt: new Date(BASE_TIME),
+    });
+    await seedRequest("req-urgent-no-rank", {
+      dispatchPriority: "urgent",
+      omitPriorityRank: true,
+      requestedAt: new Date(BASE_TIME + 60_000),
+    });
+
+    const offer = await getNextOfferForDriver(DRIVER);
+    expect(offer?.request.id).toBe("req-urgent-no-rank");
+  });
+
+  it("ignores a stale stored priorityRank that disagrees with dispatchPriority", async () => {
+    await seedDriver(DRIVER);
+    // A document whose denormalized priorityRank was left stale by an
+    // interrupted write must still be bucketed by its dispatchPriority —
+    // the value dispatchQueueCompare actually uses.
+    await seedRequest("req-normal", {
+      requestedAt: new Date(BASE_TIME),
+    });
+    await seedRequest("req-critical-stale-rank", {
+      dispatchPriority: "critical",
+      priorityRank: 2, // stale: says "normal"
+      requestedAt: new Date(BASE_TIME + 60_000),
+    });
+
+    const offer = await getNextOfferForDriver(DRIVER);
+    expect(offer?.request.id).toBe("req-critical-stale-rank");
   });
 });
 

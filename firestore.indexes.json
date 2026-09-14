@@ -260,11 +260,38 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "priorityRank",
+          "fieldPath": "dispatchPriority",
           "order": "ASCENDING"
         },
         {
           "fieldPath": "dispatchOverrideRank",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "requestedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "waterRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "preferredDriverId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dispatchPriority",
           "order": "ASCENDING"
         },
         {
@@ -348,11 +375,34 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "priorityRank",
+          "fieldPath": "dispatchPriority",
           "order": "ASCENDING"
         },
         {
           "fieldPath": "dispatchOverrideRank",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "requestedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "waterRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dispatchPriority",
           "order": "ASCENDING"
         },
         {

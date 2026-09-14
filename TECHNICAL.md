@@ -1285,10 +1285,14 @@ alphabetical order of those strings does not match the intended
 critical-first ordering. Every request also stores a denormalized
 numeric `priorityRank` (`priorityRankFor()` in `priority.ts`: critical =
 0, urgent = 1, normal = 2), kept in sync everywhere `dispatchPriority` is
-written (`createWaterRequest()`, `changeRequestPriority()`). All
-priority-aware Firestore queries `orderBy("priorityRank", "asc")` first,
-then `orderBy("requestedAt", "asc")` — see `firestore.indexes.json` for
-the composite indexes this requires.
+written (`createWaterRequest()`, `changeRequestPriority()`). The batch
+candidate query `orderBy("priorityRank", "asc")` first, then
+`orderBy("requestedAt", "asc")` — see `firestore.indexes.json` for the
+composite indexes this requires. Driver-offer selection deliberately does
+**not** trust `priorityRank`: `dispatchQueueCompare` buckets by
+`priorityRankFor(request.dispatchPriority)`, so the candidate scan keys
+its priority buckets on `dispatchPriority` itself and treats a missing or
+stale `priorityRank` as irrelevant (see "Canonical candidate scan").
 
 ## Dispatch offer selection
 
@@ -1309,13 +1313,14 @@ over the **complete** eligible queue — not a bounded pre-filter window.
 
 ## Canonical candidate scan (issue #66)
 
-The canonical order — `(priorityRank, dispatchOverrideRank` with unranked
-last`, requestedAt)` — cannot be expressed as one Firestore query, and any
-`orderBy`/`!=` filter silently drops documents missing that field entirely.
+The canonical order — `(priorityRankFor(dispatchPriority),
+dispatchOverrideRank` with unranked last`, requestedAt)` — cannot be
+expressed as one Firestore query, and any `orderBy`/`!=` filter silently
+drops documents missing that field entirely.
 `iterateCandidatesInDispatchOrder()` therefore decomposes it into lazy,
 cursor-paginated streams that concatenate to exactly the canonical order:
 
-- Per priority bucket (best first), two streams:
+- Per `dispatchPriority` bucket (best first), two streams:
   - **ranked:** `dispatchOverrideRank != null`, ordered by
     `(dispatchOverrideRank, requestedAt, documentId)` — all ranked documents
     precede all unranked ones within a bucket, so this stream is canonically
@@ -1325,10 +1330,18 @@ cursor-paginated streams that concatenate to exactly the canonical order:
     field existed (never backfilled) are still reached; documents already
     yielded by the ranked stream are skipped.
 - A final **catch-all** stream ordered by `documentId` alone — the only query
-  shape that can see a document missing `priorityRank` or `requestedAt` —
-  guarantees no `status`-matching document can be permanently hidden by a
+  shape that can see a document missing `dispatchPriority` or `requestedAt`
+  — guarantees no `status`-matching document can be permanently hidden by a
   missing ordering field. It is only read if every bucket stream produced no
   eligible candidate.
+
+Buckets are keyed on `dispatchPriority`, not the denormalized
+`priorityRank`, because the comparator derives the bucket via
+`priorityRankFor(request.dispatchPriority)`. A document with a missing or
+stale `priorityRank` therefore still lands in its correct bucket; only a
+document missing `dispatchPriority`/`requestedAt` itself reaches the
+catch-all (and `toWaterRequest` already defaults those to
+normal-priority/newest-age semantics).
 
 Pagination uses `startAfter(document)` cursors (no offsets, no duplicates or
 skips within a stream). Reads are lazy — only as many pages as the scan

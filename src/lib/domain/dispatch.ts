@@ -17,8 +17,8 @@ import {
 } from "./driverOffers";
 import { sabaCalendarDateKey, startOfSabaDay } from "@/lib/utils/datetime";
 import { appConfig } from "./config";
-import { PRIORITY_RANK } from "./priority";
-import type { DriverOffer, WaterRequest } from "./types";
+import { PRIORITY_RANK, priorityRankFor } from "./priority";
+import type { DispatchPriority, DriverOffer, WaterRequest } from "./types";
 import {
   isOfferableToDriver,
   selectNextDispatchCandidate,
@@ -123,7 +123,7 @@ async function* pageCandidates(
  * field is missing entirely. So the order is decomposed into streams that
  * concatenate exactly to it:
  *
- *   for each priority bucket (best first):
+ *   for each `dispatchPriority` bucket (best first):
  *     R) ranked docs only — `dispatchOverrideRank != null` ordered by
  *        (dispatchOverrideRank, requestedAt, documentId)
  *     L) the whole bucket ordered by (requestedAt, documentId) — NO
@@ -133,9 +133,19 @@ async function* pageCandidates(
  *
  *   then a catch-all stream ordered by documentId with no ordering-field
  *   filters at all — the only query shape that can see a document missing
- *   `priorityRank` or `requestedAt`. Such documents should not exist
+ *   `dispatchPriority` or `requestedAt`. Such documents should not exist
  *   (both fields are written on every create/priority-change path), but
- *   if one does it is surfaced last rather than permanently hidden.
+ *   if one does it is surfaced last rather than permanently hidden —
+ *   consistent with `toWaterRequest`'s normal-priority/newest-age
+ *   defaults for missing fields.
+ *
+ * Buckets key on `dispatchPriority`, NOT the denormalized `priorityRank`,
+ * because the canonical comparator derives the bucket via
+ * `priorityRankFor(request.dispatchPriority)`. Keying on stored
+ * `priorityRank` would misplace documents where the denormalized field is
+ * missing or stale (they would sink to the catch-all behind genuinely
+ * lower-priority work). `priorityRank` remains write-only bookkeeping for
+ * other readers and is no longer consulted here.
  *
  * Reads stay lazy: streams are only paged as far as the caller consumes,
  * so the common case costs 1–2 small queries. There is no global queue
@@ -162,15 +172,16 @@ async function* iterateCandidatesInDispatchOrder(options: {
     return q;
   };
 
-  // Priority buckets in canonical order, derived from the rank table so a
-  // future priority level is picked up automatically.
-  const ranks = [...new Set(Object.values(PRIORITY_RANK))].sort(
-    (a, b) => a - b,
-  );
+  // Priority buckets in canonical order — keyed on `dispatchPriority`,
+  // the field `dispatchQueueCompare` actually reads via `priorityRankFor`.
+  // Derived from the rank table so a future priority level is picked up
+  // automatically.
+  const priorities = [...Object.keys(PRIORITY_RANK)] as DispatchPriority[];
+  priorities.sort((a, b) => priorityRankFor(a) - priorityRankFor(b));
 
-  for (const rank of ranks) {
+  for (const priority of priorities) {
     const ranked = scoped()
-      .where("priorityRank", "==", rank)
+      .where("dispatchPriority", "==", priority)
       .where("dispatchOverrideRank", "!=", null)
       .orderBy("dispatchOverrideRank")
       .orderBy("requestedAt")
@@ -181,7 +192,7 @@ async function* iterateCandidatesInDispatchOrder(options: {
     }
 
     const byAge = scoped()
-      .where("priorityRank", "==", rank)
+      .where("dispatchPriority", "==", priority)
       .orderBy("requestedAt")
       .orderBy(FieldPath.documentId());
     for await (const doc of pageCandidates(byAge, budget)) {
