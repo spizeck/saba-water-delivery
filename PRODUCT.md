@@ -1017,6 +1017,18 @@ requires the confirming staff member to be identified — see TECHNICAL.md
 compatible with a future WhatsApp flow where the customer could
 eventually confirm directly.
 
+If an unregistered customer reports a delivery problem outside the app —
+by phone or at the office — authorized dispatcher/admin staff record that
+dispute with **Record customer dispute** on the delivered request, along
+with a required note describing what the customer reported. Staff are
+recording the customer's report, not disputing the delivery themselves,
+and the audit trail says exactly that (`customer_dispute_recorded_by_staff`,
+never `customer_disputed`). The request enters the same canonical
+`disputed` state as a resident-filed dispute and is resolved through the
+same dispute-resolution workflow. This staff path applies only to
+unregistered customers — a registered resident always confirms or
+disputes through their own authenticated portal.
+
 ---
 
 # Customer Delivery Location

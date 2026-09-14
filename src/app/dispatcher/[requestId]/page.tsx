@@ -441,8 +441,12 @@ export default async function RequestDetailPage({ params }: PageProps) {
           {status === "disputed" &&
             (() => {
               const disputeEvent = events.find(
-                (e) => e.type === "customer_disputed",
+                (e) =>
+                  e.type === "customer_disputed" ||
+                  e.type === "customer_dispute_recorded_by_staff",
               );
+              const recordedByStaff =
+                disputeEvent?.type === "customer_dispute_recorded_by_staff";
               const reason = disputeEvent?.metadata?.reason as
                 string | undefined;
               return (
@@ -451,15 +455,31 @@ export default async function RequestDetailPage({ params }: PageProps) {
                     Dispute Reason
                   </h2>
                   <p className="mt-1 text-sm text-red-800">
-                    {reason || "No reason provided by resident."}
+                    {reason ||
+                      (recordedByStaff
+                        ? "No reason recorded."
+                        : "No reason provided by resident.")}
                   </p>
                   {disputeEvent && (
                     <p className="mt-2 text-xs text-red-600">
-                      Disputed on {formatDate(disputeEvent.createdAt)}
-                      {disputeEvent.actorId && (
+                      {recordedByStaff ? (
                         <>
-                          {" "}
-                          by {actorNames[disputeEvent.actorId] ?? "Customer"}
+                          Reported by the customer — recorded by{" "}
+                          {disputeEvent.actorId
+                            ? (actorNames[disputeEvent.actorId] ?? "staff")
+                            : "staff"}{" "}
+                          on {formatDate(disputeEvent.createdAt)}
+                        </>
+                      ) : (
+                        <>
+                          Disputed on {formatDate(disputeEvent.createdAt)}
+                          {disputeEvent.actorId && (
+                            <>
+                              {" "}
+                              by{" "}
+                              {actorNames[disputeEvent.actorId] ?? "Customer"}
+                            </>
+                          )}
                         </>
                       )}
                     </p>
@@ -496,6 +516,9 @@ export default async function RequestDetailPage({ params }: PageProps) {
             status={status}
             eligibleDrivers={eligibleDriverOptions}
             canConfirmUnregisteredDelivery={
+              !isRegisteredCustomer && status === "delivered"
+            }
+            canRecordCustomerDispute={
               !isRegisteredCustomer && status === "delivered"
             }
             currentPriority={

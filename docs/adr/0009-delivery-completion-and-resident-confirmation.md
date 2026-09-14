@@ -62,6 +62,21 @@ next job on the resident's confirmation would stall operations.
   dispute is tracked as a follow-up in
   [#50](https://github.com/spizeck/saba-water-delivery/issues/50).
 
+  > **Update 2026-09-14 — implemented in
+  > [#50](https://github.com/spizeck/saba-water-delivery/issues/50).** The gap
+  > above is now closed: `recordCustomerDisputeByStaff()` lets
+  > dispatcher/admin staff record a dispute an unregistered customer reported
+  > outside the app (phone call / office visit), requiring a reason and
+  > transitioning the request to the canonical `disputed` state — so the
+  > existing dispute-resolution workflow applies unchanged. The transition is
+  > transactional and re-verifies eligibility (`customerId` null, `source`
+  > `"dispatcher"`, status `"delivered"`) against committed state, so it is
+  > race-safe against staff confirmation, lazy auto-confirmation, and duplicate
+  > dispute attempts. It records a distinct `customer_dispute_recorded_by_staff`
+  > audit event — never `customer_disputed` — so the trail always shows staff
+  > recorded the customer's report rather than the resident acting themselves.
+  > The registered-resident dispute path is unchanged.
+
 ## Operational implications
 
 - **Dangerous assumption to preserve:** do not treat a `delivered`

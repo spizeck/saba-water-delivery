@@ -20,6 +20,7 @@ import {
   escalateRequest,
   markDeliveredByStaff,
   reassignRequest,
+  recordCustomerDispute,
   resolveDisputeAsCompleted,
   returnRequestToQueue,
   resolveDisputeAsReopened,
@@ -34,6 +35,9 @@ interface Props {
   eligibleDrivers: EligibleDriverOption[];
   /** True when this is an unregistered customer's delivered (awaiting confirmation) request. */
   canConfirmUnregisteredDelivery: boolean;
+  /** True when this unregistered customer's delivered request can have a
+   * customer-reported dispute recorded by staff (issue #50). */
+  canRecordCustomerDispute: boolean;
   currentPriority: DispatchPriority;
   /** Current field values for the edit form. */
   currentLoads: RequestedLoads;
@@ -53,6 +57,7 @@ export function RequestActions({
   status,
   eligibleDrivers,
   canConfirmUnregisteredDelivery,
+  canRecordCustomerDispute,
   currentPriority,
   currentLoads,
   currentVillage,
@@ -196,6 +201,22 @@ export function RequestActions({
             Confirm delivery (unregistered)
           </Button>
         )}
+        {canRecordCustomerDispute && (
+          <Button
+            size="md"
+            variant="outline"
+            onClick={() =>
+              setActivePanel(
+                activePanel === "recordCustomerDispute"
+                  ? null
+                  : "recordCustomerDispute",
+              )
+            }
+            className="text-sm !h-9 !px-3"
+          >
+            Record customer dispute
+          </Button>
+        )}
         {isCancellable && (
           <Button
             size="md"
@@ -240,7 +261,7 @@ export function RequestActions({
       {status === "delivered" && (
         <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
           {canConfirmUnregisteredDelivery
-            ? "The driver or staff has recorded delivery. Call the customer to verify receipt, then use Confirm delivery (unregistered) to close the request."
+            ? "The driver or staff has recorded delivery. Call the customer to verify receipt, then use Confirm delivery (unregistered) to close the request — or Record customer dispute if the customer reports a problem."
             : "The driver or staff has recorded delivery. The registered customer must confirm or dispute receipt in the resident portal; otherwise it will auto-confirm after the confirmation window."}
         </div>
       )}
@@ -319,6 +340,12 @@ export function RequestActions({
       )}
       {activePanel === "confirmUnregistered" && (
         <ConfirmUnregisteredPanel
+          requestId={requestId}
+          onDone={() => setActivePanel(null)}
+        />
+      )}
+      {activePanel === "recordCustomerDispute" && (
+        <RecordCustomerDisputePanel
           requestId={requestId}
           onDone={() => setActivePanel(null)}
         />
@@ -838,6 +865,70 @@ function ConfirmUnregisteredPanel({
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Confirming\u2026" : "Confirm delivery"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
+          onClick={onDone}
+          className="text-sm !h-9 !px-3"
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function RecordCustomerDisputePanel({
+  requestId,
+  onDone,
+}: {
+  requestId: string;
+  onDone: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(
+    recordCustomerDispute,
+    initialState,
+  );
+  if (state.status === "success")
+    return <p className="mt-3 text-sm text-green-700">{state.message}</p>;
+
+  return (
+    <form
+      action={formAction}
+      className="mt-3 flex flex-col gap-2 rounded-lg border border-red-100 bg-red-50/50 p-3"
+    >
+      <input type="hidden" name="requestId" value={requestId} />
+      <p className="text-sm font-medium text-red-800">
+        Record a dispute reported by the customer
+      </p>
+      <p className="text-xs text-red-700">
+        Use this when an unregistered customer reports that the recorded
+        delivery was not received or has a problem. You are recording the
+        customer&apos;s report — not confirming the delivery and not disputing
+        it yourself. The request enters the normal disputed workflow for staff
+        resolution.
+      </p>
+      <textarea
+        name="reason"
+        required
+        rows={3}
+        maxLength={REQUEST_NOTES_MAX_LENGTH}
+        placeholder="What did the customer report? (required)"
+        className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+      />
+      {state.status === "error" && (
+        <p className="text-sm text-red-700">{state.message}</p>
+      )}
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          size="md"
+          disabled={pending}
+          className="text-sm !h-9 !px-3"
+        >
+          {pending ? "Recording…" : "Record dispute"}
         </Button>
         <Button
           type="button"

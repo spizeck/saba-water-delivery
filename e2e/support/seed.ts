@@ -226,6 +226,12 @@ export interface SeedRequestOptions {
   customerId?: string | null;
   customerName?: string;
   customerPhone?: string | null;
+  /** Defaults to "resident"; pass "dispatcher" for staff-entered requests
+   * (required when `customerId` is null — see TECHNICAL.md
+   * "Dispatcher-Created Requests"). */
+  source?: "resident" | "dispatcher" | "whatsapp";
+  /** uid of the staff member who entered the request (dispatcher-sourced only). */
+  createdBy?: string | null;
   village?: string;
   deliveryDirections?: string;
   assignedDriverId?: string | null;
@@ -261,8 +267,8 @@ export async function seedWaterRequest(
       email: customerId ? E2E_ACCOUNTS.resident.email : null,
       isRegistered: customerId !== null,
     },
-    source: "resident",
-    createdBy: null,
+    source: options.source ?? "resident",
+    createdBy: options.createdBy ?? null,
     loads,
     gallons: loads * 1000,
     village: options.village ?? E2E_CANONICAL_VILLAGE,

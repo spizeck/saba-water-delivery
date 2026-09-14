@@ -84,6 +84,7 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
   customer_confirmed: "Customer confirmed",
   delivery_confirmed_by_dispatcher: "Delivery confirmed by staff",
   customer_disputed: "Customer disputed",
+  customer_dispute_recorded_by_staff: "Customer dispute recorded by staff",
   delivery_auto_confirmed: "Auto-confirmed (no response within window)",
   delivery_confirmation_email: "Delivery confirmation email",
   dispute_resolved_completed: "Dispute resolved (completed)",
@@ -325,6 +326,11 @@ const REQUEST_EVENT_FORMATTERS: Record<
 
   customer_disputed: (m) => {
     if (m.reason) return `Reason: ${m.reason}`;
+    return "";
+  },
+
+  customer_dispute_recorded_by_staff: (m) => {
+    if (m.reason) return `Customer reported: ${m.reason}`;
     return "";
   },
 

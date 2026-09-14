@@ -21,6 +21,17 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+Staff-recorded disputes for unregistered customers:
+- Dispatchers and admins can record a dispute that an unregistered customer
+  reported by phone or in person, using **Record customer dispute** on a
+  delivered request. A note describing what the customer reported is required.
+- The request enters the same disputed state as a resident-filed dispute and is
+  resolved through the existing dispute-resolution workflow; the audit history
+  shows "Customer dispute recorded by staff" rather than the customer's own
+  action.
+- Registered residents are unaffected — they still confirm or dispute through
+  their own portal, and the staff control is never offered on their requests.
+
 Delivery confirmation email:
 - Registered residents with claimed accounts and email addresses are notified
   when a driver or authorized staff member records delivery. The government-
