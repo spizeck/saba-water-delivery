@@ -384,6 +384,13 @@ export type WaterRequestEventType =
   | "customer_confirmed"
   | "delivery_confirmed_by_dispatcher"
   | "customer_disputed"
+  /** Staff recorded a dispute that an UNREGISTERED customer reported
+   * outside the app (issue #50). Deliberately distinct from
+   * "customer_disputed" — same convention as "customer_confirmed" vs
+   * "delivery_confirmed_by_dispatcher" — so the audit trail never
+   * disguises a staff-entered customer report as the resident's own
+   * authenticated action. */
+  | "customer_dispute_recorded_by_staff"
   | "delivery_auto_confirmed"
   | "delivery_confirmation_email"
   | "dispute_resolved_completed"

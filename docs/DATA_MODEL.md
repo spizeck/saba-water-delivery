@@ -199,7 +199,10 @@ in `src/lib/domain/waterRequests.ts` and related modules.
 
 Append-only audit trail for the request: creation, preferred-driver
 selection/expiration/decline, claim, reassignment, delivery, customer
-or staff confirmation, dispute, cancellation, priority changes, and
+or staff confirmation, dispute (resident-filed via `customer_disputed`,
+or a dispute an unregistered customer reported to staff via
+`customer_dispute_recorded_by_staff` — never mislabeled as the
+customer's own action), cancellation, priority changes, and
 related system events. Every meaningful state transition is recorded
 here with actor, role, and timestamp.
 

@@ -29,7 +29,10 @@ import {
   getMeterAssignments,
 } from "./driverRegistry";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
-import { normalizeRequestNotes } from "./requestNotes";
+import {
+  normalizeRequestNotes,
+  REQUEST_NOTES_MAX_LENGTH,
+} from "./requestNotes";
 import {
   decidePreferredDriverHold,
   isPreferredDriverHoldExpired,
@@ -1869,6 +1872,100 @@ export async function confirmDeliveryByStaff(
       actorRole: "dispatcher",
       createdAt: now,
       metadata: null,
+    });
+  });
+
+  const updated = await requestRef.get();
+  return toWaterRequest(requestId, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Staff-recorded dispute (unregistered customers)
+// ---------------------------------------------------------------------------
+
+export interface RecordCustomerDisputeByStaffInput {
+  requestId: string;
+  actorId: string;
+  /** The acting staff member's portal role — "dispatcher" or "admin". */
+  actorRole: UserRole;
+  /** What the customer reported — required, durable part of the record. */
+  reason: string;
+}
+
+/**
+ * Records a dispute that an UNREGISTERED customer reported to staff
+ * outside the app (issue #50 — e.g. by phone or in person), entering the
+ * request into the canonical "disputed" state so the normal staff
+ * dispute-resolution workflow (`resolveDisputeCompleted` /
+ * `resolveDisputeReopened`) applies unchanged. This is staff recording
+ * the customer's report — never staff personally disputing a delivery.
+ *
+ * Deliberately scoped to unregistered requests only — the same scoping
+ * as `confirmDeliveryByStaff()`: `customerId` must be null. `customerId`
+ * is the authoritative registration linkage; `source` merely records
+ * request origin and does not affect eligibility. A registered
+ * resident's delivery must be disputed through their own authenticated
+ * `disputeWaterDelivery()` — the audit trail must never attribute a
+ * staff entry to the resident.
+ *
+ * Requires a non-empty reason (trimmed, `REQUEST_NOTES_MAX_LENGTH`
+ * characters max) describing what the customer reported; it is stored on
+ * the audit event, mirroring where `disputeWaterDelivery()` keeps it —
+ * the request document itself carries no dispute-specific fields.
+ *
+ * Records a distinct `customer_dispute_recorded_by_staff` audit event —
+ * never `customer_disputed` — so the record never misrepresents a
+ * staff-entered report as the resident's own authenticated action.
+ *
+ * Race safety: eligibility is re-verified inside the transaction against
+ * committed state, so a stale-page submission can never overwrite a
+ * concurrently-committed staff confirmation, auto-confirmation, or
+ * earlier dispute — the transaction retries on contention and the second
+ * read sees the new status.
+ */
+export async function recordCustomerDisputeByStaff(
+  input: RecordCustomerDisputeByStaffInput,
+): Promise<WaterRequest> {
+  const { requestId, actorId, actorRole } = input;
+  const reason = input.reason.trim();
+  if (!reason) throw new Error("DISPUTE_REASON_REQUIRED");
+  if (reason.length > REQUEST_NOTES_MAX_LENGTH) {
+    throw new Error("DISPUTE_REASON_TOO_LONG");
+  }
+
+  const db = getAdminDb();
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const now = FieldValue.serverTimestamp();
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(requestRef);
+    if (!snap.exists) throw new Error("REQUEST_NOT_FOUND");
+
+    const data = snap.data()!;
+
+    // `customerId === null` is the authoritative "unregistered customer"
+    // marker — the same check `confirmDeliveryByStaff()` uses.
+    // `customer_history_linked` requests fail this check — once linked
+    // they have a registered owner who must use the resident path.
+    if (data.customerId) {
+      throw new Error("REQUEST_HAS_REGISTERED_CUSTOMER");
+    }
+    if (data.status !== "delivered") {
+      throw new Error("INVALID_STATUS_FOR_DISPUTE");
+    }
+
+    txn.update(requestRef, {
+      status: "disputed",
+      updatedAt: now,
+    });
+
+    const eventRef = requestRef.collection("events").doc();
+    txn.set(eventRef, {
+      type: "customer_dispute_recorded_by_staff",
+      actorId,
+      actorRole,
+      createdAt: now,
+      metadata: { reason },
     });
   });
 

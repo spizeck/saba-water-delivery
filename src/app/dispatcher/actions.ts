@@ -38,6 +38,7 @@ import {
   getActiveRequestForCustomer,
   getFrequentRequestCountForCustomer,
   markWaterDeliveredByStaff,
+  recordCustomerDisputeByStaff,
   recordWaterCollection,
   resolveDisputeCompleted,
   resolveDisputeReopened,
@@ -794,6 +795,94 @@ export async function confirmUnregisteredDelivery(
   return {
     status: "success",
     message: "Delivery confirmed on behalf of the customer.",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Staff-recorded dispute for unregistered customers (issue #50)
+// ---------------------------------------------------------------------------
+
+/**
+ * Records a dispute an unregistered customer reported outside the app
+ * (phone call / office visit), moving the request into the canonical
+ * `disputed` workflow. Staff are recording the CUSTOMER's report — never
+ * asserting a dispute themselves — and the reason describing what the
+ * customer reported is required.
+ *
+ * Server-authoritative: `requireStaff()` gates this to dispatcher/admin,
+ * and `recordCustomerDisputeByStaff()` re-verifies eligibility inside
+ * its transaction, so a stale page can never overwrite a concurrently
+ * committed confirmation or resolution.
+ */
+export async function recordCustomerDispute(
+  _prevState: RequestActionState,
+  formData: FormData,
+): Promise<RequestActionState> {
+  const session = await requireStaff();
+  const requestId = String(formData.get("requestId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  if (!requestId) return { status: "error", message: "Missing request ID." };
+  if (!reason) {
+    return {
+      status: "error",
+      message: "Describe what the customer reported.",
+    };
+  }
+
+  // Record the actor's actual staff role — the audit trail distinguishes
+  // an admin-recorded dispute from a dispatcher-recorded one.
+  const actorRole = session.profile.roles.includes("dispatcher")
+    ? "dispatcher"
+    : "admin";
+
+  try {
+    await recordCustomerDisputeByStaff({
+      requestId,
+      actorId: session.uid,
+      actorRole,
+      reason,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_HAS_REGISTERED_CUSTOMER":
+          return {
+            status: "error",
+            message:
+              "This request has a registered customer — they must report issues through their own portal.",
+          };
+        case "INVALID_STATUS_FOR_DISPUTE":
+          return {
+            status: "error",
+            message:
+              "This delivery can no longer be disputed — its status changed since this page loaded. Refresh to see the current state.",
+          };
+        case "DISPUTE_REASON_REQUIRED":
+          return {
+            status: "error",
+            message: "Describe what the customer reported.",
+          };
+        case "DISPUTE_REASON_TOO_LONG":
+          return {
+            status: "error",
+            message: "The dispute reason must be 1,000 characters or fewer.",
+          };
+        default:
+          throw err;
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath("/dispatcher");
+  revalidatePath(`/dispatcher/${requestId}`);
+  return {
+    status: "success",
+    message:
+      "Customer dispute recorded. The request is now disputed and awaiting resolution.",
   };
 }
 

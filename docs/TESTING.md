@@ -230,6 +230,13 @@ Production/Preview.
   route (→ `confirmed`), and a second test reports a problem with a reason
   (→ `disputed`, with the dispute reason persisted on the `customer_disputed`
   audit event).
+- **dispatcher-dispute** — staff-recorded disputes for unregistered customers
+  (issue #50): a dispatcher records a customer-reported dispute on an eligible
+  delivered request (→ `disputed`, with the reason persisted on the
+  `customer_dispute_recorded_by_staff` audit event and the normal
+  dispute-resolution controls shown); a registered resident's delivered
+  request does not offer the staff-only action; and a stale page submitting
+  after a competing confirmation is rejected without overwriting it.
 - **delivery-run** — a run with a claimed + a delivered member is opened by a
   dispatcher (a delivered/awaiting-confirmation item does not block remaining
   work), and the run-sheet PDF endpoint returns a PDF.
@@ -295,6 +302,16 @@ Vitest covers the pure domain logic extensively, including:
   cancel-vs-cancel races, atomic audit-event commit, and the downstream
   effects (active slot freed for a new request, excluded from driver
   offers and delivery-run eligibility).
+- Staff-recorded dispute for unregistered customers (issue #50): the
+  emulator-backed `staffRecordedDispute.emulator.test.ts` (run by
+  `npm run test:rules`) covering the committed-state eligibility guard
+  (`customerId` null + `delivered` only, regardless of request `source`),
+  required/length-capped
+  reason, atomic audit-event commit, the confirm-vs-dispute,
+  auto-confirm-vs-dispute, and duplicate-dispute races, and reuse of the
+  unchanged resident dispute + dispute-resolution paths. The server-action
+  authorization boundary and error mapping are unit tested in
+  `src/app/dispatcher/__tests__/recordCustomerDispute.test.ts`.
 - Delivery-profile reminder decision logic, including mandatory review
   for noncanonical villages (e.g., `Lower Hells Gate`) and phone display
   formatting (`formatPhone.ts`).

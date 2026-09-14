@@ -178,6 +178,16 @@ marked it delivered — this is recorded as a staff confirmation, not a
 customer confirmation, so the record always reflects what actually
 happened.
 
+If an unregistered customer calls or visits to report that the recorded
+delivery was not received or has a problem, use **Record customer
+dispute** on the request detail page and describe what the customer
+reported (required). You are recording the customer's report — not
+disputing the delivery yourself — and the history shows it that way
+("Customer dispute recorded by staff"). The request then appears
+disputed and is resolved exactly like a resident-filed dispute. This
+control only exists for unregistered customers: registered residents
+always confirm or dispute in their own portal.
+
 ## Water Collection Reconciliation
 
 On claimed request detail pages, you can see the water collection status for each load.

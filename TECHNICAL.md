@@ -616,6 +616,7 @@ marked_delivered
 customer_confirmed
 delivery_confirmed_by_dispatcher
 customer_disputed
+customer_dispute_recorded_by_staff
 delivery_auto_confirmed
 request_cancelled
 request_cancelled_by_resident
@@ -624,7 +625,8 @@ preferred_driver_bypassed_for_priority
 preferred_driver_hold_released_for_priority
 ```
 
-`request_created_by_dispatcher` and `delivery_confirmed_by_dispatcher`
+`request_created_by_dispatcher`, `delivery_confirmed_by_dispatcher`,
+and `customer_dispute_recorded_by_staff`
 are deliberately distinct from their resident-initiated equivalents —
 never disguise a staff-initiated action as the customer's own (see
 "Dispatcher-Created Requests" below).
@@ -1498,6 +1500,40 @@ Both accept only `status === "delivered"` — there is no separate
 "unconfirmed" status to also accept (see "Delivery Confirmation
 Timeout" below).
 
+## Staff-recorded disputes for unregistered customers
+
+`recordCustomerDisputeByStaff()` (issue #50) is the dispute counterpart
+of `confirmDeliveryByStaff()`: when an unregistered customer reports a
+delivery problem outside the app (phone call / office visit),
+dispatcher/admin staff record that report on a `delivered` request via
+the **Record customer dispute** control on the request detail page.
+
+- **Eligibility** — identical scoping to `confirmDeliveryByStaff()`:
+  the transaction requires `customerId === null` AND
+  `status === "delivered"`. `customerId` is the authoritative
+  registration marker; `source` records request origin only and does not
+  affect eligibility. It throws `REQUEST_HAS_REGISTERED_CUSTOMER` for a
+  registered resident's request — residents always dispute through their
+  own authenticated `disputeWaterDelivery()`, so a staff entry can never
+  be attributed to them.
+- **Reason** — required and meaningful: trimmed, non-empty
+  (`DISPUTE_REASON_REQUIRED`), capped at `REQUEST_NOTES_MAX_LENGTH`
+  (`DISPUTE_REASON_TOO_LONG`). It is stored on the audit event's
+  `metadata.reason`, the same place `disputeWaterDelivery()` keeps the
+  resident's reason — the request document carries no dispute-specific
+  fields.
+- **Transition** — a single Firestore transaction re-reads the request,
+  re-verifies eligibility, sets `status: "disputed"` + `updatedAt`, and
+  writes the `customer_dispute_recorded_by_staff` event (actorId = staff
+  uid, actorRole = the actor's real staff role) atomically — the same
+  issue-#49 convention. Stale-page submissions and competing
+  confirm/auto-confirm/dispute attempts therefore resolve to exactly one
+  outcome: whoever commits second sees the new status and is rejected.
+- **Resolution** — the request is in the canonical `disputed` state, so
+  `resolveDisputeCompleted()` / `resolveDisputeReopened()` and the
+  existing staff UI work unchanged; there is no parallel staff-dispute
+  lifecycle.
+
 ## Optional account invitation
 
 When a dispatcher creates a request for an unregistered requestor and
@@ -1794,11 +1830,12 @@ is the single place this rule is enforced:
    recorded as `customer_confirmed`, so the audit trail always
    distinguishes an actual resident confirmation from a timeout.
 
-`confirmWaterDelivery()`, `disputeWaterDelivery()`, and
-`confirmDeliveryByStaff()` all only accept `status === "delivered"` —
-once auto-confirmed, the request is `"confirmed"` and these correctly
-reject further action on it (`INVALID_STATUS_FOR_CONFIRM` /
-`INVALID_STATUS_FOR_DISPUTE`).
+`confirmWaterDelivery()`, `disputeWaterDelivery()`,
+`confirmDeliveryByStaff()`, and `recordCustomerDisputeByStaff()` all only
+accept `status === "delivered"` — once auto-confirmed, the request is
+`"confirmed"` and these correctly reject further action on it
+(`INVALID_STATUS_FOR_CONFIRM` / `INVALID_STATUS_FOR_DISPUTE`), and once
+disputed, auto-confirmation cannot overwrite it.
 
 ## Lazy enforcement, not a scheduled job
 
@@ -2029,6 +2066,7 @@ changeRequestPriority()
 reevaluatePreferredDriverHoldForPriority()
 getOutstandingRequestsForContinuityReport()
 getMostRecentConfirmedRequest()
+recordCustomerDisputeByStaff()
 ```
 
 `src/lib/domain/deliveryProfileReminder.ts` (pure, no Firestore access —
@@ -2292,6 +2330,7 @@ At minimum audit:
 - Customer confirmation
 - Staff confirmation on behalf of an unregistered customer
 - Customer dispute
+- Staff-recorded dispute on behalf of an unregistered customer
 - Cancellation
 - Driver delivery access restricted
 - Driver delivery access restored

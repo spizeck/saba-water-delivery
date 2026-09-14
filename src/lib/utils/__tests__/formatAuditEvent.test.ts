@@ -229,6 +229,26 @@ describe("formatRequestEventDetails", () => {
     });
   });
 
+  describe("customer_dispute_recorded_by_staff", () => {
+    it("shows the customer-reported reason", () => {
+      const result = formatRequestEventDetails(
+        "customer_dispute_recorded_by_staff",
+        { reason: "Customer says no water was delivered" },
+      );
+      expect(result).toBe(
+        "Customer reported: Customer says no water was delivered",
+      );
+    });
+
+    it("returns null when no reason is stored", () => {
+      const result = formatRequestEventDetails(
+        "customer_dispute_recorded_by_staff",
+        {},
+      );
+      expect(result).toBeNull();
+    });
+  });
+
   describe("events with empty/no metadata", () => {
     it("returns null for null metadata", () => {
       expect(formatRequestEventDetails("marked_delivered", null)).toBeNull();
@@ -376,6 +396,7 @@ describe("EVENT_LABELS completeness", () => {
       "customer_confirmed",
       "delivery_confirmed_by_dispatcher",
       "customer_disputed",
+      "customer_dispute_recorded_by_staff",
       "delivery_auto_confirmed",
       "dispute_resolved_completed",
       "dispute_resolved_reopened",
