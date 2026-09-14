@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import type { Transaction } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
@@ -18,11 +19,11 @@ import { REQUEST_NOTES_MAX_LENGTH } from "@/lib/domain/requestNotes";
 
 /**
  * Emulator-backed tests for staff-recorded disputes on unregistered
- * (dispatcher-created) requests — `recordCustomerDisputeByStaff()`
+ * (`customerId: null`) requests — `recordCustomerDisputeByStaff()`
  * (issue #50).
  *
  * These tests prove the Firestore transaction enforces eligibility against
- * COMMITTED state (unregistered + staff-entered + currently "delivered"),
+ * COMMITTED state (`customerId` null + currently "delivered"),
  * that the state change and the `customer_dispute_recorded_by_staff`
  * audit event commit atomically (issue #49 convention), that competing
  * confirmation / auto-confirmation / duplicate-dispute races resolve to
@@ -51,7 +52,8 @@ async function clearState(): Promise<void> {
 }
 
 /**
- * Seeds an UNREGISTERED (dispatcher-entered, `customerId: null`) request.
+ * Seeds an UNREGISTERED (`customerId: null`) request — dispatcher-entered
+ * by default, matching how production unregistered requests are created.
  * Defaults to the eligible state: `status: "delivered"`. Overrides are
  * applied last so tests can move the request to any other state.
  */
@@ -265,20 +267,39 @@ describe("recordCustomerDisputeByStaff — eligibility rejections", () => {
     expect(await requestEventTypes("r1")).toHaveLength(0);
   }, 30_000);
 
-  it("rejects a customerId-null request that was not staff-entered", async () => {
-    // Defensive: every real customerId-null request is dispatcher-created,
-    // so a null-customerId document claiming another source is anomalous
-    // and must not be disputable through this path.
-    await seedRequest("r1", { source: "resident" });
-    await expect(
-      recordCustomerDisputeByStaff({
+  it.each(["resident", "whatsapp"] as const)(
+    "accepts a delivered customerId-null request with source %s — origin does not affect eligibility",
+    async (source) => {
+      // Regression: eligibility is `customerId === null` + `delivered`,
+      // matching `confirmDeliveryByStaff()` — `source` records request
+      // origin only and must not gate the staff dispute path.
+      await seedRequest("r1", { source });
+      await recordCustomerDisputeByStaff({
         requestId: "r1",
         actorId: DISPATCHER,
         actorRole: "dispatcher",
         reason: REASON,
-      }),
-    ).rejects.toThrow("REQUEST_NOT_UNREGISTERED");
-    expect((await requestData("r1"))?.status).toBe("delivered");
+      });
+      expect((await requestData("r1"))?.status).toBe("disputed");
+      const events = await requestEventTypes("r1");
+      expect(events).toContain("customer_dispute_recorded_by_staff");
+    },
+    30_000,
+  );
+
+  it("accepts a delivered customerId-null request with no source field (historical document)", async () => {
+    await seedRequest("r1");
+    await db
+      .collection(REQUESTS)
+      .doc("r1")
+      .update({ source: FieldValue.delete() });
+    await recordCustomerDisputeByStaff({
+      requestId: "r1",
+      actorId: DISPATCHER,
+      actorRole: "dispatcher",
+      reason: REASON,
+    });
+    expect((await requestData("r1"))?.status).toBe("disputed");
   }, 30_000);
 
   it.each([

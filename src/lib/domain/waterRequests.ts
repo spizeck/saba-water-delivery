@@ -1900,12 +1900,13 @@ export interface RecordCustomerDisputeByStaffInput {
  * `resolveDisputeReopened`) applies unchanged. This is staff recording
  * the customer's report — never staff personally disputing a delivery.
  *
- * Deliberately scoped to dispatcher-created unregistered requests only —
- * the same scoping as `confirmDeliveryByStaff()`: `customerId` must be
- * null AND `source` must be "dispatcher" (the only path that creates
- * customerId-null requests). A registered resident's delivery must be
- * disputed through their own authenticated `disputeWaterDelivery()` —
- * the audit trail must never attribute a staff entry to the resident.
+ * Deliberately scoped to unregistered requests only — the same scoping
+ * as `confirmDeliveryByStaff()`: `customerId` must be null. `customerId`
+ * is the authoritative registration linkage; `source` merely records
+ * request origin and does not affect eligibility. A registered
+ * resident's delivery must be disputed through their own authenticated
+ * `disputeWaterDelivery()` — the audit trail must never attribute a
+ * staff entry to the resident.
  *
  * Requires a non-empty reason (trimmed, `REQUEST_NOTES_MAX_LENGTH`
  * characters max) describing what the customer reported; it is stored on
@@ -1942,15 +1943,12 @@ export async function recordCustomerDisputeByStaff(
 
     const data = snap.data()!;
 
-    // Strongest available "unregistered customer" check: the request has
-    // no registered owner AND was staff-entered. `customer_history_linked`
-    // requests fail the first check — once linked they have a registered
-    // owner who must use the resident path.
+    // `customerId === null` is the authoritative "unregistered customer"
+    // marker — the same check `confirmDeliveryByStaff()` uses.
+    // `customer_history_linked` requests fail this check — once linked
+    // they have a registered owner who must use the resident path.
     if (data.customerId) {
       throw new Error("REQUEST_HAS_REGISTERED_CUSTOMER");
-    }
-    if ((data.source ?? "resident") !== "dispatcher") {
-      throw new Error("REQUEST_NOT_UNREGISTERED");
     }
     if (data.status !== "delivered") {
       throw new Error("INVALID_STATUS_FOR_DISPUTE");

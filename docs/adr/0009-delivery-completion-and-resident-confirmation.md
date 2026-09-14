@@ -69,8 +69,9 @@ next job on the resident's confirmation would stall operations.
   > outside the app (phone call / office visit), requiring a reason and
   > transitioning the request to the canonical `disputed` state — so the
   > existing dispute-resolution workflow applies unchanged. The transition is
-  > transactional and re-verifies eligibility (`customerId` null, `source`
-  > `"dispatcher"`, status `"delivered"`) against committed state, so it is
+  > transactional and re-verifies eligibility (`customerId` null — the
+  > authoritative unregistered marker, same as `confirmDeliveryByStaff()` —
+  > and status `"delivered"`) against committed state, so it is
   > race-safe against staff confirmation, lazy auto-confirmation, and duplicate
   > dispute attempts. It records a distinct `customer_dispute_recorded_by_staff`
   > audit event — never `customer_disputed` — so the trail always shows staff

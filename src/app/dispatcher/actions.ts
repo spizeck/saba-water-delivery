@@ -854,12 +854,6 @@ export async function recordCustomerDispute(
             message:
               "This request has a registered customer — they must report issues through their own portal.",
           };
-        case "REQUEST_NOT_UNREGISTERED":
-          return {
-            status: "error",
-            message:
-              "Only a staff-entered request for an unregistered customer can be disputed this way.",
-          };
         case "INVALID_STATUS_FOR_DISPUTE":
           return {
             status: "error",

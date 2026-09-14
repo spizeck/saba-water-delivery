@@ -1510,13 +1510,12 @@ the **Record customer dispute** control on the request detail page.
 
 - **Eligibility** — identical scoping to `confirmDeliveryByStaff()`:
   the transaction requires `customerId === null` AND
-  `source === "dispatcher"` (the only path that creates
-  customerId-null requests) AND `status === "delivered"`. It throws
-  `REQUEST_HAS_REGISTERED_CUSTOMER` for a registered resident's request —
-  residents always dispute through their own authenticated
-  `disputeWaterDelivery()`, so a staff entry can never be attributed to
-  them — and `REQUEST_NOT_UNREGISTERED` for a customerId-null document
-  that was not staff-entered.
+  `status === "delivered"`. `customerId` is the authoritative
+  registration marker; `source` records request origin only and does not
+  affect eligibility. It throws `REQUEST_HAS_REGISTERED_CUSTOMER` for a
+  registered resident's request — residents always dispute through their
+  own authenticated `disputeWaterDelivery()`, so a staff entry can never
+  be attributed to them.
 - **Reason** — required and meaningful: trimmed, non-empty
   (`DISPUTE_REASON_REQUIRED`), capped at `REQUEST_NOTES_MAX_LENGTH`
   (`DISPUTE_REASON_TOO_LONG`). It is stored on the audit event's

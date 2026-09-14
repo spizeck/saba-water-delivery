@@ -305,7 +305,8 @@ Vitest covers the pure domain logic extensively, including:
 - Staff-recorded dispute for unregistered customers (issue #50): the
   emulator-backed `staffRecordedDispute.emulator.test.ts` (run by
   `npm run test:rules`) covering the committed-state eligibility guard
-  (unregistered + staff-entered + `delivered` only), required/length-capped
+  (`customerId` null + `delivered` only, regardless of request `source`),
+  required/length-capped
   reason, atomic audit-event commit, the confirm-vs-dispute,
   auto-confirm-vs-dispute, and duplicate-dispute races, and reuse of the
   unchanged resident dispute + dispute-resolution paths. The server-action

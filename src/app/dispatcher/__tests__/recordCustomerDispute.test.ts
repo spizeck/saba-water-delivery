@@ -182,7 +182,6 @@ describe("recordCustomerDispute — domain error mapping", () => {
   it.each([
     ["REQUEST_NOT_FOUND", "Request not found."],
     ["REQUEST_HAS_REGISTERED_CUSTOMER", "registered customer"],
-    ["REQUEST_NOT_UNREGISTERED", "unregistered customer"],
     ["INVALID_STATUS_FOR_DISPUTE", "status changed"],
     ["DISPUTE_REASON_REQUIRED", "Describe what the customer reported."],
     ["DISPUTE_REASON_TOO_LONG", "1,000 characters"],
