@@ -455,7 +455,7 @@ Composite indexes are defined in `firestore.indexes.json` and support:
 - A resident's own request history and active-request checks
   (`customerId` + `status`/`requestedAt`/`confirmedAt`).
 - Preferred-driver hold expiration scans (`status` + `preferredDriverExpiresAt`).
-- Priority-ordered dispatch selection (`status` + `preferredDriverId`/`priorityRank` + `requestedAt`).
+- Priority-ordered dispatch selection (`status` + `preferredDriverId`/`priorityRank` + `requestedAt`; the override-ranked candidate stream additionally uses `priorityRank` + `dispatchOverrideRank` + `requestedAt`, and the missing-ordering-field catch-all scans by document ID — see TECHNICAL.md "Canonical candidate scan").
 - The general outstanding-request queue (`status` + `requestedAt`).
 - A batch's current member requests, in run-sheet order (`dispatchBatchId` + `batchSequence`).
 - Notification outbox worker queries (issue #53): due pending notifications
