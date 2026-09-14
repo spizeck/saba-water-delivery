@@ -23,9 +23,11 @@ export interface SelectNextDispatchCandidateInput {
   activeDelivery: WaterRequest | null;
   /** An existing pending offer for this driver, if any. */
   pendingOffer: { offer: DriverOffer; request: WaterRequest } | null;
-  /** Preferred-driver holds addressed to this driver (already ordered). */
+  /** Preferred-driver holds addressed to this driver, in canonical
+   * dispatch order (see `dispatchQueueCompare`). */
   holds: WaterRequest[];
-  /** Available requests (already ordered by priority, then age). */
+  /** Available requests in canonical dispatch order (priority bucket,
+   * then override rank, then age). */
   available: WaterRequest[];
   /** Request IDs this driver has recently declined. */
   declinedRequestIds: Set<string>;

@@ -100,9 +100,9 @@ workflow does not need a Playwright test for every edge case.
 |---|---|---|---|---|---|
 | Account eligibility (registry link required) | Critical | action + e2e | verified | Session-route test (403 without linked entry); `driverRegistryLifecycle.test.ts` | — |
 | Online/offline status | High | unit + emulator | verified | `dispatch.test.ts` offerability; registry availability in `driverRegistryLifecycle.test.ts` | — |
-| Offer selection ordering | Critical | unit | partial | `dispatch.test.ts` (priority, ties, holds, decline exclusion, pending-offer reuse); `priority.test.ts`; `dispatchBatchSelection.test.ts` | Ordering beyond candidate window → **#66** |
-| Offer acceptance (`claimWaterRequest`) | Critical | emulator + e2e | verified | `residentCancellation.emulator.test.ts` claim races; `driver-workflow.spec.ts` end-to-end | — |
-| Decline / cooldown / daily limits | High | unit | partial | `dispatch.test.ts` decline exclusion + `declineResult.test.ts`; `driverRegistryLifecycle.test.ts` | Cooldown persistence/limits under broader dispatch rework → #66 |
+| Offer selection ordering | Critical | unit + emulator | verified | `dispatch.test.ts` (priority, ties, holds, decline exclusion, pending-offer reuse); `priority.test.ts`; `dispatchBatchSelection.test.ts`; `dispatchOfferSelection.emulator.test.ts` — canonical ordering across the complete queue via paged streams (>100 candidates, escalation past the old window, catch-all for missing ordering fields, scan bound exhaustion event) | — |
+| Offer acceptance (`claimWaterRequest`) | Critical | emulator + e2e | verified | `residentCancellation.emulator.test.ts` claim races; `dispatchOfferSelection.emulator.test.ts` two-driver accept race; `driver-workflow.spec.ts` end-to-end | — |
+| Decline / cooldown / daily limits | High | unit + emulator | verified | `dispatch.test.ts` decline exclusion + `declineResult.test.ts`; `driverRegistryLifecycle.test.ts`; `dispatchOfferSelection.emulator.test.ts` — declined candidates across page boundaries, all-declined pages do not end the scan | — |
 | Same-request reoffer behavior | High | unit | verified | `dispatch.test.ts` pending-offer reuse/drop cases | — |
 | One-load / two-load collection + meter recording | Critical | e2e + unit | verified | `driver-workflow.spec.ts` (1-load and 2-load with meter); `loadCollection.test.ts` helpers + historical-snapshot integrity | — |
 | Cannot deliver before required collection | Critical | e2e | verified | `driver-workflow.spec.ts` (UI blocks; domain `LOADS_NOT_COLLECTED` guard) | — |
@@ -119,7 +119,7 @@ workflow does not need a Playwright test for every edge case.
 | Allowed request editing | Normal | unit | verified | `requestNotes.test.ts`, `waterRequestNotesMapping.test.ts` | — |
 | Assignment / reassignment | Critical | e2e + emulator | verified | `dispatcher-assignment.spec.ts`; assignment paths in emulator suites | — |
 | Priority + override rank | High | unit + e2e | verified | `priority.test.ts`; escalation display in dispatcher specs | — |
-| Escalation ordering beyond candidate window | High | unit | partial | `dispatch.test.ts` override-rank selection | **#66** |
+| Escalation ordering across the full queue | High | emulator | verified | `dispatchOfferSelection.emulator.test.ts` — rank-0 escalation at position 120 wins over 119 older unranked requests; equal-rank oldest-first; priority bucket still dominates override | — |
 | Preferred-driver behavior on dispatch | High | unit | verified | `preferredDriverPolicy.test.ts`, `dispatch.test.ts` | — |
 | Delivery Run creation + lifecycle | High | e2e + emulator | verified | `delivery-run.spec.ts`; `closeDeliveryRun` atomicity in `auditEventAtomicity.emulator.test.ts` | — |
 | Staff-recorded ordinary delivery | Critical | emulator + e2e | verified | `staffRecordedDispute.emulator.test.ts` confirm paths; dispatcher specs | — |
@@ -230,7 +230,6 @@ describe them as durable.
 | Government staging environment does not exist (government-owned Firebase project, Vercel, Resend domain) | Blocks all `staging-required` rows | **#83** (blocked on #56, #57, #58) |
 | No automated non-destructive production smoke runner | High | **#84** |
 | Auth↔profile reconciliation is diagnostic-only, not resumable/durable | High | **#73** |
-| Dispatch ordering beyond candidate window | Normal | **#66** |
 | Admin portal UI has no e2e coverage (domain + rules verified below the browser layer) | Low | Acceptable — noted; add e2e only if admin UI gains risky client logic |
 | Continuity + account-setup emails are best-effort (not in outbox) | Low — deliberate design | Documented here; revisit only if a lost email matters operationally |
 | Expired-cookie e2e (would need clock control) | Low — unit layer covers the logic | Noted for completeness |

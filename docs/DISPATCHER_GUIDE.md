@@ -141,14 +141,10 @@ override rank, then age. The current action sets rank 0, so included rank-0
 requests remain oldest-first among themselves; escalation never outranks a
 higher priority category.
 
-**Current automatic-offer limitation:** the driver-offer query takes only the
-first 100 available requests ordered by priority and original age before
-applying staff escalation ordering. A newer escalated request outside that
-window can therefore wait behind older, non-escalated requests at the same
-priority. An existing valid offer is also retained until resolved; escalation
-does not replace it. Check actual assignment progress and use the supported
-manual assignment or Delivery Run tools when intervention is needed, subject
-to their usual safeguards. See [#66](https://github.com/spizeck/saba-water-delivery/issues/66).
+Automatic offers now apply the full queue ordering — escalation cannot be
+hidden behind older non-escalated work no matter how large the backlog
+([#66](https://github.com/spizeck/saba-water-delivery/issues/66)). An existing
+valid offer is still retained until resolved; escalation does not replace it.
 
 ## Assignment and reassignment
 

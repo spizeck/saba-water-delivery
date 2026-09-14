@@ -1,8 +1,13 @@
 import "server-only";
 
-import { type DocumentReference, FieldValue } from "firebase-admin/firestore";
+import {
+  type DocumentReference,
+  FieldPath,
+  FieldValue,
+} from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
+import { getLogger } from "@/lib/logging";
 
 import {
   createDriverOffer,
@@ -12,8 +17,8 @@ import {
 } from "./driverOffers";
 import { sabaCalendarDateKey, startOfSabaDay } from "@/lib/utils/datetime";
 import { appConfig } from "./config";
-import type { DriverOffer, WaterRequest } from "./types";
-import { dispatchQueueCompare } from "./dispatchBatchSelection";
+import { PRIORITY_RANK, priorityRankFor } from "./priority";
+import type { DispatchPriority, DriverOffer, WaterRequest } from "./types";
 import {
   isOfferableToDriver,
   selectNextDispatchCandidate,
@@ -42,6 +47,193 @@ import {
 
 const REQUESTS_COLLECTION = "waterRequests";
 
+const logger = getLogger("domain.dispatch");
+
+// ---------------------------------------------------------------------------
+// Canonical candidate scan (issue #66)
+// ---------------------------------------------------------------------------
+
+/**
+ * Documents read per Firestore page while scanning dispatch candidates.
+ * Matches the previous `limit(100)` window, but is no longer a cap on
+ * selection correctness — it only controls read batching.
+ */
+const CANDIDATE_PAGE_SIZE = 100;
+
+/**
+ * Total documents a single `getNextOfferForDriver` call may read across
+ * ALL candidate streams (holds + available + the legacy catch-all).
+ * Bounds a selection attempt — far beyond Saba's realistic queue size —
+ * while still making a pathological queue terminate instead of scanning
+ * unboundedly. Reaching this bound is a safety stop, not a completeness
+ * result; it is logged as `dispatch.candidate_scan_exhausted` so an
+ * inconclusive selection is observable in operational telemetry.
+ */
+const MAX_CANDIDATE_DOCS = 1000;
+
+interface CandidateScanBudget {
+  docsScanned: number;
+  /** Set when a stream still had unread candidates when the budget ran
+   * out — meaning the selection result is not provably complete. */
+  exhausted: boolean;
+}
+
+/**
+ * Lazily yields a query's documents in page-size batches using
+ * `startAfter(document)` cursors — deterministic, no offset pagination,
+ * and no duplicates or skips within the stream's ordering. Stops when the
+ * stream ends or the shared document budget is spent.
+ */
+async function* pageCandidates(
+  query: FirebaseFirestore.Query,
+  budget: CandidateScanBudget,
+): AsyncGenerator<FirebaseFirestore.QueryDocumentSnapshot> {
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+  while (true) {
+    if (budget.docsScanned >= MAX_CANDIDATE_DOCS) {
+      // One extra 1-doc probe distinguishes "budget spent with more
+      // candidates unread" from "stream happened to end at the bound".
+      let probe = query.limit(1);
+      if (cursor) probe = probe.startAfter(cursor);
+      if (!(await probe.get()).empty) budget.exhausted = true;
+      return;
+    }
+    let page = query.limit(CANDIDATE_PAGE_SIZE);
+    if (cursor) page = page.startAfter(cursor);
+    const snap = await page.get();
+    budget.docsScanned += snap.size;
+    if (snap.empty) return;
+    for (const doc of snap.docs) yield doc;
+    if (snap.size < CANDIDATE_PAGE_SIZE) return;
+    cursor = snap.docs[snap.size - 1];
+  }
+}
+
+/**
+ * Yields candidate requests in EXACT canonical dispatch order — the same
+ * order `dispatchQueueCompare` produces (priority bucket →
+ * `dispatchOverrideRank` ascending with unranked last → original
+ * `requestedAt` ascending) — over the complete matching queue, not a
+ * fixed-size pre-filter window (issue #66).
+ *
+ * The canonical order cannot be expressed as a single Firestore query:
+ * "unranked last" is not an index ordering (Firestore `!= null` orders
+ * ranked docs by their rank, but unranked/null docs cannot be ordered
+ * after them), and `orderBy`/`!= null` silently drop documents where the
+ * field is missing entirely. So the order is decomposed into streams that
+ * concatenate exactly to it:
+ *
+ *   for each `dispatchPriority` bucket (best first):
+ *     R) ranked docs only — `dispatchOverrideRank != null` ordered by
+ *        (dispatchOverrideRank, requestedAt, documentId)
+ *     L) the whole bucket ordered by (requestedAt, documentId) — NO
+ *        dispatchOverrideRank filter, so legacy documents that predate
+ *        the field (never backfilled) are still reached; docs already
+ *        yielded by R are skipped via the `seen` set.
+ *
+ *   then a catch-all stream ordered by documentId with no ordering-field
+ *   filters at all — the only query shape that can see a document missing
+ *   `dispatchPriority` or `requestedAt`. Such documents should not exist
+ *   (both fields are written on every create/priority-change path), but
+ *   if one does it is surfaced last rather than permanently hidden —
+ *   consistent with `toWaterRequest`'s normal-priority/newest-age
+ *   defaults for missing fields.
+ *
+ * Buckets key on `dispatchPriority`, NOT the denormalized `priorityRank`,
+ * because the canonical comparator derives the bucket via
+ * `priorityRankFor(request.dispatchPriority)`. Keying on stored
+ * `priorityRank` would misplace documents where the denormalized field is
+ * missing or stale (they would sink to the catch-all behind genuinely
+ * lower-priority work). `priorityRank` remains write-only bookkeeping for
+ * other readers and is no longer consulted here.
+ *
+ * Reads stay lazy: streams are only paged as far as the caller consumes,
+ * so the common case costs 1–2 small queries. There is no global queue
+ * snapshot — a request that changes class mid-scan can be skipped or seen
+ * twice, which is safe because selection is advisory and
+ * `claimWaterRequest()` remains the atomic authority.
+ */
+async function* iterateCandidatesInDispatchOrder(options: {
+  status: "available" | "preferred_driver_hold";
+  preferredDriverId?: string;
+  budget: CandidateScanBudget;
+}): AsyncGenerator<WaterRequest> {
+  const db = getAdminDb();
+  const { status, preferredDriverId, budget } = options;
+  const seen = new Set<string>();
+
+  const scoped = (): FirebaseFirestore.Query => {
+    let q: FirebaseFirestore.Query = db
+      .collection(REQUESTS_COLLECTION)
+      .where("status", "==", status);
+    if (preferredDriverId) {
+      q = q.where("preferredDriverId", "==", preferredDriverId);
+    }
+    return q;
+  };
+
+  // Priority buckets in canonical order — keyed on `dispatchPriority`,
+  // the field `dispatchQueueCompare` actually reads via `priorityRankFor`.
+  // Derived from the rank table so a future priority level is picked up
+  // automatically.
+  const priorities = [...Object.keys(PRIORITY_RANK)] as DispatchPriority[];
+  priorities.sort((a, b) => priorityRankFor(a) - priorityRankFor(b));
+
+  for (const priority of priorities) {
+    const ranked = scoped()
+      .where("dispatchPriority", "==", priority)
+      .where("dispatchOverrideRank", "!=", null)
+      .orderBy("dispatchOverrideRank")
+      .orderBy("requestedAt")
+      .orderBy(FieldPath.documentId());
+    for await (const doc of pageCandidates(ranked, budget)) {
+      seen.add(doc.id);
+      yield toWaterRequest(doc.id, doc.data());
+    }
+
+    const byAge = scoped()
+      .where("dispatchPriority", "==", priority)
+      .orderBy("requestedAt")
+      .orderBy(FieldPath.documentId());
+    for await (const doc of pageCandidates(byAge, budget)) {
+      if (seen.has(doc.id)) continue;
+      seen.add(doc.id);
+      yield toWaterRequest(doc.id, doc.data());
+    }
+  }
+
+  const catchAll = scoped().orderBy(FieldPath.documentId());
+  for await (const doc of pageCandidates(catchAll, budget)) {
+    if (seen.has(doc.id)) continue;
+    seen.add(doc.id);
+    yield toWaterRequest(doc.id, doc.data());
+  }
+}
+
+/**
+ * Returns the first candidate in canonical dispatch order that satisfies
+ * `eligible`, scanning lazily and stopping at the first match. Returns
+ * null when the queue is provably exhausted OR when the shared scan
+ * budget was spent — the latter sets `budget.exhausted` so the caller can
+ * surface an inconclusive result.
+ */
+async function findFirstCandidate(
+  scope: {
+    status: "available" | "preferred_driver_hold";
+    preferredDriverId?: string;
+  },
+  eligible: (request: WaterRequest) => boolean,
+  budget: CandidateScanBudget,
+): Promise<WaterRequest | null> {
+  for await (const request of iterateCandidatesInDispatchOrder({
+    ...scope,
+    budget,
+  })) {
+    if (eligible(request)) return request;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Selecting the next offer
 // ---------------------------------------------------------------------------
@@ -59,16 +251,17 @@ export interface NextOffer {
  * Selection priority:
  *   1. A preferred-driver hold addressed to this driver (not yet expired).
  *      Ties (more than one hold addressed to the same driver) are broken
- *      by dispatch priority, then oldest request first.
- *   2. Otherwise, the highest dispatch-priority "available" request this
- *      driver has not already declined, oldest first within the same
- *      priority (see PRODUCT.md "Priority-Based Dispatch" /
- *      TECHNICAL.md "Priority-Aware Selection") — critical requests
- *      before urgent, urgent before normal, and fairness-by-age
- *      preserved within each level. Ordering uses the denormalized
- *      numeric `priorityRank` field (see `src/lib/domain/priority.ts`)
- *      because "critical" < "urgent" < "normal" alphabetically would
- *      not match the intended order.
+ *      by the canonical queue order.
+ *   2. Otherwise, the highest-ranked "available" request this driver has
+ *      not already declined, in canonical dispatch order — priority
+ *      bucket, then `dispatchOverrideRank` (unranked last), then oldest
+ *      `requestedAt` (see PRODUCT.md "Priority-Based Dispatch" /
+ *      TECHNICAL.md "Dispatch Offer Selection").
+ *
+ * Both candidate pools are produced by `iterateCandidatesInDispatchOrder`,
+ * which paginates the complete matching queue in canonical order — a
+ * fixed-size pre-filter window can no longer hide a better-ranked or
+ * merely-later eligible request (issue #66).
  *
  * Callers must ensure the driver is online, eligible, and not in a
  * decline cooldown before calling this — those are prerequisites for
@@ -77,7 +270,6 @@ export interface NextOffer {
 export async function getNextOfferForDriver(
   driverId: string,
 ): Promise<NextOffer | null> {
-  const db = getAdminDb();
   const now = new Date();
 
   // Reconcile stale activeRequestId before checking claimed deliveries.
@@ -122,46 +314,63 @@ export async function getNextOfferForDriver(
   // job (mirrors the previous browsable-queue behavior).
   await expirePreferredDriverHolds(now);
 
-  // Priority 1: preferred-driver hold addressed to this driver. Ordered
-  // by dispatch priority first, then oldest request first, in case more
-  // than one hold is ever addressed to the same driver.
-  const holdSnapshot = await db
-    .collection(REQUESTS_COLLECTION)
-    .where("status", "==", "preferred_driver_hold")
-    .where("preferredDriverId", "==", driverId)
-    .orderBy("priorityRank", "asc")
-    .orderBy("requestedAt", "asc")
-    .limit(1)
-    .get();
-  const holds = holdSnapshot.docs
-    .map((doc) => toWaterRequest(doc.id, doc.data()))
-    .sort(dispatchQueueCompare);
+  // Candidate scans share one page budget so a single selection attempt
+  // is bounded across every stream it consults. When a valid pending
+  // offer exists it wins by policy — no queue reads are needed at all.
+  const budget: CandidateScanBudget = { docsScanned: 0, exhausted: false };
 
-  // Priority 2: highest dispatch-priority open request not already
-  // declined by this driver recently, oldest first within the same
-  // priority level — see PRODUCT.md "Priority-Based Dispatch".
-  const availableSnapshot = await db
-    .collection(REQUESTS_COLLECTION)
-    .where("status", "==", "available")
-    .orderBy("priorityRank", "asc")
-    .orderBy("requestedAt", "asc")
-    .limit(100)
-    .get();
-  const available = availableSnapshot.docs
-    .map((doc) => toWaterRequest(doc.id, doc.data()))
-    .sort(dispatchQueueCompare);
+  let holdCandidate: WaterRequest | null = null;
+  let availableCandidate: WaterRequest | null = null;
+  if (!pendingPair) {
+    // Priority 1: the canonically-first preferred-driver hold addressed
+    // to this driver that is still offerable (not expired).
+    holdCandidate = await findFirstCandidate(
+      { status: "preferred_driver_hold", preferredDriverId: driverId },
+      (request) => isOfferableToDriver(request, driverId, now),
+      budget,
+    );
+
+    // Priority 2: the canonically-first available request this driver has
+    // not recently declined — see PRODUCT.md "Priority-Based Dispatch".
+    if (!holdCandidate) {
+      availableCandidate = await findFirstCandidate(
+        { status: "available" },
+        (request) =>
+          isOfferableToDriver(request, driverId, now) &&
+          !declinedIds.has(request.id),
+        budget,
+      );
+    }
+  }
 
   const candidate = selectNextDispatchCandidate({
     activeDelivery,
     pendingOffer: pendingPair,
-    holds,
-    available,
+    // Each array carries at most the first eligible candidate found by the
+    // canonical paginated scan — the selector's "first eligible wins"
+    // iteration is unchanged, so precedence (pending → hold → available)
+    // and decline semantics stay identical.
+    holds: holdCandidate ? [holdCandidate] : [],
+    available: availableCandidate ? [availableCandidate] : [],
     declinedRequestIds: declinedIds,
     driverId,
     now,
   });
 
-  if (!candidate) return null;
+  if (!candidate) {
+    if (budget.exhausted) {
+      // The scan hit its safety bound with unread candidates remaining:
+      // "no offer" here is inconclusive — eligible work may exist beyond
+      // the bound. Surface it operationally; never silently. Counts only —
+      // no request IDs or customer data.
+      logger.warn("dispatch.candidate_scan_exhausted", {
+        driverId,
+        docsScanned: budget.docsScanned,
+        docLimit: MAX_CANDIDATE_DOCS,
+      });
+    }
+    return null;
+  }
 
   // When the selected candidate is the request already offered to this
   // driver, return the existing pending offer instead of minting a

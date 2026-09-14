@@ -739,9 +739,9 @@ cherry-picking (see PRODUCT.md "Dispatch Offers").
    queue stays healthy without a scheduled job).
 4. Select a candidate:
    - A `preferred_driver_hold` addressed to this driver, if not expired.
-   - Otherwise, select from the bounded `available` candidate query described
-     below, skipping recently declined requests. Comparator ordering applies
-     only to retrieved candidates, not the complete queue.
+   - Otherwise, the first eligible `available` request in canonical order
+     from the paginated candidate scan described below, skipping recently
+     declined requests.
 5. Create a `driverOffers` document for the candidate and return it.
 
 ## Accept / decline
@@ -1285,50 +1285,88 @@ alphabetical order of those strings does not match the intended
 critical-first ordering. Every request also stores a denormalized
 numeric `priorityRank` (`priorityRankFor()` in `priority.ts`: critical =
 0, urgent = 1, normal = 2), kept in sync everywhere `dispatchPriority` is
-written (`createWaterRequest()`, `changeRequestPriority()`). All
-priority-aware Firestore queries `orderBy("priorityRank", "asc")` first,
-then `orderBy("requestedAt", "asc")` — see `firestore.indexes.json` for
-the composite indexes this requires.
+written (`createWaterRequest()`, `changeRequestPriority()`). The batch
+candidate query `orderBy("priorityRank", "asc")` first, then
+`orderBy("requestedAt", "asc")` — see `firestore.indexes.json` for the
+composite indexes this requires. Driver-offer selection deliberately does
+**not** trust `priorityRank`: `dispatchQueueCompare` buckets by
+`priorityRankFor(request.dispatchPriority)`, so the candidate scan keys
+its priority buckets on `dispatchPriority` itself and treats a missing or
+stale `priorityRank` as irrelevant (see "Canonical candidate scan").
 
 ## Dispatch offer selection
 
-The intended/canonical queue comparator, `dispatchQueueCompare`, orders by
+The canonical queue comparator, `dispatchQueueCompare`, orders by
 priority category, then `dispatchOverrideRank` (lower first, null last), then
-original `requestedAt`. This is an ordering function over the records supplied
-to it, not proof that the driver-offer query retrieves the complete ranked queue.
+original `requestedAt`. The offer-selection query path applies that same order
+over the **complete** eligible queue — not a bounded pre-filter window.
 
 `getNextOfferForDriver()` (`src/lib/domain/dispatch.ts`) currently:
 
 1. Rejects new work while claimed work exists and retains a still-valid pending
    offer (subject to decline exclusion); pending offers are not preempted by
-   later escalation.
-2. Queries holds addressed to the driver, ordered by `priorityRank` then
-   `requestedAt`, with `limit(1)`. Re-sorting this single result cannot rank all
-   holds. The current escalation action releases a held request to available.
-3. Queries `status == available`, ordered by `priorityRank` then
-   `requestedAt`, with **`limit(100)` before retrieval**. Only then does it map
-   results and sort by `dispatchQueueCompare` in memory.
-4. The selector prefers the retained pending offer, then a valid fetched hold,
-   then the first non-declined fetched available candidate. It does not fetch
-   another page after decline filtering.
+   later escalation, and no queue reads happen while one is reusable.
+2. Scans holds addressed to the driver in canonical order and takes the first
+   offerable one.
+3. Otherwise scans `status == available` in canonical order and takes the first
+   candidate that is offerable and not recently declined by this driver.
 
-**Current limitation ([#66](https://github.com/spizeck/saba-water-delivery/issues/66)):**
-with 100 older, unranked available requests and a newer rank-0 request at the
-same priority, the newer escalation is excluded before sorting. An older
-unranked request can be offered first despite the comparator's intended order.
-If all fetched candidates are declined, selection can also return no new offer
-while work exists beyond the window. A larger fixed limit alone would only
-move the boundary, not establish complete-queue ordering.
+## Canonical candidate scan (issue #66)
+
+The canonical order — `(priorityRankFor(dispatchPriority),
+dispatchOverrideRank` with unranked last`, requestedAt)` — cannot be
+expressed as one Firestore query, and any `orderBy`/`!=` filter silently
+drops documents missing that field entirely.
+`iterateCandidatesInDispatchOrder()` therefore decomposes it into lazy,
+cursor-paginated streams that concatenate to exactly the canonical order:
+
+- Per `dispatchPriority` bucket (best first), two streams:
+  - **ranked:** `dispatchOverrideRank != null`, ordered by
+    `(dispatchOverrideRank, requestedAt, documentId)` — all ranked documents
+    precede all unranked ones within a bucket, so this stream is canonically
+    first in the bucket.
+  - **by-age:** the whole bucket ordered by `(requestedAt, documentId)` with
+    **no** `dispatchOverrideRank` filter, so documents written before the
+    field existed (never backfilled) are still reached; documents already
+    yielded by the ranked stream are skipped.
+- A final **catch-all** stream ordered by `documentId` alone — the only query
+  shape that can see a document missing `dispatchPriority` or `requestedAt`
+  — guarantees no `status`-matching document can be permanently hidden by a
+  missing ordering field. It is only read if every bucket stream produced no
+  eligible candidate.
+
+Buckets are keyed on `dispatchPriority`, not the denormalized
+`priorityRank`, because the comparator derives the bucket via
+`priorityRankFor(request.dispatchPriority)`. A document with a missing or
+stale `priorityRank` therefore still lands in its correct bucket; only a
+document missing `dispatchPriority`/`requestedAt` itself reaches the
+catch-all (and `toWaterRequest` already defaults those to
+normal-priority/newest-age semantics).
+
+Pagination uses `startAfter(document)` cursors (no offsets, no duplicates or
+skips within a stream). Reads are lazy — only as many pages as the scan
+consumes — and bounded by `MAX_CANDIDATE_DOCS` (1000) documents per selection
+attempt across all streams. If the bound is reached with candidates still
+unread, selection returns no offer **and** logs a `warn`-level
+`dispatch.candidate_scan_exhausted` structured event (counts only — no request
+IDs or customer data), so an inconclusive result is observable rather than
+silent. The bound is a safety stop for pathological queues, far beyond Saba's
+realistic queue size.
+
+Because escalation (`dispatchOverrideRank`) is a separate stream ordered
+before the age-ordered stream within its bucket, a rank-0 request cannot be
+hidden behind older unranked work regardless of backlog size, and a page of
+declined candidates can never be mistaken for an empty queue — the scan
+continues until it finds an eligible candidate, provably exhausts the queue,
+or hits the observable bound.
 
 Delivery Run selection is a separate path: `getBatchEligibleRequests()` has no
-corresponding 100-result limit, and the new-run page sorts its fetched eligible
-list with `sortForBatchSelection`. Its list order must not be used as evidence
-that automatic driver offers have the same candidate coverage.
+candidate-window limit, and the new-run page sorts its fetched eligible
+list with `sortForBatchSelection`.
 
-These are candidate-selection limits, not a relaxation of the atomic claim
-transaction. Offers remain non-reservations; acceptance revalidates current
-claimability and driver workload. PR #65 documents this behavior without changing
-queries, indexes, business rules, or runtime code.
+Selection remains advisory: offers are non-reservations, and the atomic claim
+transaction in `claimWaterRequest()` is still the sole authority on claim
+correctness under concurrent acceptance.
 
 ## Preferred driver vs. priority
 
@@ -1478,7 +1516,7 @@ over a live profile lookup.
 ## Same dispatch workflow
 
 A dispatcher-created request is a normal `waterRequests` document like
-any other — preferred-driver hold/decline, the bounded candidate selection
+any other — preferred-driver hold/decline, the canonical candidate scan
 described in [Dispatch offer selection](#dispatch-offer-selection),
 one-offer-at-a-time driver dispatch, atomic claiming, delivery, dispute,
 reassignment, cancellation, and statistics all operate on it identically.

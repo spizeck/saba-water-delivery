@@ -455,14 +455,13 @@ priority, staff escalation rank precedes original request age. Equal ranks and
 unranked requests remain oldest-first. Decline, hold expiration, and
 reassignment preserve the original request time.
 
-Current automatic offers do not guarantee that ordering across the complete
-queue: only the first 100 available requests by priority and original age are
-fetched before escalation ordering is applied. A newer escalated request outside
-that set can be delayed behind older same-priority work. Valid pending offers
-are retained and preferred-driver holds are selected separately. See
+Automatic offers apply that ordering across the complete eligible queue: the
+selection path pages through candidates in canonical order rather than reading
+a fixed-size window, so an escalated request cannot be delayed behind older
+same-priority work regardless of backlog size. Valid pending offers are still
+retained, and preferred-driver holds are selected separately. See
 [TECHNICAL.md](./TECHNICAL.md#dispatch-offer-selection) for the implementation
-boundary and [#66](https://github.com/spizeck/saba-water-delivery/issues/66) for
-the runtime follow-up.
+boundary.
 
 Drivers still receive only ONE offer at a time — priority changes which
 request that is, never how many they see.
