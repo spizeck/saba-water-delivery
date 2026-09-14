@@ -167,7 +167,7 @@ describe them as durable.
 | Transient failure → bounded backoff retry | Critical | emulator + unit | verified | `notificationOutbox.emulator.test.ts` retry suites; `outboxPolicy.test.ts` `computeBackoffMs` | — |
 | Terminal failure (max attempts) | High | emulator | verified | `notificationOutbox.emulator.test.ts` | — |
 | Idempotency (no duplicate sends) | Critical | emulator + unit | verified | `notificationOutbox.emulator.test.ts`; `outboxPolicy.test.ts` deterministic keys | — |
-| Provider-accept / local-record-failed ambiguity | Critical | emulator | verified | `notificationOutbox.emulator.test.ts` — provider key stable, no resend | — |
+| Provider-accept / local-record-failed ambiguity | Critical | emulator | verified | `notificationOutbox.emulator.test.ts` — retry reuses identical provider idempotency key; provider deduplication protects the ambiguous provider-accept/local-recording crash window | — |
 | Worker leasing / concurrent workers | High | emulator | verified | `notificationOutbox.emulator.test.ts` lease + reclaim suites | — |
 | Admin manual retry | Normal | emulator | verified | `notificationOutbox.emulator.test.ts` | — |
 | Sender composition / recipient selection | High | unit | verified | `deliveryConfirmationSender.test.ts`, `deliveryNotificationTrigger.test.ts`, `deliveryConfirmationEmail*.test.ts` | — |
