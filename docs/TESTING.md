@@ -4,6 +4,20 @@ This project targets **Node.js 24** (pinned in `.nvmrc` and
 `package.json` `engines`). Use `fnm use` / `nvm use` to match it before
 running the commands below.
 
+## Companion documents
+
+- [`PRODUCTION_READINESS_TEST_MATRIX.md`](./PRODUCTION_READINESS_TEST_MATRIX.md)
+  is the canonical record of **what** each workflow's tests prove — the
+  verification layer, environment, and honest coverage status per
+  production behavior. This file is canonical for **how** tests run; the
+  matrix is canonical for **what** they prove. When a change adds a
+  supported workflow, integration, or production boundary — or changes how
+  one is verified — update the matrix in the same PR.
+- [`ACCEPTANCE_TESTING.md`](./ACCEPTANCE_TESTING.md) defines the
+  government staging/acceptance procedure and the non-destructive
+  production smoke boundary — the verification that local/CI structurally
+  cannot provide.
+
 ## Standard verification
 
 Run the full non-destructive suite before considering any change
@@ -175,10 +189,11 @@ Production/Preview.
 ### Test data, roles, and isolation
 
 - **Seeded roles** (`e2e/support/config.ts`): `resident`, `driver`,
-  `dispatcher`, and `admin` — deterministic uids/emails/passwords that only
-  ever exist in the local Auth emulator. The resident has a complete canonical
-  profile; the driver has a linked Driver Registry entry (online, eligible)
-  with a meter at the default fill station.
+  `dispatcher`, `admin`, and `viewer` — deterministic uids/emails/passwords
+  that only ever exist in the local Auth emulator. The resident has a
+  complete canonical profile; the driver has a linked Driver Registry entry
+  (online, eligible) with a meter at the default fill station; the viewer
+  exercises the read-only oversight portal.
 - **Seeding** (`e2e/support/seed.ts`) writes plain documents via the Admin SDK
   against the emulator. Global setup (`e2e/global-setup.ts`) clears the
   emulators and seeds the baseline once; each spec that mutates shared state
@@ -484,7 +499,10 @@ firebase emulators:exec --only firestore "node scripts/production-integrity.mjs"
 ## Manual smoke test
 
 Run through this checklist before a production deployment that touches
-any of these areas.
+any of these areas. This is a **pre-release manual checklist** — the
+distinct, non-destructive **post-deployment** production smoke boundary is
+defined in [`ACCEPTANCE_TESTING.md`](./ACCEPTANCE_TESTING.md) (liveness
+probes only; no operational mutations).
 
 ### Resident
 

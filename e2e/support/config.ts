@@ -53,7 +53,7 @@ export const E2E_SERVER_ENV: Record<string, string> = {
   GCLOUD_PROJECT: E2E_PROJECT_ID,
 };
 
-export type E2eRole = "resident" | "driver" | "dispatcher" | "admin";
+export type E2eRole = "resident" | "driver" | "dispatcher" | "admin" | "viewer";
 
 export interface E2eAccount {
   uid: string;
@@ -102,6 +102,14 @@ export const E2E_ACCOUNTS: Record<E2eRole, E2eAccount> = {
     displayName: "E2E Admin",
     roles: ["admin"],
     portal: "admin",
+  },
+  viewer: {
+    uid: "e2e-viewer",
+    email: "viewer@e2e.test",
+    password: "e2e-viewer-pw",
+    displayName: "E2E Viewer",
+    roles: ["viewer"],
+    portal: "viewer",
   },
 };
 
