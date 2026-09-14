@@ -70,9 +70,7 @@ test.describe("authentication and authorization", () => {
     });
     await expect(facebook).toBeVisible();
     await expect(facebook).toBeDisabled();
-    await expect(
-      page.getByText("Continue with Facebook"),
-    ).toBeVisible();
+    await expect(page.getByText("Continue with Facebook")).toBeVisible();
     await expect(page.getByText("Coming Soon")).toBeVisible();
   });
 });
