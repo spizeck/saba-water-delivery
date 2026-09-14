@@ -201,6 +201,7 @@ export async function seedBaseline(): Promise<void> {
   await seedAuthUser(E2E_ACCOUNTS.driver);
   await seedAuthUser(E2E_ACCOUNTS.dispatcher);
   await seedAuthUser(E2E_ACCOUNTS.admin);
+  await seedAuthUser(E2E_ACCOUNTS.viewer);
 
   await seedUserProfile(E2E_ACCOUNTS.resident, {
     village: E2E_CANONICAL_VILLAGE,
@@ -211,6 +212,7 @@ export async function seedBaseline(): Promise<void> {
   await seedUserProfile(E2E_ACCOUNTS.driver);
   await seedUserProfile(E2E_ACCOUNTS.dispatcher);
   await seedUserProfile(E2E_ACCOUNTS.admin);
+  await seedUserProfile(E2E_ACCOUNTS.viewer);
 
   await seedFillStations();
   await seedDriverRegistry();

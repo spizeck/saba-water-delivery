@@ -58,4 +58,19 @@ test.describe("authentication and authorization", () => {
       page.getByRole("button", { name: "Log in", exact: true }),
     ).toBeVisible();
   });
+
+  test("Facebook sign-in stays disabled — it is not a production-enabled provider", async ({
+    page,
+  }) => {
+    await page.goto("/login?portal=resident");
+    const facebook = page.getByRole("button", {
+      // The button's accessible name comes from its aria-label, not the
+      // visible "Continue with Facebook" text.
+      name: "Facebook login will be available soon.",
+    });
+    await expect(facebook).toBeVisible();
+    await expect(facebook).toBeDisabled();
+    await expect(page.getByText("Continue with Facebook")).toBeVisible();
+    await expect(page.getByText("Coming Soon")).toBeVisible();
+  });
 });

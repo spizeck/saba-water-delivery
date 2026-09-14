@@ -19,6 +19,8 @@ inferring behavior from the code:
 | Firestore data model | [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) |
 | Code conventions and development philosophy | [`DEVIN.md`](./DEVIN.md) |
 | Testing and CI | [`docs/TESTING.md`](./docs/TESTING.md) |
+| What production behavior each test proves | [`docs/PRODUCTION_READINESS_TEST_MATRIX.md`](./docs/PRODUCTION_READINESS_TEST_MATRIX.md) |
+| Staging acceptance and production smoke | [`docs/ACCEPTANCE_TESTING.md`](./docs/ACCEPTANCE_TESTING.md) |
 | Deployment, environment variables, branch protection | [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) |
 | Day-to-day operations | [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) |
 | Outage and incident procedures | [`docs/INCIDENT_RECOVERY.md`](./docs/INCIDENT_RECOVERY.md) |
@@ -103,6 +105,12 @@ Match the test layer to the change:
 
 Bug fixes should include a regression test where practical — one that
 fails without the fix. Broader test-coverage gaps are tracked in #67.
+
+When a change adds a supported workflow, integration, or production
+boundary — or changes how an existing one is verified — update
+[`docs/PRODUCTION_READINESS_TEST_MATRIX.md`](./docs/PRODUCTION_READINESS_TEST_MATRIX.md)
+in the same PR. The matrix is the maintained record of which production
+behaviors are verified and how; keeping it current is part of the change.
 
 ## Security and privacy
 
