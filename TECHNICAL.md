@@ -1677,29 +1677,111 @@ role lists, driver registry links, and duplicate-owned request counts.
   non-transactional preview — the preview is UI input only, so a canonical or
   duplicate that concurrently gained `admin` cannot slip past the guard. Merges
   that touch no admin are unaffected.
-- **Duplicate Firebase Auth account** is deleted only after the Firestore
-  transaction commits — the **one merge side effect that cannot join the
-  transaction**, because Firebase Auth is not a Firestore participant. Running it
-  after the commit means a transaction failure never deletes an Auth account for
-  a merge that did not happen. The merge **only attempts deletion; it does not
-  disable the identity**. So if deletion fails the merge still succeeded (all
-  Firestore state + audit committed), but the duplicate Auth identity **remains
-  able to authenticate until operational cleanup deletes it** — and because the
-  duplicate's `users` document is intentionally retained for historical linkage
-  with only `admin` revoked (above), a merged-away identity could still sign in
-  and act with any non-`admin` roles it still holds. The error is surfaced and
-  recorded so cleanup/reconciliation can retry deletion. Making this external
-  step durable/resumable — so a merged-away identity cannot keep authenticating —
-  is tracked separately in
-  [#73](https://github.com/spizeck/saba-water-delivery/issues/73).
+- **Duplicate Firebase Auth identity is reconciled after commit — durably**
+  (issue #73, [ADR 0018](docs/adr/0018-account-merge-auth-reconciliation.md)).
+  Firebase Auth cannot join the Firestore transaction, so the transaction
+  instead writes the **obligation**: `users/{duplicateUid}.mergedIntoUserId`
+  plus an `authReconciliation` sub-record (`state: "pending"`) on the audit
+  event. The merged-away uid is then rejected at both authentication
+  boundaries immediately (see below), and reconciliation converges the Auth
+  identity to deletion as an at-least-once, idempotent process — see
+  "Account-merge Auth reconciliation" below.
 - **Audit record** (`accountMergeEvents/{eventId}`) is written **inside the
   merge transaction** — canonical/duplicate uids, actor, reason, role decision,
-  driver link decision, relink counts, and whether the duplicate's `admin` role
-  was revoked (`duplicateAdminRevoked`) — so it cannot be lost while the merge's
-  state changes commit. The external Auth-deletion outcome
-  (`duplicateAuthDeleted` / `error`) is filled in by a best-effort update after
-  the commit; that update is the sole non-atomic step, documented in
-  [ADR 0010](docs/adr/0010-audit-events-vs-application-logs.md).
+  driver link decision, relink counts, whether the duplicate's `admin` role
+  was revoked (`duplicateAdminRevoked`), and the pending `authReconciliation`
+  sub-record — so neither the merge nor its cleanup obligation can be lost
+  while the merge's state changes commit. The reconciliation outcome
+  (`duplicateAuthDeleted`, `authReconciliation.state`, `error`) is filled in
+  by post-commit attempts; those updates are the non-atomic side of the
+  boundary, made safe by idempotent replay rather than atomicity (ADR 0010,
+  ADR 0018).
+
+## Account-merge Auth reconciliation (issue #73)
+
+The one merge effect that can never be transactional — removing the
+merged-away **Firebase Auth** identity — is handled by a dedicated durable
+reconciliation mechanism in `src/lib/domain/mergeReconciliation.ts`
+(orchestration) and `mergeReconciliationPolicy.ts` (pure state machine,
+backoff, failure classification). This is intentionally a single
+purpose-built state machine for this boundary, not a generic saga framework.
+
+**Layered safety.** Three independent controls converge the merged-away
+identity to a safe state:
+
+1. **Application-level rejection (primary, from commit time).** The merge
+   transaction stamps `users/{duplicateUid}.mergedIntoUserId`.
+   `POST /api/auth/session` rejects that uid before minting a session cookie
+   (it also verifies the ID token *with* revocation checking —
+   `verifyIdToken(token, true)` — and refuses disabled Auth users), and
+   `getSessionUser()` rejects it after `verifySessionCookie(cookie, true)`.
+   Access is therefore blocked from the moment the merge commits, even if
+   every subsequent Auth call fails. Rejection is logged as the sanitized
+   security event `security.authentication.merged_identity_rejected`
+   (boundary + opaque uid only).
+2. **Auth-side convergence.** Each attempt runs `getUser` →
+   `updateUser({disabled: true})` (skipped if already disabled) →
+   `revokeRefreshTokens` → `deleteUser`. Disable-first means even a failed
+   attempt leaves the identity disabled rather than active; revocation bounds
+   the life of already-issued credentials (both verification paths check
+   revocation); `auth/user-not-found` anywhere is idempotent success.
+3. **Durable retry until terminal.** Unresolved work is durable state, not a
+   lost error: the merge request attempts reconciliation immediately after
+   commit, and the protected hourly cron
+   `GET /api/cron/merge-auth-reconciliation` (`CRON_SECRET`) sweeps whatever
+   remains — including legacy `accountMergeEvents` with no sub-record, which
+   are treated as pending and have the `mergedIntoUserId` marker backfilled
+   on first claim.
+
+**State machine** on `accountMergeEvents/{id}.authReconciliation`:
+`pending` → `processing` (leased) → `reconciled` | back to `pending`
+(scheduled retry) | `failed` (terminal for automatic retry). Only a manual
+admin retry returns `failed` to the retry flow. `reconciled` means the Auth
+identity is gone; `failed` means the retry budget or a non-retryable failure
+class (`permission`, `configuration`, `invalid_record`, `max_attempts`) was
+hit — the identity stays application-rejected (and normally disabled), so
+`failed` is operator-actionable, never unsafe.
+
+**Candidate selection is starvation-free.** The sweep does not scan a fixed
+window of unresolved records (a backlog of ineligible records would starve
+due work behind it). Three targeted bounded streams feed one work-conserving
+round-robin: due `pending` (`nextAttemptAt <= now`), expired `processing`
+leases (`leaseExpiresAt <= now`), and a bounded `createdAt`-ordered
+legacy-discovery scan that claims only documents the state queries can never
+reach — no `authReconciliation`, no usable `state`, or the inconsistent
+`reconciled`-with-flag-false record. Interleaving one document per non-empty
+stream per round means a deep backlog in one eligible class can never starve
+another, and empty streams surrender their share automatically. Because
+every record written since #73 is born with the sub-record inside the merge
+transaction, all legacy records sort before every modern unresolved record
+and the scan finds them in its first page. Terminal `failed`,
+not-yet-due `pending`, and actively leased `processing` records are in no
+stream and can never block eligible work. The claim budget (default 25)
+counts **actual reconciliation attempts** — including `error` outcomes where
+Auth work ran but the outcome write failed — and total read effort per run
+is bounded at `2 × limit` stream reads plus `MERGE_AUTH_LEGACY_SCAN_LIMIT`
+(100) scan reads.
+
+**Concurrency** follows the notification-outbox pattern (ADR 0017): a
+Firestore transaction claims one event (`processing` + `leaseOwner` +
+`leaseExpiresAt`, 5-minute lease), Auth calls run **outside** the
+transaction, and a second lease-guarded transaction records the outcome. An
+active lease blocks concurrent reconcilers; an expired lease (crashed
+worker) is reclaimable; a newer lease is never clobbered.
+
+**Crash recovery.** Every crash boundary converges on the next attempt:
+crash before any Auth call → record stays `pending`; crash after disable →
+retry finds the identity already disabled and continues; crash after
+`deleteUser` but before the outcome write → the retry's `getUser` returns
+`auth/user-not-found` and the record is written `reconciled`; outcome-write
+failure → the lease expires and the work is reclaimed idempotently.
+
+**Honest guarantee:** at-least-once convergence, never claimed exactly-once.
+A crash can leave a window where the Auth identity still exists — that window
+is covered by the application-level rejection, and bounded by disable-first
+ordering. Operator visibility and manual retry live on `/admin/users/merge`;
+see [ADR 0018](docs/adr/0018-account-merge-auth-reconciliation.md) and
+docs/OPERATIONS.md.
 
 ## Provider linking vs. account merging
 

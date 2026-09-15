@@ -97,6 +97,11 @@ export function UserList({ users }: UserListProps) {
                       No portal access
                     </span>
                   )}
+                  {user.mergedIntoUserId && (
+                    <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      Merged away
+                    </span>
+                  )}
                   {user.driverStatus && (
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${

@@ -314,9 +314,23 @@ export async function mergeAccounts(
 
     const parts = [`${result.requestsRelinked} request(s) relinked`];
     if (result.driverRegistryRelinked) parts.push("driver registry link moved");
-    if (!result.duplicateAuthDeleted && result.error) {
+    // Report the Auth cleanup honestly (issue #73): the merged-away account is
+    // already blocked from signing in, but the admin should know whether its
+    // Firebase Auth identity is actually gone, disabled and retrying, or needs
+    // operator attention — never claim deletion when it did not happen.
+    if (result.duplicateAuthDeleted) {
+      parts.push("duplicate sign-in account removed");
+    } else if (result.authReconciliation === "failed") {
       parts.push(
-        `duplicate auth account could not be deleted (${result.error})`,
+        `duplicate sign-in cleanup FAILED (${result.error ?? "unknown"}) — the account is blocked from signing in, but it needs operator attention on the reconciliation status below`,
+      );
+    } else if (result.duplicateAuthDisabled) {
+      parts.push(
+        "duplicate sign-in account disabled; final deletion is queued and retries automatically",
+      );
+    } else {
+      parts.push(
+        "duplicate sign-in cleanup is queued and retries automatically; the account is already blocked from signing in",
       );
     }
 
@@ -341,6 +355,12 @@ export async function mergeAccounts(
           return {
             status: "error",
             message: "These accounts cannot be merged.",
+          };
+        case "ALREADY_MERGED":
+          return {
+            status: "error",
+            message:
+              "One of these accounts was already merged into another account.",
           };
         case "EXPLICIT_ROLES_REQUIRED":
           return {

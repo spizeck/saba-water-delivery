@@ -11,7 +11,6 @@ import {
 import { getAppOrigin } from "@/lib/config/appOrigin";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { toUserRoles } from "@/lib/auth/roles";
-import { getLogger, serializeError } from "@/lib/logging";
 
 import type {
   AccountMergeEvent,
@@ -29,6 +28,11 @@ import {
 } from "./identityMatching";
 import { getUserProfile } from "./users";
 import { getDriverByLinkedUserId } from "./driverRegistry";
+import {
+  initialMergeAuthReconciliation,
+  reconcileMergeAuthEvent,
+  type MergeAuthOps,
+} from "./mergeReconciliation";
 import { toWaterRequest } from "./waterRequests";
 import {
   readAdminPopulationInTransaction,
@@ -40,8 +44,6 @@ const REQUESTS_COLLECTION = "waterRequests";
 const USERS_COLLECTION = "users";
 const DRIVER_REGISTRY_COLLECTION = "driverRegistry";
 const MERGE_EVENTS_COLLECTION = "accountMergeEvents";
-
-const log = getLogger("domain.identity");
 
 /**
  * Firestore's hard limit on the number of writes in a single transaction or
@@ -354,6 +356,15 @@ export async function getAccountMergePreview(
       "Both accounts are linked to different Driver Registry entries. Unlink one of them first.";
   }
 
+  // A merged-away account can never participate in another merge: it can
+  // neither be a survivor (its identity is dead) nor a duplicate again
+  // (re-pointing mergedIntoUserId would corrupt the audit trail).
+  if (canonicalUser.mergedIntoUserId || duplicateUser.mergedIntoUserId) {
+    blocked = true;
+    blockedReason =
+      "One of these accounts was already merged into another account.";
+  }
+
   return {
     canonicalUser,
     duplicateUser,
@@ -394,8 +405,21 @@ export interface MergeUserAccountsResult {
   canonicalUser: UserProfile;
   requestsRelinked: number;
   driverRegistryRelinked: 0 | 1;
+  /**
+   * Whether the merged-away Firebase Auth identity is gone (deleted or
+   * proven absent). False means reconciliation is still pending or
+   * failed — but the identity is already application-rejected via the
+   * `mergedIntoUserId` marker regardless.
+   */
   duplicateAuthDeleted: boolean;
-  /** Non-secret diagnostic if Auth deletion could not be performed. */
+  /** Sanitized reconciliation state after the immediate attempt. */
+  authReconciliation: "reconciled" | "pending" | "failed" | "unknown";
+  /**
+   * Whether the merged-away Auth identity was observed disabled — the
+   * interim safe state while deletion is pending.
+   */
+  duplicateAuthDisabled: boolean;
+  /** Sanitized diagnostic if Auth reconciliation did not finish. */
   error: string | null;
 }
 
@@ -404,14 +428,15 @@ export interface MergeUserAccountsResult {
  *
  * Atomicity (issue #49): every Firestore effect of the merge — canonical role
  * change, duplicate admin revocation, shared last-admin invariant
- * participation, driver-registry relink, request-ownership relinks, AND the
- * `accountMergeEvents` audit record — commits in ONE Firestore transaction, so
- * no sensitive state can commit without its durable business-history event.
+ * participation, driver-registry relink, request-ownership relinks, the
+ * merged-away marker on the duplicate's profile, AND the `accountMergeEvents`
+ * audit record (including its `authReconciliation` sub-record) — commits in
+ * ONE Firestore transaction, so no sensitive state can commit without its
+ * durable business-history event and its durable reconciliation record.
  * The one merge side effect that cannot join that transaction is the external
- * Firebase Auth account deletion (Firebase Auth is not a Firestore participant);
- * it runs after the commit and its outcome is recorded on the audit record by a
- * best-effort update — the sole remaining non-atomic boundary, documented in
- * ADR 0010.
+ * Firebase Auth cleanup (Firebase Auth is not a Firestore participant); it is
+ * made durable and resumable by the reconciliation worker — see
+ * `mergeReconciliation.ts` and ADR 0018.
  *
  * Safety rules:
  *   1. Water request ownership (`customerId`) is relinked from duplicate
@@ -427,25 +452,24 @@ export interface MergeUserAccountsResult {
  *      dispatcher, and driver roles must be transferred through
  *      "explicit" mode with a deliberate role list. The driver role is
  *      further gated by the Driver Registry link state.
- *   4. The duplicate Firebase Auth user is deleted only after the Firestore
- *      transaction commits, so a transaction failure never deletes an Auth
- *      account for a merge that did not happen. There is NO Auth-disable step —
- *      only a delete attempt — so if deletion fails the merge still succeeded
- *      (all Firestore state + audit committed) but the duplicate Auth identity
- *      remains **able to authenticate** until operational cleanup deletes it,
- *      and its retained `users/{duplicateUid}` document keeps its non-`admin`
- *      roles. The error is surfaced and recorded so staff/reconciliation can
- *      retry deletion. Durable/resumable reconciliation of this external step is
- *      tracked separately (issue #73).
- *   5. The `accountMergeEvents/{eventId}` audit record (both original uids, the
- *      acting admin, the role decision, relink counts, whether the duplicate's
- *      admin role was revoked, and any Auth-deletion error) is written INSIDE
- *      the transaction, so it cannot be lost while the merge's state changes
- *      commit. `duplicateAuthDeleted`/`error` are filled in by the post-commit
- *      best-effort update described above.
+ *   4. The duplicate's `users` document gets `mergedIntoUserId` INSIDE the
+ *      transaction — so from the moment the merge commits, the merged-away
+ *      identity is rejected by application authentication boundaries even
+ *      while the Auth identity still exists. The Auth-side convergence
+ *      (disable → revoke → delete) then runs: immediately here (best effort),
+ *      and durably retried by the reconciliation sweep on any failure or
+ *      crash — see `reconcileMergeAuthEvent`. Auth failure never rolls back
+ *      or corrupts the committed Firestore merge.
+ *   5. The `accountMergeEvents/{eventId}` audit record (both original uids,
+ *      the acting admin, the role decision, relink counts, whether the
+ *      duplicate's admin role was revoked, and the durable
+ *      `authReconciliation` state machine) is written INSIDE the transaction,
+ *      so the reconciliation work is discoverable even if this process dies
+ *      immediately after the commit.
  */
 export async function mergeUserAccounts(
   input: MergeUserAccountsInput,
+  options: { auth?: MergeAuthOps } = {},
 ): Promise<MergeUserAccountsResult> {
   const {
     canonicalUid,
@@ -469,7 +493,6 @@ export async function mergeUserAccounts(
     throw new Error(preview.blockedReason ?? "MERGE_BLOCKED");
 
   const db = getAdminDb();
-  const auth = getAdminAuth();
 
   // Resolve final role list. "union" uses the preview's non-sensitive union;
   // "explicit" uses the admin's exact choice — the only way to move admin/
@@ -548,6 +571,15 @@ export async function mergeUserAccounts(
     const duplicateSnap = await txn.get(duplicateRef);
     if (!duplicateSnap.exists) throw new Error("USER_NOT_FOUND");
 
+    // A merged-away account can never participate in another merge — re-checked
+    // inside the transaction so a concurrent merge cannot race past the preview.
+    if (
+      canonicalSnap.data()!.mergedIntoUserId ||
+      duplicateSnap.data()!.mergedIntoUserId
+    ) {
+      throw new Error("ALREADY_MERGED");
+    }
+
     // Authoritative, transactionally-consistent set of requests to relink.
     const duplicateRequestSnap = await txn.get(
       db
@@ -605,11 +637,19 @@ export async function mergeUserAccounts(
 
     txn.update(canonicalRef, { roles: finalRoles, updatedAt: now });
 
+    // Always stamp the merged-away marker on the duplicate's profile inside
+    // the same commit — it is the immediate, application-level guarantee that
+    // the merged-away uid can no longer authenticate, independent of how the
+    // external Auth cleanup proceeds (issue #73). The duplicate's admin role
+    // is additionally revoked when it held one (phantom-admin prevention).
+    txn.update(duplicateRef, {
+      mergedIntoUserId: canonicalUid,
+      ...(duplicateLosesAdmin
+        ? { roles: duplicateRolesLive.filter((r) => r !== "admin") }
+        : {}),
+      updatedAt: now,
+    });
     if (duplicateLosesAdmin) {
-      txn.update(duplicateRef, {
-        roles: duplicateRolesLive.filter((r) => r !== "admin"),
-        updatedAt: now,
-      });
       duplicateAdminRevoked = true;
     }
 
@@ -639,9 +679,10 @@ export async function mergeUserAccounts(
 
     // Audit record — committed in the SAME transaction as every state change
     // above (issue #49). `duplicateAuthDeleted` starts false because the
-    // external Auth deletion happens only after this transaction commits; it is
-    // filled in by the best-effort update below.
-    const mergeEventData: Omit<AccountMergeEvent, "id"> = {
+    // external Auth cleanup happens only after this transaction commits, and
+    // the durable `authReconciliation` sub-record is born `pending` so the
+    // work survives any crash between commit and cleanup (issue #73).
+    const mergeEventData = {
       canonicalUserId: canonicalUid,
       duplicateUserId: duplicateUid,
       actorId,
@@ -656,48 +697,53 @@ export async function mergeUserAccounts(
         driverRegistryRelinked,
       },
       error: null,
+      authReconciliation: initialMergeAuthReconciliation(),
     };
     txn.set(mergeEventRef, mergeEventData);
   });
 
-  // Delete the duplicate Firebase Auth account — the one merge side effect that
-  // cannot join the Firestore transaction. It runs AFTER the commit so a
-  // transaction failure never deletes an Auth account for a merge that did not
-  // happen, and no Firestore reference is left pointing at a still-existing
-  // duplicate uid. NOTE: this only DELETES; it does not disable the identity.
-  // If deletion fails the merge still succeeded (all Firestore state + audit
-  // committed), but the duplicate Auth identity remains ABLE TO AUTHENTICATE —
-  // with whatever non-`admin` roles its retained users doc still carries — until
-  // operational cleanup deletes it. The error is surfaced and recorded below so
-  // that cleanup/reconciliation (issue #73) can act on it.
-  let duplicateAuthDeleted = false;
-  let deleteError: string | null = null;
-  try {
-    await auth.deleteUser(duplicateUid);
-    duplicateAuthDeleted = true;
-  } catch (err: unknown) {
-    deleteError =
-      err instanceof Error
-        ? err.message
-        : "Failed to delete duplicate auth user";
-  }
+  // Reconcile the merged-away Firebase Auth identity — the one merge side
+  // effect that cannot join the Firestore transaction. It runs AFTER the
+  // commit so a transaction failure never touches an Auth account for a merge
+  // that did not happen. The attempt is best effort (most merges reconcile
+  // here): the durable `authReconciliation` sub-record already exists inside
+  // the commit, so any failure or crash is automatically retried by the
+  // hourly sweep — and from the commit onward the merged-away uid is already
+  // rejected at the application's authentication boundaries via
+  // `mergedIntoUserId` (issue #73). Failure categories are sanitized by the
+  // reconciler; no provider error payload ever reaches the caller.
+  const reconciliation = await reconcileMergeAuthEvent(mergeEventRef.id, {
+    ...(options.auth ? { auth: options.auth } : {}),
+  });
 
-  // Record the external Auth-deletion outcome on the already-durable audit
-  // record. This update is intentionally best-effort and NOT atomic with the
-  // deletion — Firebase Auth cannot participate in a Firestore transaction — so
-  // a rare failure here leaves `duplicateAuthDeleted: false`/`error: null` on
-  // the record even though the merge's authoritative Firestore state is fully
-  // committed. This is the sole documented external-system boundary (ADR 0010).
-  try {
-    await mergeEventRef.update({ duplicateAuthDeleted, error: deleteError });
-  } catch (updateErr) {
-    log.warn("identity.merge.audit_auth_outcome_update_failed", {
-      canonicalUserId: canonicalUid,
-      duplicateUserId: duplicateUid,
-      duplicateAuthDeleted,
-      error: serializeError(updateErr),
-    });
-  }
+  const duplicateAuthDeleted = reconciliation.status === "reconciled";
+  const authReconciliation: MergeUserAccountsResult["authReconciliation"] =
+    reconciliation.status === "reconciled"
+      ? "reconciled"
+      : reconciliation.status === "retry_scheduled" ||
+          reconciliation.status === "error" ||
+          reconciliation.status === "skipped"
+        ? "pending"
+        : reconciliation.status === "failed" ||
+            reconciliation.status === "invalid_record"
+          ? "failed"
+          : "unknown";
+  const duplicateAuthDisabled =
+    "duplicateDisabled" in reconciliation
+      ? reconciliation.duplicateDisabled
+      : false;
+  const reconcileError =
+    reconciliation.status === "reconciled" ||
+    reconciliation.status === "already_resolved"
+      ? null
+      : reconciliation.status === "retry_scheduled" ||
+          reconciliation.status === "failed"
+        ? reconciliation.category
+        : reconciliation.status === "invalid_record"
+          ? "invalid_record"
+          : reconciliation.status === "error"
+            ? "internal_error"
+            : "pending";
 
   // Refresh canonical profile and return.
   const updatedCanonical = await getUserProfile(canonicalUid);
@@ -707,8 +753,11 @@ export async function mergeUserAccounts(
     canonicalUser: updatedCanonical,
     requestsRelinked,
     driverRegistryRelinked,
-    duplicateAuthDeleted,
-    error: deleteError,
+    duplicateAuthDeleted:
+      duplicateAuthDeleted || reconciliation.status === "already_resolved",
+    authReconciliation,
+    duplicateAuthDisabled,
+    error: reconcileError,
   };
 }
 
@@ -744,6 +793,35 @@ export async function getRecentAccountMergeEvents(
       duplicateAdminRevoked: data.duplicateAdminRevoked ?? false,
       counts: data.counts ?? null,
       error: data.error ?? null,
+      authReconciliation: data.authReconciliation
+        ? {
+            state: data.authReconciliation.state,
+            attemptCount:
+              typeof data.authReconciliation.attemptCount === "number"
+                ? data.authReconciliation.attemptCount
+                : 0,
+            nextAttemptAt:
+              data.authReconciliation.nextAttemptAt
+                ?.toDate?.()
+                ?.toISOString?.() ?? null,
+            lastAttemptAt:
+              data.authReconciliation.lastAttemptAt
+                ?.toDate?.()
+                ?.toISOString?.() ?? null,
+            lastFailureCategory:
+              data.authReconciliation.lastFailureCategory ?? null,
+            duplicateDisabled:
+              data.authReconciliation.duplicateDisabled === true,
+            reconciledAt:
+              data.authReconciliation.reconciledAt
+                ?.toDate?.()
+                ?.toISOString?.() ?? null,
+            leaseExpiresAt:
+              data.authReconciliation.leaseExpiresAt
+                ?.toDate?.()
+                ?.toISOString?.() ?? null,
+          }
+        : null,
     } as AccountMergeEvent;
   });
 }

@@ -702,6 +702,163 @@ describe("request-state invariants (#7)", () => {
   });
 });
 
+describe("account-merge reconciliation integrity (#73)", () => {
+  const NOW = Date.UTC(2026, 5, 1, 0, 0, 0);
+  const fresh = new Date(NOW - 60_000).toISOString();
+  const stale = new Date(NOW - 48 * 3_600_000).toISOString();
+
+  function mergeEvent(overrides = {}) {
+    return {
+      id: "merge-1",
+      canonicalUserId: "canon",
+      duplicateUserId: "dup",
+      duplicateAuthDeleted: true,
+      createdAt: fresh,
+      authReconciliation: { state: "reconciled" },
+      ...overrides,
+    };
+  }
+
+  it("does not flag a healthy reconciled merge or fresh pending work", () => {
+    const { findings } = runIntegrityChecks(
+      {
+        mergeEvents: [
+          mergeEvent(),
+          mergeEvent({
+            id: "merge-2",
+            duplicateAuthDeleted: false,
+            authReconciliation: { state: "pending" },
+          }),
+        ],
+      },
+      { nowMs: NOW },
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags a terminally failed reconciliation as actionable", () => {
+    const { findings } = runIntegrityChecks(
+      {
+        mergeEvents: [
+          mergeEvent({
+            duplicateAuthDeleted: false,
+            authReconciliation: {
+              state: "failed",
+              lastFailureCategory: "max_attempts",
+            },
+          }),
+        ],
+      },
+      { nowMs: NOW },
+    );
+    expect(codes(findings)).toContain("merge_reconciliation.terminal_failure");
+  });
+
+  it("flags reconciliation unresolved beyond the stale horizon", () => {
+    const { findings } = runIntegrityChecks(
+      {
+        mergeEvents: [
+          // Legacy record: no authReconciliation sub-record at all.
+          mergeEvent({
+            duplicateAuthDeleted: false,
+            createdAt: stale,
+            authReconciliation: null,
+          }),
+        ],
+      },
+      { nowMs: NOW },
+    );
+    expect(codes(findings)).toContain("merge_reconciliation.unresolved_stale");
+  });
+
+  it("flags a malformed merge record as critical", () => {
+    const { findings } = runIntegrityChecks(
+      {
+        mergeEvents: [
+          mergeEvent({
+            duplicateAuthDeleted: false,
+            canonicalUserId: "same",
+            duplicateUserId: "same",
+          }),
+        ],
+      },
+      { nowMs: NOW },
+    );
+    const f = findings.find(
+      (x) => x.code === "merge_reconciliation.malformed_record",
+    );
+    expect(f?.severity).toBe("critical");
+  });
+
+  it("flags inconsistent terminal combinations both ways", () => {
+    const { findings } = runIntegrityChecks(
+      {
+        mergeEvents: [
+          mergeEvent({
+            id: "a",
+            authReconciliation: { state: "pending" }, // flag set, state not
+          }),
+          mergeEvent({
+            id: "b",
+            duplicateAuthDeleted: false,
+            authReconciliation: { state: "reconciled" }, // state set, flag not
+          }),
+        ],
+      },
+      { nowMs: NOW },
+    );
+    expect(codes(findings)).toContain(
+      "merge_reconciliation.deleted_flag_without_reconciled_state",
+    );
+    expect(codes(findings)).toContain(
+      "merge_reconciliation.reconciled_state_without_deleted_flag",
+    );
+  });
+
+  it("reports an expired processing lease as informational (auto-recovered)", () => {
+    const { findings } = runIntegrityChecks(
+      {
+        mergeEvents: [
+          mergeEvent({
+            duplicateAuthDeleted: false,
+            authReconciliation: {
+              state: "processing",
+              leaseExpiresAt: NOW - 1_000,
+            },
+          }),
+        ],
+      },
+      { nowMs: NOW },
+    );
+    const f = findings.find(
+      (x) => x.code === "merge_reconciliation.stale_lease",
+    );
+    expect(f?.severity).toBe("info");
+  });
+
+  it("flags a merged-away marker whose canonical user is missing, and a request still owned by a merged identity", () => {
+    const { findings } = runIntegrityChecks(
+      {
+        users: [{ uid: "dup", roles: ["resident"], mergedIntoUserId: "ghost" }],
+        requests: [
+          {
+            id: "req-1",
+            status: "available",
+            customerId: "dup",
+            assignedDriverId: null,
+            dispatchBatchId: null,
+          },
+        ],
+      },
+      { nowMs: NOW },
+    );
+    expect(codes(findings)).toContain("merge_marker.canonical_missing");
+    expect(codes(findings)).toContain(
+      "merge_marker.request_owned_by_merged_user",
+    );
+  });
+});
+
 describe("severity model", () => {
   it("summarizes by severity and category and orders critical first", () => {
     const { findings, summary } = runIntegrityChecks({

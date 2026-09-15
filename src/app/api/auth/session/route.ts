@@ -87,8 +87,24 @@ async function handleSessionPost(request: NextRequest) {
 
   try {
     const adminAuth = getAdminAuth();
-    const decoded = await adminAuth.verifyIdToken(idToken);
+    // checkRevoked=true: a token minted for a since-disabled or revoked
+    // identity (e.g. a merged-away account already made safe by
+    // reconciliation) must never establish a NEW session.
+    const decoded = await adminAuth.verifyIdToken(idToken, true);
     const userRecord = await adminAuth.getUser(decoded.uid);
+
+    if (userRecord.disabled) {
+      // A disabled identity can reach here only via a token minted before the
+      // disable landed (verify above already enforces disabled/revoked, so
+      // this is belt-and-suspenders against ordering races).
+      return NextResponse.json(
+        {
+          error:
+            "This account is no longer active. Contact staff if you need help.",
+        },
+        { status: 401 },
+      );
+    }
 
     const { profile, created } = await ensureUserProfile({
       uid: decoded.uid,
@@ -97,6 +113,24 @@ async function handleSessionPost(request: NextRequest) {
       email: userRecord.email ?? null,
       phone: userRecord.phoneNumber ?? null,
     });
+
+    // Merged-away identities can never establish a session — the marker is
+    // written inside the merge transaction, so this rejection holds from the
+    // moment the merge commits even while Auth cleanup is still pending
+    // (issue #73). Checked before any session cookie is minted.
+    if (profile.mergedIntoUserId) {
+      logSecurityEvent(SECURITY_EVENTS.mergedIdentityRejected, {
+        uid: decoded.uid,
+        boundary: "session_creation",
+      });
+      return NextResponse.json(
+        {
+          error:
+            "This account was merged into another account and can no longer sign in. Contact staff if you need help.",
+        },
+        { status: 403 },
+      );
+    }
 
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
       expiresIn: SESSION_MAX_AGE_SECONDS * 1000,

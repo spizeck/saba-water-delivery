@@ -13,6 +13,8 @@ export default defineConfig({
       // Emulator-backed tests run under `npm run test:rules`, not the plain
       // `vitest` run (which has no Firebase emulator).
       "**/*.emulator.test.ts",
+      // Auth-emulator tests run under `npm run test:auth-emulator`.
+      "**/*.auth-emulator.test.ts",
       // Playwright end-to-end specs (`e2e/tests/**`) run under `npm run test:e2e`
       // (Vitest would otherwise pick up the `.spec.ts` files and fail on
       // Playwright's API). Pure unit tests for the E2E support helpers

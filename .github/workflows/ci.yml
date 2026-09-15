@@ -55,6 +55,12 @@ jobs:
       - name: Firestore & Storage rules tests (local emulators)
         run: npm run test:rules
 
+      # Account-merge Auth reconciliation tests against the REAL Auth
+      # emulator (issue #73) — these prove enable/disable/delete/revoke and
+      # session-boundary behavior rather than mocking the provider.
+      - name: Auth emulator reconciliation tests (local emulators)
+        run: npm run test:auth-emulator
+
       # Blocking: the repo-wide Prettier pass has landed (#37), so
       # unformatted code fails `CI / verify`. Run `npm run format` to fix.
       - name: Formatting check

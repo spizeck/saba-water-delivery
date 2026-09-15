@@ -36,15 +36,31 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!sessionCookie) return null;
 
   try {
+    // checkRevoked=true: revocation and disabled-state are enforced here —
+    // a merged-away Auth identity that reconciliation has disabled/revoked
+    // fails this check even when the cookie itself is still cryptographically
+    // valid.
     const decoded = await getAdminAuth().verifySessionCookie(
       sessionCookie,
       true,
     );
     const profile = await getUserProfile(decoded.uid);
     if (!profile) return null;
+    // Merged-away identities are rejected at the application boundary —
+    // the durable marker is written inside the merge transaction, so this
+    // guard is effective from the moment the merge commits and does not
+    // depend on the asynchronous Firebase Auth cleanup having finished.
+    if (profile.mergedIntoUserId) {
+      logSecurityEvent(SECURITY_EVENTS.mergedIdentityRejected, {
+        uid: decoded.uid,
+        boundary: "session_cookie",
+      });
+      return null;
+    }
     return { uid: decoded.uid, profile };
   } catch {
-    // Missing/expired/revoked/invalid cookie, or Admin SDK not configured.
+    // Missing/expired/revoked/disabled/invalid cookie, or Admin SDK not
+    // configured.
     return null;
   }
 }

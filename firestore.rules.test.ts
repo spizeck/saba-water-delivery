@@ -202,6 +202,11 @@ describe("resident", () => {
         deliveryProfileConfirmedAt: new Date(),
       }),
     );
+    // The merged-away marker is server-only (issue #73): a client must never
+    // be able to set or clear it — it controls authentication rejection.
+    await assertFails(
+      updateDoc(doc(db, "users/resident-a"), { mergedIntoUserId: "other-uid" }),
+    );
     await assertFails(setDoc(doc(db, "users/new-user"), user(["resident"])));
   });
 

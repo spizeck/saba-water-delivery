@@ -134,6 +134,12 @@ export interface AdminUserListItem {
   } | null;
   /** Whether the person has portal login access. */
   authStatus: "claimed" | "unclaimed";
+  /**
+   * When set, this account was merged away into the listed canonical uid —
+   * the identity is rejected by authentication and must not be offered as a
+   * merge candidate. Null for normal accounts.
+   */
+  mergedIntoUserId: string | null;
   createdAt: string;
 }
 
@@ -167,6 +173,10 @@ export async function getAllUsers(): Promise<AdminUserListItem[]> {
       roles,
       driverStatus: null,
       authStatus: data.authStatus === "unclaimed" ? "unclaimed" : "claimed",
+      mergedIntoUserId:
+        typeof data.mergedIntoUserId === "string"
+          ? data.mergedIntoUserId
+          : null,
       createdAt:
         data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     });
@@ -455,6 +465,10 @@ function toUserProfileFromDoc(
         ? "staff_registered"
         : "self_registered",
     authStatus: data.authStatus === "unclaimed" ? "unclaimed" : "claimed",
+    mergedIntoUserId:
+      typeof data.mergedIntoUserId === "string"
+        ? (data.mergedIntoUserId as string)
+        : null,
     createdAt:
       (data.createdAt as { toDate?: () => Date })?.toDate?.().toISOString() ??
       new Date(0).toISOString(),

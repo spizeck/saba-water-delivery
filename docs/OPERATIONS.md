@@ -365,7 +365,14 @@ rules):
 - user role ↔ Driver Registry linkage (missing linked user, linked user lacking
   the `driver` role, `driver` role with no registry link, duplicate live links);
 - impossible request-state fields (a pre-claim request still carrying an
-  `assignedDriverId`; a cancelled request still carrying a `dispatchBatchId`).
+  `assignedDriverId`; a cancelled request still carrying a `dispatchBatchId`);
+- account-merge reconciliation state (issue #73): terminally `failed`
+  reconciliations, unresolved work stale beyond 24h, expired `processing`
+  leases awaiting reclamation (informational — the sweep auto-recovers them),
+  inconsistent terminal combinations (e.g. `duplicateAuthDeleted` and
+  `state` disagreeing), malformed merge records, a `mergedIntoUserId` marker
+  whose canonical user is missing, and a live request still owned by a
+  merged-away identity.
 
 **What it does NOT check / is NOT:** it is not a schema validator, does not
 inspect Firebase Auth, does not verify backups or run a restore, and is **not**
@@ -496,7 +503,52 @@ needs to know:
   already marked sent is never resent. The action is admin-only and
   server-authoritative.
 
-### Backups and data recovery
+### Account-merge Auth reconciliation (merged-away identities)
+
+When an admin merges two accounts, the Firestore merge commits atomically —
+but deleting the merged-away **Firebase Auth** identity is a separate system
+that cannot join that transaction. Issue #73 made that cleanup durable; what
+an operator needs to know:
+
+- **The merged-away identity is already blocked — always.** The merge writes
+  a `mergedIntoUserId` marker inside the merge transaction, and both sign-in
+  paths reject that identity from the moment the merge commits. A pending or
+  failed Auth cleanup is therefore an *operational* concern (leftover
+  identity in Firebase), never an *access* concern.
+- **Automatic convergence.** Right after the merge commits the app attempts
+  to disable → revoke → delete the merged-away Auth identity. If that fails
+  (Firebase outage, transient error), the protected cron
+  `GET /api/cron/merge-auth-reconciliation` (`CRON_SECRET`, scheduled hourly
+  in `vercel.json`) retries with bounded backoff (~1m → 12h, 7 attempts).
+  Each run is bounded (at most ~25 attempts) and **starvation-free**: it
+  queries due work, expired leases, and legacy records in separate targeted
+  streams and interleaves them round-robin, so a backlog of permanently
+  failed, not-yet-due, or even deep eligible records can never block any
+  class of work behind it. Most operators never need to do anything.
+- **Operator visibility.** `/admin/users/merge` shows a reconciliation panel:
+  counts of pending / in-flight / stale / terminally failed work, and a
+  sanitized list of unresolved merges (opaque uids, attempt count, last
+  failure category — never PII or provider payloads).
+- **Manual retry.** A `failed` record means the retry budget was exhausted or
+  a non-retryable failure class (`permission`, `configuration`,
+  `invalid_record`) needs a human — e.g. the Admin SDK service account lost
+  its Firebase Auth IAM permission. Fix the underlying cause, then click
+  **Retry** on the panel: it re-queues the record with a fresh attempt budget
+  and attempts it immediately. The action is admin-only, idempotent, cannot
+  reopen the Firestore merge, and never touches the surviving account.
+- **Diagnostics.** The read-only integrity scan
+  (`npm run diagnose:integrity`, issue #52) reports unresolved stale
+  reconciliations, terminally failed ones, stale processing leases, and
+  inconsistent record combinations — see "Checking data integrity".
+- **Honest limit.** The guarantee is *convergence*: the Auth identity is
+  deleted at-least-once, and the application rejects it the whole time. It is
+  not an instant cross-system delete — during a Firebase Auth outage the
+  identity exists in Firebase until the sweep succeeds, but it cannot sign in
+  (application rejection) and is normally disabled after the first successful
+  Auth contact. See
+  [ADR 0018](./adr/0018-account-merge-auth-reconciliation.md).
+
+
 
 Backing up and restoring the water-delivery **data** (the Firestore database
 and Firebase Auth identities) is covered by its own canonical runbook,

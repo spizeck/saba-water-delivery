@@ -5,8 +5,13 @@ import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getAllUsers } from "@/lib/domain/admin";
+import {
+  getMergeReconciliationOverview,
+  listUnresolvedMergeReconciliations,
+} from "@/lib/domain/mergeReconciliation";
 
 import { MergeAccountsForm } from "./MergeAccountsForm";
+import { MergeReconciliationPanel } from "./MergeReconciliationPanel";
 
 export const metadata: Metadata = {
   title: "Merge Accounts — Admin",
@@ -14,7 +19,12 @@ export const metadata: Metadata = {
 
 export default async function MergeAccountsPage() {
   const { profile } = await requireRole("admin");
-  const users = await getAllUsers();
+  const [users, reconciliationOverview, reconciliationEntries] =
+    await Promise.all([
+      getAllUsers(),
+      getMergeReconciliationOverview(),
+      listUnresolvedMergeReconciliations(),
+    ]);
 
   return (
     <>
@@ -31,6 +41,11 @@ export default async function MergeAccountsPage() {
               moved. Historical actor fields are preserved.
             </p>
           </Card>
+
+          <MergeReconciliationPanel
+            overview={reconciliationOverview}
+            entries={reconciliationEntries}
+          />
 
           <MergeAccountsForm users={users} />
         </Container>

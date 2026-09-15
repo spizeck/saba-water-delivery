@@ -46,7 +46,20 @@ export const REQUEST_FIELDS = [
   "preferredDriverId",
 ];
 export const BATCH_FIELDS = ["originalRequestIds", "status", "driverId"];
-export const USER_FIELDS = ["roles"];
+export const USER_FIELDS = ["roles", "mergedIntoUserId"];
+/**
+ * Account-merge reconciliation fields (issue #73). Deliberately excludes the
+ * free-text `reason` and any other fields — the diagnostic needs only the
+ * reconciliation state machine and the opaque uids.
+ */
+export const MERGE_EVENT_FIELDS = [
+  "canonicalUserId",
+  "duplicateUserId",
+  "duplicateAuthDeleted",
+  "createdAt",
+  "authReconciliation",
+  "error",
+];
 
 /** Request statuses that represent live/operational (unresolved) work. */
 export const ACTIVE_REQUEST_STATUSES = [
@@ -157,6 +170,10 @@ export async function assembleDataset(reader, options = {}) {
     ...pageOpts,
     fields: BATCH_FIELDS,
   });
+  const mergeEvents = await reader.paginate("accountMergeEvents", {
+    ...pageOpts,
+    fields: MERGE_EVENT_FIELDS,
+  });
 
   const requests = fullScan
     ? await reader.paginate("waterRequests", {
@@ -208,6 +225,7 @@ export async function assembleDataset(reader, options = {}) {
     drivers.truncated ||
     users.truncated ||
     batches.truncated ||
+    mergeEvents.truncated ||
     requestsTruncated;
 
   const scanStatus = truncated
@@ -221,6 +239,7 @@ export async function assembleDataset(reader, options = {}) {
       drivers: drivers.docs,
       users: users.docs,
       batches: batches.docs,
+      mergeEvents: mergeEvents.docs,
       requests: allRequests,
       // Referenced request ids the budget prevented us from reading. Passed to
       // runIntegrityChecks so unread references never become false "missing".
@@ -236,6 +255,7 @@ export async function assembleDataset(reader, options = {}) {
         drivers: drivers.docs.length,
         users: users.docs.length,
         batches: batches.docs.length,
+        mergeEvents: mergeEvents.docs.length,
         requestsScanned: requests.docs.length,
         requestsResolvedByReference: resolvedRequests.length,
         requestsUnresolvedByBudget: unresolvedRequestIds.length,
@@ -244,6 +264,7 @@ export async function assembleDataset(reader, options = {}) {
         drivers.truncated && "driverRegistry",
         users.truncated && "users",
         batches.truncated && "dispatchBatches",
+        mergeEvents.truncated && "accountMergeEvents",
         requestsTruncated && "waterRequests",
       ].filter(Boolean),
     },

@@ -76,6 +76,7 @@ function arrangeValidToken() {
     displayName: "Res",
     email: "res@example.com",
     phoneNumber: null,
+    disabled: false,
   });
   mocks.ensureUserProfile.mockResolvedValue(RESIDENT_PROFILE);
   mocks.createSessionCookie.mockResolvedValue("session-cookie-value");
@@ -126,6 +127,53 @@ describe("POST /api/auth/session — token verification and provisioning", () =>
     const response = await POST(makeRequest({ idToken: "t" }));
     expect(response.status).toBe(401);
     expect(mocks.ensureUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("verifies the ID token WITH revocation/disabled checking", async () => {
+    arrangeValidToken();
+    await POST(makeRequest({ idToken: "t" }));
+    // checkRevoked=true — a token minted before a merge-side disable/revoke
+    // cannot be exchanged for a new session cookie.
+    expect(mocks.verifyIdToken).toHaveBeenCalledWith("t", true);
+  });
+
+  it("rejects a disabled Auth identity without minting a cookie", async () => {
+    mocks.verifyIdToken.mockResolvedValue({ uid: "u1" });
+    mocks.getUser.mockResolvedValue({
+      uid: "u1",
+      displayName: "Res",
+      email: null,
+      phoneNumber: null,
+      disabled: true,
+    });
+    const response = await POST(makeRequest({ idToken: "t" }));
+    expect(response.status).toBe(401);
+    expect(mocks.ensureUserProfile).not.toHaveBeenCalled();
+    expect(mocks.createSessionCookie).not.toHaveBeenCalled();
+  });
+
+  it("rejects a merged-away identity (durable marker) without minting a cookie", async () => {
+    // A merged-away uid can hold a still-valid ID token while Auth
+    // reconciliation is pending — the committed `mergedIntoUserId` marker is
+    // what blocks session creation (issue #73).
+    mocks.verifyIdToken.mockResolvedValue({ uid: "dup" });
+    mocks.getUser.mockResolvedValue({
+      uid: "dup",
+      displayName: "Dup",
+      email: "dup@example.com",
+      phoneNumber: null,
+      disabled: false,
+    });
+    mocks.ensureUserProfile.mockResolvedValue({
+      profile: { uid: "dup", roles: ["resident"], mergedIntoUserId: "canon" },
+      created: false,
+    });
+    const response = await POST(makeRequest({ idToken: "t" }));
+    expect(response.status).toBe(403);
+    expect(mocks.createSessionCookie).not.toHaveBeenCalled();
+    expect(
+      response.headers.getSetCookie().some((c) => c.startsWith("session=")),
+    ).toBe(false);
   });
 
   it("provisions the profile server-side and never trusts a body-supplied role", async () => {

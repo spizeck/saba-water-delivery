@@ -106,6 +106,76 @@ The durable notification outbox has both fast and emulator-backed coverage:
   (non-emulator) coverage that both delivery paths stage the outbox intent for a
   registered requestor and none for an unregistered one.
 
+### Account-merge Auth reconciliation tests (issue #73)
+
+Durable reconciliation has coverage at three layers:
+
+- `src/lib/domain/__tests__/mergeReconciliationPolicy.test.ts` — pure,
+  deterministic: state transitions, backoff schedule/jitter bounds, transient
+  vs terminal failure classification, attempt-cap behavior. Runs in the plain
+  `vitest` suite.
+- `src/lib/domain/__tests__/mergeReconciliation.emulator.test.ts` (run by
+  `npm run test:rules`) — the durable state machine against a real Firestore
+  with the Auth operations injected as a deterministic fake:
+  - **Lifecycle** — pending → disable → revoke → delete → `reconciled`;
+    already-disabled and already-deleted identities converge idempotently.
+  - **Crash boundaries** — crash after commit with no Auth action; after
+    disable; after delete-but-before-outcome-write (`auth/user-not-found`
+    converges); outcome-write failure (lease expiry reclaims the work).
+  - **Concurrency** — an active lease blocks a second reconciler; two
+    simultaneous reconcilers never duplicate Auth operations; a stale lease
+    is reclaimed.
+  - **Backoff/terminal** — transient failure schedules `nextAttemptAt`, is
+    not attempted early, succeeds on a later sweep; `max_attempts` and
+    non-retryable classes become terminal `failed`; a malformed merge record
+    fails safely without Auth calls.
+  - **Sweep** — bounded, starvation-free candidate selection: >batch-limit
+    backlogs of terminal `failed`, future-backoff `pending`, or actively
+    leased `processing` records each cannot starve a later due record;
+    expired leases are reclaimed through the sweep; legacy records without
+    `authReconciliation` are discovered (and the `mergedIntoUserId` marker is
+    backfilled); total effort stays bounded under a large mixed backlog.
+  - **Fairness** — the round-robin interleave gives every eligible class a
+    share each run: deep due-pending backlogs cannot starve expired leases
+    or legacy discovery, deep expired-lease backlogs cannot starve due work,
+    unused capacity from empty streams spills to the others, and
+    outcome-write failures still count against the 25-attempt Auth budget.
+  - **Operator surface** — counts and sanitized unresolved entries; manual
+    retry re-queues `failed` work, refuses `reconciled`/in-flight/missing
+    records.
+  - **Survivor safety** — Auth operations only ever target the recorded
+    `duplicateUserId`, never the canonical uid.
+- `src/lib/domain/__tests__/mergeAuthReconciliation.auth-emulator.test.ts`
+  (run by `npm run test:auth-emulator`, a separate script that also starts
+  the **Auth** emulator) — real Firebase Auth semantics, not mocks:
+  - a real emulator Auth user is disabled, its refresh tokens revoked, then
+    deleted, and the record reaches `reconciled`;
+  - a failed immediate cleanup leaves durable pending state that the sweep
+    then reconciles for real;
+  - the crash-after-delete window converges on a real `auth/user-not-found`;
+  - **session boundary**: a merged-away identity cannot mint a new session
+    while reconciliation is pending, and an existing session cookie is
+    rejected by `getSessionUser()` even while Auth is untouched — proving the
+    application-level guard, not just Firebase behavior.
+- `src/lib/auth/__tests__/session.test.ts` and
+  `src/app/api/auth/session/__tests__/route.test.ts` (plain `vitest`) —
+  unit-level coverage of the two merged-away rejection boundaries and the
+  revocation-aware `verifyIdToken(token, true)`.
+- `src/app/api/cron/merge-auth-reconciliation/__tests__/route.test.ts` —
+  cron auth (missing/invalid `CRON_SECRET` fails closed) and an
+  aggregate-only, PII-free response.
+- `mergeAtomicAudit.emulator.test.ts` / `phantomAdmin.emulator.test.ts`
+  (existing #49/#70 suites) — preserved and extended: the merge transaction
+  still commits atomically with the reconciliation sub-record, and last-admin
+  protections are unchanged.
+
+```bash
+npm run test:auth-emulator   # Auth + Firestore emulators; real Admin Auth ops
+```
+
+The Auth-emulator suite never contacts production Firebase — it runs against
+`demo-saba-water-delivery` with synthetic identities only.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and every push to
@@ -117,7 +187,8 @@ displays it as **`CI / verify`**), which:
 2. sets up a Temurin JVM for the Firebase emulators;
 3. runs `npm ci`;
 4. runs `lint` → `typecheck` → `test` → `build` (with the PDFKit trace
-   verification) → `test:rules` → `format:check` — all **blocking**.
+   verification) → `test:rules` → `test:auth-emulator` (issue #73's real
+   Firebase Auth emulator coverage) → `format:check` — all **blocking**.
 
 One step is **informational only** (it runs with `continue-on-error`, so
 it never blocks a merge):

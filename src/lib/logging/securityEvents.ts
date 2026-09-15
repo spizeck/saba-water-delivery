@@ -27,6 +27,12 @@ export const SECURITY_EVENTS = {
   cronUnauthorized: "security.cron.unauthorized",
   /** A caller exceeded a rate-limit policy for an abuse-sensitive operation. */
   rateLimitExceeded: "security.rate_limit.exceeded",
+  /**
+   * A uid whose account was merged away presented an otherwise-valid
+   * credential. The credential is rejected because the durable merge record
+   * (not the credential's validity) determines access.
+   */
+  mergedIdentityRejected: "security.authentication.merged_identity_rejected",
 } as const;
 
 const securityLogger = getLogger("security");
