@@ -56,6 +56,18 @@ export const MERGE_AUTH_LEASE_DURATION_MS = 5 * 60_000;
 export const MERGE_AUTH_WORKER_BATCH_LIMIT = 25;
 
 /**
+ * Read budget (documents examined, not claims) for the sweep's
+ * legacy-discovery scan — the bounded `createdAt`-ordered scan of unresolved
+ * records that surfaces pre-#73 events which have no `authReconciliation`
+ * sub-record (missing fields can never match a `state` query). Every record
+ * written since #73 carries the sub-record inside the merge transaction, so
+ * all legacy records sort before every modern unresolved record; the scan
+ * therefore finds them in its first page and modern ineligible records can
+ * never starve it.
+ */
+export const MERGE_AUTH_LEGACY_SCAN_LIMIT = 100;
+
+/**
  * After this age an unresolved (`pending`/`processing`) reconciliation is
  * operationally stale and surfaced in diagnostics/operator views.
  */

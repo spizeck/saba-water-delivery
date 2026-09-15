@@ -18,6 +18,7 @@ import {
   classifyMergeAuthError,
   decideAfterMergeAuthFailure,
   MERGE_AUTH_LEASE_DURATION_MS,
+  MERGE_AUTH_LEGACY_SCAN_LIMIT,
   MERGE_AUTH_WORKER_BATCH_LIMIT,
   type MergeAuthFailureCategory,
 } from "./mergeReconciliationPolicy";
@@ -550,6 +551,7 @@ export interface ProcessMergeAuthReconciliationOptions extends ReconcileMergeAut
 }
 
 export interface ProcessMergeAuthReconciliationResult {
+  /** Total documents examined across all candidate streams (bounded). */
   scanned: number;
   claimed: number;
   reconciled: number;
@@ -560,11 +562,49 @@ export interface ProcessMergeAuthReconciliationResult {
 }
 
 /**
- * Bounded sweep: finds every merge event whose duplicate Auth cleanup is
- * unresolved (`duplicateAuthDeleted !== true` — which also catches legacy
- * records created before `authReconciliation` existed) in deterministic
- * createdAt order, and runs the claim → act → record cycle on each. Safe at
- * any cadence and safe under concurrency — leases arbitrate.
+ * Whether a document found by the legacy-discovery scan is a reconciliation
+ * candidate the state queries can never reach: no `authReconciliation`
+ * sub-record at all (pre-#73 legacy event), a sub-record with no usable
+ * `state`, or the inconsistent `reconciled`-state-with-flag-false record
+ * that the claim re-verifies.
+ */
+function isLegacyScanCandidate(data: DocumentData): boolean {
+  const rec = readRec(data);
+  const state = rec?.state;
+  return (
+    rec === null ||
+    typeof state !== "string" ||
+    state.length === 0 ||
+    state === "reconciled"
+  );
+}
+
+/**
+ * Bounded, starvation-free sweep. Candidate selection uses three targeted
+ * bounded streams instead of one `unresolved` window, so ineligible records
+ * (terminal `failed`, not-yet-due `pending`, actively leased `processing`)
+ * can never consume the candidate window and block due work behind them:
+ *
+ *   A. DUE PENDING — `state == "pending" AND nextAttemptAt <= now`, oldest
+ *      due first. Future-backoff records never match.
+ *   B. EXPIRED LEASES — `state == "processing" AND leaseExpiresAt <= now`,
+ *      oldest expiry first (crashed-worker reclamation). Active leases never
+ *      match.
+ *   C. LEGACY DISCOVERY — a bounded `createdAt`-ordered scan of unresolved
+ *      records (`duplicateAuthDeleted == false`) that claims only documents
+ *      the state queries cannot reach (no sub-record, no state, or an
+ *      inconsistent `reconciled` marker). Every record written since #73 is
+ *      born with `authReconciliation` inside the merge transaction, so ALL
+ *      legacy records sort before EVERY modern unresolved record — modern
+ *      ineligible records can never starve this stream either.
+ *
+ * `failed` records are in NO stream — only manual retry requeues them.
+ * Streams share one claim budget (`limit`, default
+ * {@link MERGE_AUTH_WORKER_BATCH_LIMIT}); total effort per run is bounded at
+ * `2 × limit` query results plus `MERGE_AUTH_LEGACY_SCAN_LIMIT` scan reads.
+ * Eligibility is re-checked inside each claim transaction, so these queries
+ * only need to be starvation-free supersets of due work. Safe at any cadence
+ * and safe under concurrency — leases arbitrate.
  */
 export async function processMergeAuthReconciliation(
   options: ProcessMergeAuthReconciliationOptions = {},
@@ -574,16 +614,48 @@ export async function processMergeAuthReconciliation(
   const limit = options.limit ?? MERGE_AUTH_WORKER_BATCH_LIMIT;
   const leaseOwner = options.leaseOwner ?? randomUUID();
   const rng = options.rng ?? Math.random;
+  const now = Timestamp.fromMillis(nowMs);
+  const col = db.collection(MERGE_EVENTS_COLLECTION);
 
-  const snapshot = await db
-    .collection(MERGE_EVENTS_COLLECTION)
-    .where("duplicateAuthDeleted", "==", false)
-    .orderBy("createdAt", "asc")
-    .limit(limit)
-    .get();
+  const [duePending, expiredLeases] = await Promise.all([
+    col
+      .where("authReconciliation.state", "==", "pending")
+      .where("authReconciliation.nextAttemptAt", "<=", now)
+      .orderBy("authReconciliation.nextAttemptAt", "asc")
+      .limit(limit)
+      .get(),
+    col
+      .where("authReconciliation.state", "==", "processing")
+      .where("authReconciliation.leaseExpiresAt", "<=", now)
+      .orderBy("authReconciliation.leaseExpiresAt", "asc")
+      .limit(limit)
+      .get(),
+  ]);
+
+  // Due pending first (newly committed work), then expired-lease reclaim.
+  // No document can appear in two streams: A/B select disjoint states and C
+  // only accepts records with no usable state.
+  const candidates = [...duePending.docs, ...expiredLeases.docs];
+  let scanned = duePending.size + expiredLeases.size;
+
+  // Legacy discovery — runs only while claim budget remains.
+  if (candidates.length < limit) {
+    const scan = await col
+      .where("duplicateAuthDeleted", "==", false)
+      .orderBy("createdAt", "asc")
+      .limit(MERGE_AUTH_LEGACY_SCAN_LIMIT)
+      .get();
+    scanned += scan.size;
+    for (const doc of scan.docs) {
+      if (candidates.length >= limit) break;
+      if (isLegacyScanCandidate(doc.data())) {
+        candidates.push(doc);
+      }
+    }
+  }
 
   const result: ProcessMergeAuthReconciliationResult = {
-    scanned: snapshot.size,
+    scanned,
     claimed: 0,
     reconciled: 0,
     retried: 0,
@@ -592,7 +664,8 @@ export async function processMergeAuthReconciliation(
     errors: 0,
   };
 
-  for (const doc of snapshot.docs) {
+  for (const doc of candidates) {
+    if (result.claimed >= limit) break;
     const outcome = await reconcileMergeAuthEvent(doc.id, {
       now: nowMs,
       leaseOwner,
@@ -630,8 +703,9 @@ export async function processMergeAuthReconciliation(
 // --- Admin/operator surface ---------------------------------------------------
 
 export interface MergeReconciliationOverview {
-  /** State `pending` and due-or-scheduled (includes legacy records counted
-   *  via the unresolved query). */
+  /** State `pending` (due or awaiting backoff). Legacy records with no
+   *  `authReconciliation` cannot match a state query — they appear only in
+   *  `unresolved` and in the operator list, where they display as pending. */
   pending: number;
   /** State `processing` with an unexpired lease. */
   processing: number;

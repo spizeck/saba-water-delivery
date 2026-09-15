@@ -129,9 +129,12 @@ Durable reconciliation has coverage at three layers:
     not attempted early, succeeds on a later sweep; `max_attempts` and
     non-retryable classes become terminal `failed`; a malformed merge record
     fails safely without Auth calls.
-  - **Sweep** — bounded batch, deterministic order, legacy records without
-    `authReconciliation` are treated as pending (and the `mergedIntoUserId`
-    marker is backfilled).
+  - **Sweep** — bounded, starvation-free candidate selection: >batch-limit
+    backlogs of terminal `failed`, future-backoff `pending`, or actively
+    leased `processing` records each cannot starve a later due record;
+    expired leases are reclaimed through the sweep; legacy records without
+    `authReconciliation` are discovered (and the `mergedIntoUserId` marker is
+    backfilled); total effort stays bounded under a large mixed backlog.
   - **Operator surface** — counts and sanitized unresolved entries; manual
     retry re-queues `failed` work, refuses `reconciled`/in-flight/missing
     records.

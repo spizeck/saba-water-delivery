@@ -1728,10 +1728,10 @@ identity to a safe state:
 3. **Durable retry until terminal.** Unresolved work is durable state, not a
    lost error: the merge request attempts reconciliation immediately after
    commit, and the protected hourly cron
-   `GET /api/cron/merge-auth-reconciliation` (`CRON_SECRET`, bounded batch of
-   25) sweeps whatever remains — including legacy `accountMergeEvents` with
-   no sub-record, which are treated as pending and have the
-   `mergedIntoUserId` marker backfilled on first claim.
+   `GET /api/cron/merge-auth-reconciliation` (`CRON_SECRET`) sweeps whatever
+   remains — including legacy `accountMergeEvents` with no sub-record, which
+   are treated as pending and have the `mergedIntoUserId` marker backfilled
+   on first claim.
 
 **State machine** on `accountMergeEvents/{id}.authReconciliation`:
 `pending` → `processing` (leased) → `reconciled` | back to `pending`
@@ -1741,6 +1741,22 @@ identity is gone; `failed` means the retry budget or a non-retryable failure
 class (`permission`, `configuration`, `invalid_record`, `max_attempts`) was
 hit — the identity stays application-rejected (and normally disabled), so
 `failed` is operator-actionable, never unsafe.
+
+**Candidate selection is starvation-free.** The sweep does not scan a fixed
+window of unresolved records (a backlog of ineligible records would starve
+due work behind it). Three targeted bounded streams share one claim budget
+(default 25 attempts per run): due `pending` (`nextAttemptAt <= now`),
+expired `processing` leases (`leaseExpiresAt <= now`), and a bounded
+`createdAt`-ordered legacy-discovery scan that claims only documents the
+state queries can never reach — no `authReconciliation`, no usable `state`,
+or the inconsistent `reconciled`-with-flag-false record. Because every
+record written since #73 is born with the sub-record inside the merge
+transaction, all legacy records sort before every modern unresolved record
+and the scan finds them in its first page. Terminal `failed`,
+not-yet-due `pending`, and actively leased `processing` records are in no
+stream and can never block eligible work. Per-run effort is bounded at
+`2 × limit` stream reads plus `MERGE_AUTH_LEGACY_SCAN_LIMIT` (100) scan
+reads.
 
 **Concurrency** follows the notification-outbox pattern (ADR 0017): a
 Firestore transaction claims one event (`processing` + `leaseOwner` +

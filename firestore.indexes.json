@@ -42,6 +42,14 @@
       ]
     },
     {
+      "collectionGroup": "accountMergeEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authReconciliation.state", "order": "ASCENDING" },
+        { "fieldPath": "authReconciliation.nextAttemptAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "driverOffers",
       "queryScope": "COLLECTION",
       "fields": [

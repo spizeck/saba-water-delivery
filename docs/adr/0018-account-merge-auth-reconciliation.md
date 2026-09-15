@@ -58,7 +58,14 @@ idempotent** process driven by `src/lib/domain/mergeReconciliation.ts`:
   reconciliation in-line right after commit (most merges finish there).
   Anything unresolved is picked up by the protected hourly cron
   `GET /api/cron/merge-auth-reconciliation` (`CRON_SECRET`-authorized, same as
-  the other crons) with a bounded batch.
+  the other crons). The sweep does **not** scan a fixed window of "unresolved"
+  records — that would let a backlog of ineligible records starve due work
+  behind them. Instead it queries three targeted bounded streams: due
+  `pending` (`nextAttemptAt <= now`), expired `processing` leases, and a
+  bounded `createdAt`-ordered scan for legacy records the state queries can
+  never reach. Terminal `failed`, not-yet-due `pending`, and actively leased
+  `processing` records are in no stream. One shared claim budget (default 25)
+  bounds the work per run.
 - **Lease-guarded concurrency**, modeled on the notification outbox
   (ADR 0017): a Firestore transaction claims work (`processing` +
   `leaseOwner` + `leaseExpiresAt`), Auth calls run **outside** any
@@ -81,7 +88,12 @@ idempotent** process driven by `src/lib/domain/mergeReconciliation.ts`:
   with no `authReconciliation` sub-record) are treated as unresolved pending
   work by the sweep, and the merged-away marker is backfilled onto the
   duplicate's `users` document on first claim — so pre-existing unreconciled
-  merges are healed automatically.
+  merges are healed automatically. A missing nested field can never match an
+  `authReconciliation.state` query, so the sweep discovers them with a
+  bounded `createdAt`-ordered scan of unresolved records: every record
+  written since this shipped carries the sub-record inside the merge
+  transaction, which guarantees all legacy records sort before every modern
+  unresolved record and the scan reaches them in its first page.
 
 This is deliberately **not** a generic saga framework: it is one purpose-built
 state machine for one cross-system boundary.
@@ -129,9 +141,10 @@ state machine for one cross-system boundary.
   Auth-side convergence latency depends on the cron cadence (hourly) plus
   backoff; Auth emulator tests prove the mechanics, but production acceptance
   of the real Firebase Auth behavior remains a staging item (#83).
-- **A composite Firestore index** on `accountMergeEvents`
-  (`duplicateAuthDeleted` + `createdAt`) is required for the sweep query and
-  must be deployed before the cron is effective in production.
+- **Composite Firestore indexes** on `accountMergeEvents`
+  (`duplicateAuthDeleted` + `createdAt`, `state` + `nextAttemptAt`, and
+  `state` + `leaseExpiresAt`) are required for the sweep's candidate streams
+  and must be deployed before the cron is effective in production.
 - **Merge UX is honest.** The admin result distinguishes "Firestore merge
   committed" from "Auth reconciliation reconciled / pending / failed" — it no
   longer implies the duplicate Auth identity is already gone.
@@ -147,9 +160,9 @@ state machine for one cross-system boundary.
 - **`accountMergeEvents` stays deny-by-default** in Firestore rules; all
   reconciliation state is server-only. Logs carry opaque uids/event ids and
   sanitized categories only.
-- **Deploy the new composite index** with the release; the sweep silently
-  finds nothing without it (the query fails rather than scanning wrongly, but
-  the cron then reports errors instead of reconciling).
+- **Deploy the new composite indexes** with the release; the sweep silently
+  finds nothing without them (the queries fail rather than scanning wrongly,
+  but the cron then reports errors instead of reconciling).
 - **`CRON_SECRET` must be configured**; the route fails closed without it.
   The schedule may be adjusted freely — `nextAttemptAt` is a lower bound, so
   cadence affects timeliness only.
@@ -170,7 +183,8 @@ state machine for one cross-system boundary.
 - `src/app/api/cron/merge-auth-reconciliation/route.ts`, `vercel.json` —
   protected sweep.
 - `src/app/admin/users/merge/` — operator visibility + manual retry.
-- `firestore.rules`, `firestore.indexes.json` — deny-by-default + sweep index.
+- `firestore.rules`, `firestore.indexes.json` — deny-by-default + sweep
+  indexes.
 - Tests: `mergeReconciliation.emulator.test.ts`,
   `mergeAuthReconciliation.auth-emulator.test.ts`,
   `mergeReconciliationPolicy.test.ts`, `mergeAtomicAudit.emulator.test.ts`,

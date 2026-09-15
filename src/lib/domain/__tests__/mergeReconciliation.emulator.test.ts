@@ -14,7 +14,11 @@ import {
   retryMergeReconciliation,
   type MergeAuthOps,
 } from "@/lib/domain/mergeReconciliation";
-import { MERGE_AUTH_LEASE_DURATION_MS } from "@/lib/domain/mergeReconciliationPolicy";
+import {
+  MERGE_AUTH_LEASE_DURATION_MS,
+  MERGE_AUTH_LEGACY_SCAN_LIMIT,
+  MERGE_AUTH_WORKER_BATCH_LIMIT,
+} from "@/lib/domain/mergeReconciliationPolicy";
 import type { UserRole } from "@/lib/domain/types";
 
 /**
@@ -119,6 +123,8 @@ interface SeedEventOverrides {
   duplicateAuthDeleted?: boolean;
   /** Omit the sub-record entirely to simulate a legacy pre-#73 record. */
   legacy?: boolean;
+  /** `createdAt` ordering value — legacy records predate modern ones. */
+  createdAtMs?: number;
   state?: string;
   attemptCount?: number;
   nextAttemptAtMs?: number | null;
@@ -135,7 +141,7 @@ async function seedMergeEvent(
     canonicalUserId: overrides.canonicalUserId ?? "canon",
     duplicateUserId: overrides.duplicateUserId ?? "dup",
     actorId: "admin-1",
-    createdAt: new Date(BASE).toISOString(),
+    createdAt: new Date(overrides.createdAtMs ?? BASE).toISOString(),
     reason: "test merge",
     roleMergePolicy: "union",
     mergedRoles: ["resident"],
@@ -486,7 +492,6 @@ describe("processMergeAuthReconciliation — bounded sweep", () => {
       rng: ZERO_JITTER,
     });
 
-    expect(result.scanned).toBe(2); // resolved record is not a candidate
     expect(result.reconciled).toBe(2);
     expect((await eventData("e1")).authReconciliation.state).toBe("reconciled");
     expect((await eventData("e2")).authReconciliation.state).toBe("reconciled");
@@ -504,14 +509,14 @@ describe("processMergeAuthReconciliation — bounded sweep", () => {
     });
     expect(r1.retried).toBe(1);
 
-    // Not yet due → the sweep skips it.
+    // Not yet due → not a candidate in any stream (never claimed).
     const r2 = await processMergeAuthReconciliation({
       now: BASE + 30_000,
       auth: makeFakeAuth({}).ops,
       rng: ZERO_JITTER,
     });
     expect(r2.claimed).toBe(0);
-    expect(r2.skipped).toBe(1);
+    expect(r2.reconciled).toBe(0);
 
     // Due now → converges.
     const second = makeFakeAuth({ dup: { disabled: true } });
@@ -538,8 +543,183 @@ describe("processMergeAuthReconciliation — bounded sweep", () => {
       limit: 2,
       rng: ZERO_JITTER,
     });
-    expect(result.scanned).toBe(2);
     expect(result.reconciled).toBe(2);
+  });
+});
+
+describe("processMergeAuthReconciliation — starvation-free selection", () => {
+  const INELIGIBLE = MERGE_AUTH_WORKER_BATCH_LIMIT + 5; // > batch limit
+
+  /** Seeds `n` ineligible records OLDER than the due record under test. */
+  async function seedIneligibleBacklog(
+    n: number,
+    state: "failed" | "future" | "processing",
+  ) {
+    for (let i = 0; i < n; i++) {
+      await seedMergeEvent(`old-${state}-${i}`, {
+        duplicateUserId: `old-dup-${i}`,
+        createdAtMs: BASE - 60_000 - i,
+        ...(state === "failed"
+          ? {
+              state: "failed",
+              attemptCount: 7,
+              lastFailureCategory: "max_attempts",
+              nextAttemptAtMs: null,
+            }
+          : state === "future"
+            ? { state: "pending", nextAttemptAtMs: BASE + 3_600_000 }
+            : {
+                state: "processing",
+                leaseOwner: "other-worker",
+                leaseExpiresAtMs: BASE + MERGE_AUTH_LEASE_DURATION_MS,
+              }),
+      });
+    }
+  }
+
+  it(">25 terminal failed records cannot starve a later due pending record", async () => {
+    await seedIneligibleBacklog(INELIGIBLE, "failed");
+    await seedMergeEvent("due", { createdAtMs: BASE });
+    const { ops } = makeFakeAuth({ dup: { disabled: false } });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    expect(result.reconciled).toBe(1);
+    expect((await eventData("due")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    // The failed backlog was never claimed.
+    const failed = await eventData("old-failed-0");
+    expect(failed.authReconciliation.state).toBe("failed");
+    expect(failed.authReconciliation.attemptCount).toBe(7);
+  });
+
+  it(">25 future-backoff pending records cannot starve a due pending record", async () => {
+    await seedIneligibleBacklog(INELIGIBLE, "future");
+    await seedMergeEvent("due", { createdAtMs: BASE });
+    const { ops } = makeFakeAuth({ dup: { disabled: false } });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    expect(result.reconciled).toBe(1);
+    expect((await eventData("due")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    // Future work was left alone — still pending, still scheduled.
+    expect((await eventData("old-future-0")).authReconciliation.state).toBe(
+      "pending",
+    );
+  });
+
+  it(">25 active processing leases cannot starve a due pending record", async () => {
+    await seedIneligibleBacklog(INELIGIBLE, "processing");
+    await seedMergeEvent("due", { createdAtMs: BASE });
+    const { ops } = makeFakeAuth({ dup: { disabled: false } });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    expect(result.reconciled).toBe(1);
+    expect((await eventData("due")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    // Active leases were never touched.
+    expect(
+      (await eventData("old-processing-0")).authReconciliation.leaseOwner,
+    ).toBe("other-worker");
+  });
+
+  it("an expired processing lease is reclaimed through the sweep", async () => {
+    await seedIneligibleBacklog(INELIGIBLE, "failed");
+    await seedMergeEvent("stale", {
+      state: "processing",
+      leaseOwner: "dead-worker",
+      leaseExpiresAtMs: BASE - 1,
+      createdAtMs: BASE - 30_000,
+    });
+    await seedMergeEvent("due", { createdAtMs: BASE });
+    const { ops } = makeFakeAuth({ dup: { disabled: false } });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    expect(result.reconciled).toBe(2);
+    expect((await eventData("stale")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    expect((await eventData("due")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+  });
+
+  it("legacy records without authReconciliation are discovered ahead of a modern ineligible backlog", async () => {
+    // The legacy record predates every modern record (created before #73
+    // shipped) — so the bounded createdAt-ordered scan reaches it first.
+    await seedMergeEvent("legacy", {
+      legacy: true,
+      duplicateUserId: "legacy-dup",
+      createdAtMs: BASE - 3_600_000,
+    });
+    await seedIneligibleBacklog(INELIGIBLE, "failed");
+    const { ops } = makeFakeAuth({ "legacy-dup": { disabled: false } });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    expect(result.reconciled).toBe(1);
+    const data = await eventData("legacy");
+    expect(data.authReconciliation.state).toBe("reconciled");
+    expect(data.duplicateAuthDeleted).toBe(true);
+  });
+
+  it("total effort stays bounded under a large mixed backlog", async () => {
+    await seedIneligibleBacklog(INELIGIBLE, "failed");
+    await seedIneligibleBacklog(INELIGIBLE, "future");
+    await seedIneligibleBacklog(INELIGIBLE, "processing");
+    // 30 due records → more than one batch limit of REAL work too.
+    for (let i = 0; i < INELIGIBLE; i++) {
+      await seedMergeEvent(`due-${i}`, {
+        duplicateUserId: `due-dup-${i}`,
+        createdAtMs: BASE + i,
+      });
+    }
+    const { ops, calls } = makeFakeAuth(
+      Object.fromEntries(
+        Array.from({ length: INELIGIBLE }, (_, i) => [
+          `due-dup-${i}`,
+          { disabled: false },
+        ]),
+      ),
+    );
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    // Claims are capped at the batch limit regardless of backlog size.
+    expect(result.claimed).toBe(MERGE_AUTH_WORKER_BATCH_LIMIT);
+    expect(result.reconciled).toBe(MERGE_AUTH_WORKER_BATCH_LIMIT);
+    expect(calls.filter((c) => c.op === "deleteUser")).toHaveLength(
+      MERGE_AUTH_WORKER_BATCH_LIMIT,
+    );
+    // Reads are bounded: ≤ limit due-pending + ≤ limit expired-lease +
+    // ≤ MERGE_AUTH_LEGACY_SCAN_LIMIT scan reads.
+    expect(result.scanned).toBeLessThanOrEqual(
+      2 * MERGE_AUTH_WORKER_BATCH_LIMIT + MERGE_AUTH_LEGACY_SCAN_LIMIT,
+    );
   });
 });
 
