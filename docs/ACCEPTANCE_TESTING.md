@@ -93,16 +93,37 @@ public edges alive?" — nothing more. It is safe to run after every deploy.
 
 ### Checklist
 
-- `GET /api/health` → 200 `ok`.
-- `GET /api/readiness` → ready (Firestore reachable).
-- `/` loads; login entry points render.
-- `/login` renders; Google/email sign-in controls present; Facebook button
-  disabled.
-- PWA/static assets load if relevant (`manifest`, icons, service worker).
-- Security headers present on a page response (CSP — see
-  `health-security.spec.ts` for the local equivalent).
+The runner (`scripts/production-smoke.mjs`, see "Automation" below)
+verifies:
+
+- `GET /api/health` → 200 `{"status":"ok"}` (liveness only — it deliberately
+  proves nothing about dependencies).
+- `GET /api/readiness` → 200 `{"status":"ready","checks":{"app":"ok",
+  "firestore":"ok"}}`. A 503 / `not_ready` is a smoke FAIL: it is the
+  endpoint's designed "Firestore unreachable" signal.
+- `GET /` → 2xx and the page identifies the application ("Saba Water
+  Delivery"), so a generic error shell cannot pass.
+- `GET /login` → 2xx, identifies as the login page, and is NOT in the
+  "Sign-in is not configured yet" state that renders when the deployment is
+  missing `NEXT_PUBLIC_FIREBASE_*` — a real misconfiguration this check
+  catches. **Scope note:** the provider controls are client-hydrated
+  (`LoginForm` server-renders a loading state until Firebase Auth resolves),
+  so "Google button present / Facebook disabled" cannot be asserted over
+  plain HTTP — that boundary is covered by `e2e/tests/auth.spec.ts` locally
+  and by staging acceptance (#83) with a real provider.
+- Security headers on the `/` response — the actual production contract from
+  `src/lib/security/headers.ts`: a non-empty enforcing (or report-only) CSP
+  containing `default-src 'self'` and `frame-ancestors 'none'` and never
+  `'unsafe-eval'`/`localhost`, plus `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Cross-Origin-Opener-Policy: same-origin-allow-popups`,
+  `X-Frame-Options: DENY`, `Permissions-Policy`, and (production targets
+  only) `Strict-Transport-Security`.
+- PWA assets: `GET /manifest.json` → 200 naming "Saba Water Delivery";
+  `GET /sw.js` → 200 served as JavaScript.
 - Authenticated probe **only** with a designated, separately configured
-  smoke-test account, and only if explicitly approved — otherwise skip.
+  smoke-test account, and only if explicitly approved — **not implemented**;
+  no such account exists and none is created.
 
 ### Explicitly prohibited in production
 
@@ -125,9 +146,56 @@ suite.
 
 ### Automation
 
-No automated production smoke runner exists today. When one is built it
-must encode only the non-destructive checklist above; the prohibition list
-is a hard requirement, not a convention.
+`scripts/production-smoke.mjs` implements this checklist. It is a
+standalone operator CLI — never part of `npm run check`, the test suites,
+or CI.
+
+```bash
+npm run smoke:production -- --url https://<deployment-origin> --production
+```
+
+- **`--url` is always required.** The runner never defaults a target from
+  the environment, repository config, `NEXT_PUBLIC_APP_URL`, or Vercel
+  state — the operator names the exact origin being probed.
+- **`--production` is required for any non-local target.** Without it the
+  runner accepts only loopback targets (for verifying the runner itself
+  against a local `next start`). This mirrors the fail-closed
+  acknowledgement of `scripts/production-integrity.mjs` (#52).
+- **Target validation is fail-closed.** Malformed URLs, non-http(s)
+  schemes, embedded credentials, fragments, query strings, path prefixes,
+  non-default ports, localhost/loopback/private IP literals, and
+  local-style hostnames are rejected. `--production` additionally requires
+  plain `https:` on a public hostname — the current Vercel pilot hostname
+  remains a permitted explicit target until the government domain lands in
+  #59.
+- **Read-only by construction.** Every probe is `GET` issued through a
+  single code path; no other HTTP method exists in the runner, and no
+  credentials or Firebase SDK are involved. Unit tests assert all issued
+  requests are GET/HEAD.
+- **Timeouts** — every request has an explicit timeout (`--timeout-ms`,
+  default 10s); a timeout is a failed check, never a hang.
+- **Redirects** — followed only within the same origin (max 5 hops); a
+  cross-origin redirect is a FAIL, so `production → unrelated domain →
+  200` can never pass.
+- **Output** — one PASS/FAIL line per check with status and duration, then
+  a summary. `--json` emits the sanitized machine-readable equivalent
+  (check names, pass/fail, HTTP status, duration, failure category — never
+  bodies, headers, or cookies).
+- **Exit codes** — `0` all checks passed · `1` one or more checks failed ·
+  `2` usage/target-validation error (nothing was probed).
+
+Example against the current technical pilot (read-only, no auth, no
+mutation):
+
+```bash
+npm run smoke:production -- --url https://saba-water-delivery.vercel.app --production
+```
+
+The pilot is **not** government production — the official target/domain is
+established through #56/#57/#59, and the same command will take that
+origin once it exists. Continuous uptime monitoring stays out of scope
+here — it is #62; this runner is the post-deploy functional smoke.
+Government staging acceptance remains #83.
 
 ## Terminology discipline
 

@@ -378,6 +378,13 @@ curl -i https://<deployment>/api/health
 curl -i https://<deployment>/api/readiness
 ```
 
+Or run the full non-destructive smoke check (issue #84 — health, readiness,
+pages, security headers, PWA assets; GET-only, never mutates):
+
+```bash
+npm run smoke:production -- --url https://<deployment> --production
+```
+
 Expect `200` from both on a healthy deployment, an `x-request-id` header on each
 response, and a body containing no configuration, credentials, or error detail.
 

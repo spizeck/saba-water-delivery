@@ -253,6 +253,20 @@ These endpoints are safe to point an external uptime monitor at. They are
 a quick up/down signal only — they are **not** a substitute for the full
 manual smoke test in [`TESTING.md`](./TESTING.md) after a release.
 
+For a one-command post-deployment verification, use the non-destructive
+production smoke runner (issue #84). It checks health, readiness, the home
+and login pages, security headers, and PWA assets using GET requests only
+— it cannot mutate anything:
+
+```bash
+npm run smoke:production -- --url https://<deployment> --production
+```
+
+`--production` is required for any non-local target — it is the deliberate
+acknowledgement that you are probing a live deployment, the same
+fail-closed pattern as the integrity diagnostic below. Full contract:
+[`ACCEPTANCE_TESTING.md`](./ACCEPTANCE_TESTING.md) "Production smoke".
+
 ### Security events
 
 A few log lines use the `security.*` prefix and flag noteworthy access
