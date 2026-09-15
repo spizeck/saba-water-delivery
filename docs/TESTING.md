@@ -135,6 +135,11 @@ Durable reconciliation has coverage at three layers:
     expired leases are reclaimed through the sweep; legacy records without
     `authReconciliation` are discovered (and the `mergedIntoUserId` marker is
     backfilled); total effort stays bounded under a large mixed backlog.
+  - **Fairness** — the round-robin interleave gives every eligible class a
+    share each run: deep due-pending backlogs cannot starve expired leases
+    or legacy discovery, deep expired-lease backlogs cannot starve due work,
+    unused capacity from empty streams spills to the others, and
+    outcome-write failures still count against the 25-attempt Auth budget.
   - **Operator surface** — counts and sanitized unresolved entries; manual
     retry re-queues `failed` work, refuses `reconciled`/in-flight/missing
     records.

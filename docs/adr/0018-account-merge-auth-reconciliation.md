@@ -64,8 +64,12 @@ idempotent** process driven by `src/lib/domain/mergeReconciliation.ts`:
   `pending` (`nextAttemptAt <= now`), expired `processing` leases, and a
   bounded `createdAt`-ordered scan for legacy records the state queries can
   never reach. Terminal `failed`, not-yet-due `pending`, and actively leased
-  `processing` records are in no stream. One shared claim budget (default 25)
-  bounds the work per run.
+  `processing` records are in no stream. Fairness BETWEEN eligible classes is
+  work-conserving round-robin — the candidate list interleaves one document
+  per non-empty stream per round, so a deep backlog in one class cannot
+  starve another and empty streams surrender their share automatically. One
+  shared claim budget (default 25) bounds actual reconciliation attempts per
+  run, including attempts whose post-Auth outcome write fails.
 - **Lease-guarded concurrency**, modeled on the notification outbox
   (ADR 0017): a Firestore transaction claims work (`processing` +
   `leaseOwner` + `leaseExpiresAt`), Auth calls run **outside** any

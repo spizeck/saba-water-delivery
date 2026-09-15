@@ -1744,19 +1744,23 @@ hit — the identity stays application-rejected (and normally disabled), so
 
 **Candidate selection is starvation-free.** The sweep does not scan a fixed
 window of unresolved records (a backlog of ineligible records would starve
-due work behind it). Three targeted bounded streams share one claim budget
-(default 25 attempts per run): due `pending` (`nextAttemptAt <= now`),
-expired `processing` leases (`leaseExpiresAt <= now`), and a bounded
-`createdAt`-ordered legacy-discovery scan that claims only documents the
-state queries can never reach — no `authReconciliation`, no usable `state`,
-or the inconsistent `reconciled`-with-flag-false record. Because every
-record written since #73 is born with the sub-record inside the merge
+due work behind it). Three targeted bounded streams feed one work-conserving
+round-robin: due `pending` (`nextAttemptAt <= now`), expired `processing`
+leases (`leaseExpiresAt <= now`), and a bounded `createdAt`-ordered
+legacy-discovery scan that claims only documents the state queries can never
+reach — no `authReconciliation`, no usable `state`, or the inconsistent
+`reconciled`-with-flag-false record. Interleaving one document per non-empty
+stream per round means a deep backlog in one eligible class can never starve
+another, and empty streams surrender their share automatically. Because
+every record written since #73 is born with the sub-record inside the merge
 transaction, all legacy records sort before every modern unresolved record
 and the scan finds them in its first page. Terminal `failed`,
 not-yet-due `pending`, and actively leased `processing` records are in no
-stream and can never block eligible work. Per-run effort is bounded at
-`2 × limit` stream reads plus `MERGE_AUTH_LEGACY_SCAN_LIMIT` (100) scan
-reads.
+stream and can never block eligible work. The claim budget (default 25)
+counts **actual reconciliation attempts** — including `error` outcomes where
+Auth work ran but the outcome write failed — and total read effort per run
+is bounded at `2 × limit` stream reads plus `MERGE_AUTH_LEGACY_SCAN_LIMIT`
+(100) scan reads.
 
 **Concurrency** follows the notification-outbox pattern (ADR 0017): a
 Firestore transaction claims one event (`processing` + `leaseOwner` +

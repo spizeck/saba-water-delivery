@@ -522,9 +522,9 @@ an operator needs to know:
   in `vercel.json`) retries with bounded backoff (~1m → 12h, 7 attempts).
   Each run is bounded (at most ~25 attempts) and **starvation-free**: it
   queries due work, expired leases, and legacy records in separate targeted
-  streams, so a backlog of permanently failed or not-yet-due records can
-  never block new reconciliations behind it. Most operators never need to
-  do anything.
+  streams and interleaves them round-robin, so a backlog of permanently
+  failed, not-yet-due, or even deep eligible records can never block any
+  class of work behind it. Most operators never need to do anything.
 - **Operator visibility.** `/admin/users/merge` shows a reconciliation panel:
   counts of pending / in-flight / stale / terminally failed work, and a
   sanitized list of unresolved merges (opaque uids, attempt count, last

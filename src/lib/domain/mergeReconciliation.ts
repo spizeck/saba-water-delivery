@@ -599,12 +599,23 @@ function isLegacyScanCandidate(data: DocumentData): boolean {
  *      ineligible records can never starve this stream either.
  *
  * `failed` records are in NO stream — only manual retry requeues them.
- * Streams share one claim budget (`limit`, default
- * {@link MERGE_AUTH_WORKER_BATCH_LIMIT}); total effort per run is bounded at
- * `2 × limit` query results plus `MERGE_AUTH_LEGACY_SCAN_LIMIT` scan reads.
- * Eligibility is re-checked inside each claim transaction, so these queries
- * only need to be starvation-free supersets of due work. Safe at any cadence
- * and safe under concurrency — leases arbitrate.
+ *
+ * Fairness BETWEEN eligible classes is work-conserving round-robin: the
+ * merged candidate list interleaves one document per non-empty stream per
+ * round (A[0], B[0], C[0], A[1], …), so a deep backlog in one class can
+ * never starve another eligible class — and empty streams surrender their
+ * share automatically, wasting no capacity.
+ *
+ * The claim budget (`limit`, default {@link MERGE_AUTH_WORKER_BATCH_LIMIT})
+ * bounds ACTUAL reconciliation attempts: every outcome that performed — or
+ * may have performed — Auth work consumes it, including `error` outcomes
+ * where the post-Auth outcome write failed. Only `skipped`/`already_resolved`
+ * outcomes (claim never made it to the Auth stage) are free. Total read
+ * effort per run is bounded at `2 × limit` stream results plus
+ * `MERGE_AUTH_LEGACY_SCAN_LIMIT` legacy-scan reads. Eligibility is
+ * re-checked inside each claim transaction, so these queries only need to
+ * be starvation-free supersets of due work. Safe at any cadence and safe
+ * under concurrency — leases arbitrate.
  */
 export async function processMergeAuthReconciliation(
   options: ProcessMergeAuthReconciliationOptions = {},
@@ -617,7 +628,7 @@ export async function processMergeAuthReconciliation(
   const now = Timestamp.fromMillis(nowMs);
   const col = db.collection(MERGE_EVENTS_COLLECTION);
 
-  const [duePending, expiredLeases] = await Promise.all([
+  const [duePending, expiredLeases, legacyScan] = await Promise.all([
     col
       .where("authReconciliation.state", "==", "pending")
       .where("authReconciliation.nextAttemptAt", "<=", now)
@@ -630,32 +641,36 @@ export async function processMergeAuthReconciliation(
       .orderBy("authReconciliation.leaseExpiresAt", "asc")
       .limit(limit)
       .get(),
-  ]);
-
-  // Due pending first (newly committed work), then expired-lease reclaim.
-  // No document can appear in two streams: A/B select disjoint states and C
-  // only accepts records with no usable state.
-  const candidates = [...duePending.docs, ...expiredLeases.docs];
-  let scanned = duePending.size + expiredLeases.size;
-
-  // Legacy discovery — runs only while claim budget remains.
-  if (candidates.length < limit) {
-    const scan = await col
+    col
       .where("duplicateAuthDeleted", "==", false)
       .orderBy("createdAt", "asc")
       .limit(MERGE_AUTH_LEGACY_SCAN_LIMIT)
-      .get();
-    scanned += scan.size;
-    for (const doc of scan.docs) {
-      if (candidates.length >= limit) break;
-      if (isLegacyScanCandidate(doc.data())) {
-        candidates.push(doc);
+      .get(),
+  ]);
+
+  // Round-robin interleave — fairness between eligible classes with
+  // automatic spillover from empty streams. No document can appear in two
+  // streams: A/B select disjoint states and C only accepts records with no
+  // usable state.
+  const streams = [
+    duePending.docs,
+    expiredLeases.docs,
+    legacyScan.docs.filter((doc) => isLegacyScanCandidate(doc.data())),
+  ];
+  const candidates: typeof duePending.docs = [];
+  for (let round = 0; ; round++) {
+    let any = false;
+    for (const stream of streams) {
+      if (round < stream.length) {
+        candidates.push(stream[round]);
+        any = true;
       }
     }
+    if (!any) break;
   }
 
   const result: ProcessMergeAuthReconciliationResult = {
-    scanned,
+    scanned: duePending.size + expiredLeases.size + legacyScan.size,
     claimed: 0,
     reconciled: 0,
     retried: 0,
@@ -665,7 +680,10 @@ export async function processMergeAuthReconciliation(
   };
 
   for (const doc of candidates) {
-    if (result.claimed >= limit) break;
+    // claimed + errors counts every attempt that reached (or may have
+    // reached) the Auth stage — an `error` after the outcome write still
+    // consumed an Auth attempt and must spend budget.
+    if (result.claimed + result.errors >= limit) break;
     const outcome = await reconcileMergeAuthEvent(doc.id, {
       now: nowMs,
       leaseOwner,

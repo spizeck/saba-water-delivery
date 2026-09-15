@@ -723,6 +723,215 @@ describe("processMergeAuthReconciliation — starvation-free selection", () => {
   });
 });
 
+describe("processMergeAuthReconciliation — fairness between eligible streams", () => {
+  const BACKLOG = MERGE_AUTH_WORKER_BATCH_LIMIT + 5;
+
+  /** Seeds `n` DUE pending records (eligible right now at `now = BASE`). */
+  async function seedDueBacklog(n: number, prefix = "due") {
+    for (let i = 0; i < n; i++) {
+      await seedMergeEvent(`${prefix}-${i}`, {
+        duplicateUserId: `${prefix}-dup-${i}`,
+        createdAtMs: BASE + i,
+      });
+    }
+    return Object.fromEntries(
+      Array.from({ length: n }, (_, i) => [
+        `${prefix}-dup-${i}`,
+        { disabled: false },
+      ]),
+    );
+  }
+
+  /** Seeds `n` EXPIRED processing leases (reclaimable at `now = BASE`). */
+  async function seedExpiredLeaseBacklog(n: number, prefix = "expired") {
+    for (let i = 0; i < n; i++) {
+      await seedMergeEvent(`${prefix}-${i}`, {
+        duplicateUserId: `${prefix}-dup-${i}`,
+        createdAtMs: BASE + i,
+        state: "processing",
+        leaseOwner: `dead-${i}`,
+        leaseExpiresAtMs: BASE - 1,
+      });
+    }
+    return Object.fromEntries(
+      Array.from({ length: n }, (_, i) => [
+        `${prefix}-dup-${i}`,
+        { disabled: false },
+      ]),
+    );
+  }
+
+  it("30+ due pending cannot starve an expired lease", async () => {
+    const due = await seedDueBacklog(BACKLOG);
+    await seedMergeEvent("stale", {
+      duplicateUserId: "stale-dup",
+      state: "processing",
+      leaseOwner: "dead-worker",
+      leaseExpiresAtMs: BASE - 1,
+      createdAtMs: BASE - 30_000,
+    });
+    const { ops } = makeFakeAuth({
+      ...due,
+      "stale-dup": { disabled: false },
+    });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    // The expired lease is interleaved into the run — not deferred forever.
+    expect((await eventData("stale")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    expect(result.claimed + result.errors).toBeLessThanOrEqual(
+      MERGE_AUTH_WORKER_BATCH_LIMIT,
+    );
+  });
+
+  it("30+ due pending cannot starve an eligible legacy record", async () => {
+    const due = await seedDueBacklog(BACKLOG);
+    await seedMergeEvent("legacy", {
+      legacy: true,
+      duplicateUserId: "legacy-dup",
+      createdAtMs: BASE - 3_600_000,
+    });
+    const { ops } = makeFakeAuth({
+      ...due,
+      "legacy-dup": { disabled: false },
+    });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    const data = await eventData("legacy");
+    expect(data.authReconciliation.state).toBe("reconciled");
+    expect(data.duplicateAuthDeleted).toBe(true);
+    expect(result.claimed + result.errors).toBeLessThanOrEqual(
+      MERGE_AUTH_WORKER_BATCH_LIMIT,
+    );
+  });
+
+  it("30+ expired leases cannot starve due pending work", async () => {
+    const expired = await seedExpiredLeaseBacklog(BACKLOG);
+    await seedMergeEvent("due", {
+      duplicateUserId: "due-dup",
+      createdAtMs: BASE + 999,
+    });
+    const { ops } = makeFakeAuth({
+      ...expired,
+      "due-dup": { disabled: false },
+    });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    expect((await eventData("due")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    expect(result.claimed + result.errors).toBeLessThanOrEqual(
+      MERGE_AUTH_WORKER_BATCH_LIMIT,
+    );
+  });
+
+  it("a mixed eligible backlog progresses every class within the 25-attempt budget", async () => {
+    const due = await seedDueBacklog(BACKLOG);
+    const expired = await seedExpiredLeaseBacklog(BACKLOG);
+    await seedMergeEvent("legacy", {
+      legacy: true,
+      duplicateUserId: "legacy-dup",
+      createdAtMs: BASE - 3_600_000,
+    });
+    const { ops } = makeFakeAuth({
+      ...due,
+      ...expired,
+      "legacy-dup": { disabled: false },
+    });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    // Never more than the documented attempt budget.
+    expect(result.claimed + result.errors).toBeLessThanOrEqual(
+      MERGE_AUTH_WORKER_BATCH_LIMIT,
+    );
+    // Every eligible class made progress this run.
+    expect((await eventData("legacy")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    expect((await eventData("due-0")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+    expect((await eventData("expired-0")).authReconciliation.state).toBe(
+      "reconciled",
+    );
+  });
+
+  it("spills unused capacity from an empty stream to the others", async () => {
+    // 30 due + 5 expired, NO legacy candidates → all 5 leases reclaimed AND
+    // 20 due records reconciled, consuming the full budget.
+    const due = await seedDueBacklog(BACKLOG);
+    const expired = await seedExpiredLeaseBacklog(5);
+    const { ops } = makeFakeAuth({ ...due, ...expired });
+
+    const result = await processMergeAuthReconciliation({
+      now: BASE,
+      auth: ops,
+      rng: ZERO_JITTER,
+    });
+    expect(result.claimed).toBe(MERGE_AUTH_WORKER_BATCH_LIMIT);
+    expect(result.reconciled).toBe(MERGE_AUTH_WORKER_BATCH_LIMIT);
+    for (let i = 0; i < 5; i++) {
+      expect((await eventData(`expired-${i}`)).authReconciliation.state).toBe(
+        "reconciled",
+      );
+    }
+  });
+
+  it("outcome-write failures still count against the Auth-attempt budget", async () => {
+    const due = await seedDueBacklog(BACKLOG);
+    const { ops, calls } = makeFakeAuth(due);
+
+    // Fail every even-numbered transaction: the claim (odd) succeeds, the
+    // outcome write (even) fails — so every attempt DOES Auth work (the
+    // delete happens) but records `error`. Those attempts must still spend
+    // the budget, or Auth calls could exceed the documented limit.
+    const real = db.runTransaction.bind(db);
+    let txnCalls = 0;
+    const spy = vi.spyOn(db, "runTransaction").mockImplementation(((
+      updateFn: (txn: Transaction) => Promise<unknown>,
+    ) => {
+      txnCalls += 1;
+      const n = txnCalls;
+      return real(async (txn) => {
+        const value = await updateFn(txn);
+        if (n % 2 === 0) throw new Error("INJECTED_OUTCOME_FAILURE");
+        return value;
+      });
+    }) as typeof db.runTransaction);
+    try {
+      const result = await processMergeAuthReconciliation({
+        now: BASE,
+        auth: ops,
+        rng: ZERO_JITTER,
+      });
+      expect(result.errors).toBe(MERGE_AUTH_WORKER_BATCH_LIMIT);
+      expect(result.claimed).toBe(0);
+      expect(calls.filter((c) => c.op === "deleteUser")).toHaveLength(
+        MERGE_AUTH_WORKER_BATCH_LIMIT,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe("retryMergeReconciliation — manual operator retry", () => {
   it("requeues a terminally failed record and attempts it immediately", async () => {
     await seedMergeEvent("e1", {

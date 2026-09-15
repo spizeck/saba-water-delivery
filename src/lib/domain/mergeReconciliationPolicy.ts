@@ -52,7 +52,12 @@ export const MERGE_AUTH_BACKOFF_JITTER = 0.2;
 /** How long a reconciler holds a processing lease before it may be reclaimed. */
 export const MERGE_AUTH_LEASE_DURATION_MS = 5 * 60_000;
 
-/** Maximum merge events a single sweep invocation will attempt to reconcile. */
+/**
+ * Maximum reconciliation attempts a single sweep invocation performs —
+ * counting every candidate that reached (or may have reached) the Auth
+ * stage, including attempts whose post-Auth outcome write failed (`error`
+ * outcomes). Only candidates skipped before claiming are free.
+ */
 export const MERGE_AUTH_WORKER_BATCH_LIMIT = 25;
 
 /**
