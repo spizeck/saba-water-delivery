@@ -30,6 +30,9 @@ const ALL_ROLES: UserRole[] = [
 ];
 
 export function MergeAccountsForm({ users }: Props) {
+  // Merged-away identities are retained for audit history but can never be
+  // merge participants — exclude them from both pickers.
+  const mergeableUsers = users.filter((u) => !u.mergedIntoUserId);
   const [canonicalUid, setCanonicalUid] = useState("");
   const [duplicateUid, setDuplicateUid] = useState("");
   const [preview, setPreview] = useState<AccountMergePreview | null>(null);
@@ -78,9 +81,9 @@ export function MergeAccountsForm({ users }: Props) {
         <h2 className="text-lg font-bold text-slate-900">Select accounts</h2>
         <p className="mt-1 text-xs text-slate-500">
           The <strong>canonical</strong> account remains active. The{" "}
-          <strong>duplicate</strong> account&apos;s application data is
-          relinked, then the duplicate Firebase Auth account is deleted when
-          possible.
+          <strong>duplicate</strong> account&apos;s application data is relinked
+          and it is immediately blocked from signing in; its Firebase Auth
+          account is then removed automatically, with retries if needed.
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -95,7 +98,7 @@ export function MergeAccountsForm({ users }: Props) {
               className="h-10 rounded-lg border border-slate-300 px-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
             >
               <option value="">Select the account to keep...</option>
-              {users.map((u) => (
+              {mergeableUsers.map((u) => (
                 <option key={u.uid} value={u.uid}>
                   {u.displayName || "Unnamed"} —{" "}
                   {u.email ?? u.phone ?? u.uid.slice(0, 8)}
@@ -115,7 +118,7 @@ export function MergeAccountsForm({ users }: Props) {
               className="h-10 rounded-lg border border-slate-300 px-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
             >
               <option value="">Select the account to merge...</option>
-              {users.map((u) => (
+              {mergeableUsers.map((u) => (
                 <option key={u.uid} value={u.uid}>
                   {u.displayName || "Unnamed"} —{" "}
                   {u.email ?? u.phone ?? u.uid.slice(0, 8)}

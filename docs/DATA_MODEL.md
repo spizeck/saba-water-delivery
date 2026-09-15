@@ -33,6 +33,18 @@ never overwritten on later sign-ins. `deliveryProfileConfirmedAt` is
 missing on documents created before that field existed and is treated
 as "never confirmed," not backfilled.
 
+**`mergedIntoUserId` (issue #73):** set **inside the account-merge
+transaction** on the merged-away (duplicate) user's document, pointing at the
+surviving canonical uid. It is the application-level "this identity is
+decommissioned" marker: both authentication boundaries — session creation
+(`POST /api/auth/session`) and session-cookie verification
+(`getSessionUser()`) — reject the uid while it is set, from the moment the
+merge commits and independently of Firebase Auth cleanup state. The document
+is otherwise intentionally retained for historical linkage; `null`/absent on
+all normal users. A client can never write this field (deny-by-default
+rules). See TECHNICAL.md "Authenticated account merge" and
+[ADR 0018](./adr/0018-account-merge-auth-reconciliation.md).
+
 ### `users/{uid}/roleEvents/{eventId}`
 
 Audit trail of role grants/removals (`role_added` / `role_removed`,
@@ -404,11 +416,38 @@ deletion/update of the involved user documents.
 - `counts.requestsRelinked` — number of `waterRequests` whose
   `customerId` was relinked.
 - `counts.driverRegistryRelinked` — `0` or `1`.
-- `error` — non-secret diagnostic if duplicate Auth account deletion
-  failed, otherwise `null`.
+- `error` — sanitized failure category of the most recent reconciliation
+  outcome (a `MergeAuthFailureCategory` value), or `null`. Retained for
+  backwards compatibility with records written before `authReconciliation`
+  existed.
+- `authReconciliation` — durable Auth-reconciliation sub-record (issue #73),
+  written **inside the merge transaction** so the cleanup obligation is
+  durable from commit time. Absent on events created before this mechanism;
+  the sweep treats a missing sub-record plus `duplicateAuthDeleted === false`
+  as unresolved legacy work and backfills it on first claim. Fields:
+  - `state` — `"pending" | "processing" | "reconciled" | "failed"`. Terminal
+    states are `reconciled` (the merged-away Auth identity no longer exists)
+    and `failed` (terminal for *automatic* retry; remains operator-visible
+    and manually retryable).
+  - `attemptCount` — completed claim→outcome cycles.
+  - `nextAttemptAt` — earliest time the work may be claimed again (backoff
+    lower bound); `null` when terminal.
+  - `lastAttemptAt` — timestamp of the last completed attempt.
+  - `lastFailureCategory` — sanitized failure classification
+    (`transient | permission | configuration | invalid_record |
+    max_attempts`); never a raw provider error.
+  - `duplicateDisabled` — best-effort note that the merged-away Auth identity
+    was observed disabled; `false` is not a guarantee — the
+    `mergedIntoUserId` application rejection is the authoritative interim
+    control.
+  - `reconciledAt` — when the identity was confirmed absent/deleted.
+  - `leaseOwner` / `leaseExpiresAt` — internal lease coordination for the
+    worker claim (see ADR 0018); `leaseOwner` is never exposed through the
+    public/operator surface.
 
 **Reads/writes:** fully deny-by-default in `firestore.rules`. All access
-is through server-side admin operations in `src/lib/domain/identity.ts`.
+is through server-side admin operations in `src/lib/domain/identity.ts` and
+`src/lib/domain/mergeReconciliation.ts`.
 
 ## `systemInvariants/adminRole`
 

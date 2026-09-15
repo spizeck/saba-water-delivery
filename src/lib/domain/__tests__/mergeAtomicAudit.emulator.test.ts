@@ -3,10 +3,11 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 // Only firestore + storage emulators run under `npm run test:rules`; point the
-// Auth emulator host at its standard (unused) port so the merge's best-effort
-// `auth.deleteUser` fails fast with a connection error — the same best-effort
-// behavior as a production Auth-deletion failure. The merge's Firestore effects
-// (the subject of these tests) are unaffected. See phantomAdmin.emulator.test.ts.
+// Auth emulator host at its standard (unused) port so the merge's immediate
+// Auth reconciliation fails fast with a connection error — the same behavior
+// as a production Auth outage. The merge's Firestore effects (the subject of
+// these tests) are unaffected, and the failed attempt leaves a durable
+// `pending` reconciliation record (issue #73). See phantomAdmin.emulator.test.ts.
 process.env.FIREBASE_AUTH_EMULATOR_HOST =
   process.env.FIREBASE_AUTH_EMULATOR_HOST ?? "127.0.0.1:9099";
 
@@ -35,8 +36,10 @@ import type { UserRole } from "@/lib/domain/types";
  * best-effort post-commit update.
  *
  * The last-admin invariant (#70) and the oversized-merge fail-closed guard are
- * proven by phantomAdmin.emulator.test.ts; these tests focus on the Firestore
- * state/audit atomicity boundary #49 introduces.
+ * proven by phantomAdmin.emulator.test.ts; the durable Auth-side convergence
+ * (disable → revoke → delete, retries, lease reclamation) is proven by
+ * mergeAuthReconciliation.emulator.test.ts / .auth-emulator.test.ts. These
+ * tests focus on the Firestore state/audit atomicity boundary #49 introduces.
  *
  * Runs only under `npm run test:rules`; excluded from the plain `vitest` run.
  */
@@ -175,12 +178,23 @@ describe("mergeUserAccounts — Firestore state + audit commit atomically (#49)"
     expect(result.requestsRelinked).toBe(3);
     expect(result.driverRegistryRelinked).toBe(1);
 
-    // Auth deletion is the external boundary: it fails in this test env, and
-    // that outcome is recorded on the durable audit record post-commit.
+    // Auth reconciliation is the external boundary: it fails in this test
+    // env, and that outcome is recorded DURABLY — the record is pending and
+    // retryable, not a one-shot best effort (issue #73).
     expect(result.duplicateAuthDeleted).toBe(false);
     expect(result.error).toBeTruthy();
+    expect(result.authReconciliation).toBe("pending");
     expect(events[0].duplicateAuthDeleted).toBe(false);
     expect(events[0].error).toBeTruthy();
+    expect(events[0].authReconciliation?.state).toBe("pending");
+    expect(events[0].authReconciliation?.attemptCount).toBe(1);
+    expect(events[0].authReconciliation?.nextAttemptAt).toBeTruthy();
+
+    // The merged-away marker was stamped inside the merge transaction —
+    // the duplicate is application-rejected even while its Auth identity
+    // still exists.
+    const dupDoc = await db.collection(USERS).doc("dup").get();
+    expect(dupDoc.data()?.mergedIntoUserId).toBe("canon");
   }, 30_000);
 
   it("writes NO audit record and relinks nothing when the transaction fails mid-commit", async () => {

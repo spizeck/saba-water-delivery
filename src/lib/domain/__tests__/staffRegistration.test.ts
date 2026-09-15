@@ -32,6 +32,7 @@ function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
     deliveryProfileConfirmedAt: null,
     accountOrigin: "self_registered",
     authStatus: "claimed",
+    mergedIntoUserId: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,

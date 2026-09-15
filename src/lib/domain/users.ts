@@ -43,6 +43,11 @@ function toUserProfile(uid: string, data: DocumentData): UserProfile {
       data.deliveryProfileConfirmedAt?.toDate?.().toISOString() ?? null,
     accountOrigin,
     authStatus,
+    // Set inside the merge transaction on the merged-away ("duplicate")
+    // account — the marker application authentication rejects on. Absent
+    // on documents that predate durable merge reconciliation.
+    mergedIntoUserId:
+      typeof data.mergedIntoUserId === "string" ? data.mergedIntoUserId : null,
     createdAt:
       data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     updatedAt:
@@ -96,6 +101,9 @@ export async function getResidentDirectory(): Promise<
     const data = doc.data();
     const roles = toUserRoles(data.roles);
     if (!roles.includes("resident")) continue;
+    // Merged-away identities are retained for historical linkage but are
+    // no longer real customers — never offer them to dispatchers.
+    if (data.mergedIntoUserId) continue;
 
     results.push({
       uid: doc.id,

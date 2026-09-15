@@ -140,7 +140,8 @@ workflow does not need a Playwright test for every edge case.
 | Active-delivery safeguards | High | unit + emulator | verified | `activeRequestValidation.test.ts`; `activeRequestRuleParity.test.ts` (script parity) | — |
 | Account linking (claim unclaimed profiles) | High | unit | verified | `identityMatching.test.ts`, `staffRegistration.test.ts` | — |
 | Account merging | Critical | emulator | verified | `mergeAtomicAudit.emulator.test.ts` (atomicity, write-limit ceiling), `phantomAdmin.emulator.test.ts` | — |
-| Auth↔profile reconciliation | High | scripts/unit | partial | `scripts/lib/__tests__/integrity-*.test.ts` cover the read-only checks | Durable resumable reconciliation unimplemented → **#73** |
+| Auth↔profile reconciliation | High | scripts/unit | verified | `scripts/lib/__tests__/integrity-*.test.ts` cover the read-only checks | — |
+| Merge Auth reconciliation (#73) | Critical | unit + Firestore emulator + **Auth emulator** | verified | `mergeReconciliationPolicy.test.ts` (pure state machine/backoff/classification); `mergeReconciliation.emulator.test.ts` (claim/lease/crash windows/backoff/terminal/manual retry/survivor safety); `mergeAuthReconciliation.auth-emulator.test.ts` (real disable/revoke/delete, `user-not-found` convergence, merged-away session rejection); session + cron route unit tests | Emulator proves the mechanics; controlled acceptance on real Firebase Auth is a **staging** item → **#83** |
 | Dispatch configuration | High | emulator | verified | `dispatchSettingsAtomic.emulator.test.ts` (atomic config+audit, serialized updates) | — |
 | Atomic audit behavior (#49) | Critical | emulator | verified | `auditEventAtomicity.emulator.test.ts`, `mergeAtomicAudit.emulator.test.ts`, `staffRecordedDispute.emulator.test.ts`, `residentCancellation.emulator.test.ts` | — |
 | Production data diagnostics (#52) | Normal | unit | verified | `scripts/lib/__tests__/integrity-checks.test.ts`, `integrity-scan.test.ts`, `integrity-target.test.ts`, `recovery-*.test.ts` — read-only, bounded, `--production` acknowledgement | Live runs are admin-triggered → OPERATIONS |
@@ -229,7 +230,7 @@ describe them as durable.
 |---|---|---|
 | Government staging environment does not exist (government-owned Firebase project, Vercel, Resend domain) | Blocks all `staging-required` rows | **#83** (blocked on #56, #57, #58) |
 | No automated non-destructive production smoke runner | High | **#84** |
-| Auth↔profile reconciliation is diagnostic-only, not resumable/durable | High | **#73** |
+| Real-Firebase-Auth acceptance of merge reconciliation (emulator proven; live disable/revoke/delete + revocation propagation unverified) | High | **#83** (staging) — mechanics verified in CI by #73 |
 | Admin portal UI has no e2e coverage (domain + rules verified below the browser layer) | Low | Acceptable — noted; add e2e only if admin UI gains risky client logic |
 | Continuity + account-setup emails are best-effort (not in outbox) | Low — deliberate design | Documented here; revisit only if a lost email matters operationally |
 | Expired-cookie e2e (would need clock control) | Low — unit layer covers the logic | Noted for completeness |

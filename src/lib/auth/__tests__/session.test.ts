@@ -32,7 +32,10 @@ vi.mock("@/lib/domain/users", () => ({
 }));
 vi.mock("@/lib/logging", () => ({
   logSecurityEvent: mocks.logSecurityEvent,
-  SECURITY_EVENTS: { authorizationDenied: "authorization_denied" },
+  SECURITY_EVENTS: {
+    authorizationDenied: "authorization_denied",
+    mergedIdentityRejected: "merged_identity_rejected",
+  },
 }));
 
 import { getSessionUser, requireRole } from "@/lib/auth/session";
@@ -74,6 +77,25 @@ describe("getSessionUser", () => {
     mocks.verifySessionCookie.mockResolvedValue({ uid: "u1" });
     mocks.getUserProfile.mockResolvedValue(null);
     await expect(getSessionUser()).resolves.toBeNull();
+  });
+
+  it("rejects a merged-away uid even when the session cookie still verifies", async () => {
+    // The durable `mergedIntoUserId` marker — written inside the merge
+    // transaction — is the application-level guarantee that a merged-away
+    // identity cannot keep using a still-valid credential while Auth
+    // reconciliation is pending (issue #73).
+    mocks.cookieGet.mockReturnValue({ value: "cookie" });
+    mocks.verifySessionCookie.mockResolvedValue({ uid: "dup-uid" });
+    mocks.getUserProfile.mockResolvedValue({
+      ...PROFILE,
+      uid: "dup-uid",
+      mergedIntoUserId: "canon-uid",
+    });
+    await expect(getSessionUser()).resolves.toBeNull();
+    expect(mocks.logSecurityEvent).toHaveBeenCalledWith(
+      "merged_identity_rejected",
+      expect.objectContaining({ uid: "dup-uid" }),
+    );
   });
 
   it("returns the uid and profile for a valid session", async () => {

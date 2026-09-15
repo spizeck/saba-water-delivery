@@ -73,6 +73,20 @@ export interface UserProfile {
   /** Whether the person has linked Firebase Auth credentials. See `AuthStatus`. */
   authStatus: AuthStatus;
 
+  /**
+   * When set, this account was the merged-away ("duplicate") side of an
+   * admin account merge and now points at the surviving canonical uid.
+   * The marker is written inside the same Firestore transaction that
+   * commits the merge, so it is the application-level guarantee that the
+   * merged-away identity can no longer authenticate — even while the
+   * asynchronous Firebase Auth reconciliation is still pending. Merged
+   * profiles are retained for historical linkage (requests, driver
+   * registry, audit) but must never produce an authenticated session.
+   * Absent on all documents written before durable merge reconciliation;
+   * treat missing as `null` (never merged away).
+   */
+  mergedIntoUserId: string | null;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -738,6 +752,66 @@ export interface DispatchBatchEvent {
  *
  * See TECHNICAL.md "Authenticated Account Merge" / "Merge Audit Trail".
  */
+/**
+ * Lifecycle of the asynchronous Firebase Auth cleanup that follows a
+ * committed Firestore account merge. Firestore transactions cannot span
+ * Firebase Auth, so convergence is at-least-once and durable:
+ *
+ * - `"pending"`    — reconciliation required and eligible once
+ *                    `nextAttemptAt` has passed (immediate merges use
+ *                    `nextAttemptAt <= createdAt` so it is due at once).
+ * - `"processing"` — a reconciler holds the lease; becomes eligible again
+ *                    if `leaseExpiresAt` passes without an outcome
+ *                    (worker crash → stale-lease reclamation).
+ * - `"reconciled"` — terminal: the merged-away Auth identity no longer
+ *                    exists (`deleteUser` succeeded or `auth/user-not-found`
+ *                    proved it is already gone).
+ * - `"failed"`     — terminal for automatic retry (non-retryable failure
+ *                    class or attempt budget exhausted). Remains
+ *                    operator-visible and manually retryable.
+ */
+export type MergeAuthReconciliationState =
+  "pending" | "processing" | "reconciled" | "failed";
+
+/**
+ * Durable reconciliation sub-record stored on `accountMergeEvents`. The
+ * event document remains the single source of truth for "the merge
+ * happened"; this sub-record tracks "the merged-away Auth identity has
+ * been made safe". Contains no secrets, tokens, or PII beyond the uids
+ * already on the event. Absent on events written before this mechanism
+ * existed — the sweeper treats a missing sub-record as `pending` and
+ * backfills it on first claim.
+ */
+export interface MergeAuthReconciliation {
+  state: MergeAuthReconciliationState;
+  /** Completed reconciliation attempts (each claim→outcome cycle). */
+  attemptCount: number;
+  /** Earliest time the work may be claimed again; null when terminal. */
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  /**
+   * Sanitized failure classification — one of the
+   * `MergeAuthFailureCategory` values; never a raw provider error.
+   */
+  lastFailureCategory: string | null;
+  /**
+   * Best-effort note of whether the merged-away identity was observed
+   * disabled at last attempt. A `false` value is not a guarantee — the
+   * application-level `mergedIntoUserId` rejection is the authoritative
+   * interim safety control.
+   */
+  duplicateDisabled: boolean;
+  /** When the identity was confirmed absent/deleted; null until reconciled. */
+  reconciledAt: string | null;
+  /**
+   * Lease expiry of the `processing` claim (epoch-millis-compatible
+   * Timestamp). `leaseOwner` is stored on the document but intentionally
+   * omitted from this public shape — it is an internal coordination
+   * detail.
+   */
+  leaseExpiresAt: string | null;
+}
+
 export interface AccountMergeEvent {
   id: string;
   /** uid of the account that remains canonical after the merge. */
@@ -753,7 +827,12 @@ export interface AccountMergeEvent {
   roleMergePolicy: AccountMergeRolePolicy;
   /** Final merged role array written to the canonical user. */
   mergedRoles: UserRole[];
-  /** Whether the duplicate Auth account was deleted after relinking. */
+  /**
+   * Whether the duplicate Auth account is gone (deleted or proven
+   * absent). Kept as the cheap "Auth identity no longer exists" summary
+   * flag and the sweep query discriminator; the `authReconciliation`
+   * sub-record carries the full state machine.
+   */
   duplicateAuthDeleted: boolean;
   /**
    * Whether the `admin` role was revoked from the decommissioned duplicate user
@@ -768,8 +847,19 @@ export interface AccountMergeEvent {
     requestsRelinked: number;
     driverRegistryRelinked: 0 | 1;
   } | null;
-  /** Non-secret diagnostic message if Auth deletion failed. */
+  /**
+   * Sanitized diagnostic of the most recent reconciliation outcome
+   * (`MergeAuthFailureCategory`), or null while clean. Retained for
+   * backwards compatibility with records written before
+   * `authReconciliation` existed.
+   */
   error: string | null;
+  /**
+   * Durable Auth-reconciliation state machine. Absent on events created
+   * before durable reconciliation shipped — a missing value plus
+   * `duplicateAuthDeleted === false` means unresolved legacy work.
+   */
+  authReconciliation?: MergeAuthReconciliation | null;
 }
 
 export type AccountMergeRolePolicy = "union" | "explicit";

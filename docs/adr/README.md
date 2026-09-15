@@ -95,6 +95,7 @@ original date is uncertain the ADR says so.
 | [0015](./0015-saba-operational-timezone.md)                  | Fixed Saba operational timezone (America/Puerto_Rico)              | Accepted |
 | [0016](./0016-centralized-configuration-model.md)            | Centralized, validated configuration boundary                      | Accepted |
 | [0017](./0017-notification-outbox-and-retry.md)              | Durable notification outbox and retry                              | Accepted |
+| [0018](./0018-account-merge-auth-reconciliation.md)          | Durable account-merge Firebase Auth reconciliation                 | Accepted |
 
 ## Especially dangerous assumptions preserved here
 

@@ -558,6 +558,183 @@ export function findRequestStateInconsistencies(requests) {
 }
 
 // ---------------------------------------------------------------------------
+// Account-merge Auth reconciliation (issue #73)
+// ---------------------------------------------------------------------------
+
+/** Milliseconds after creation when unresolved reconciliation work is stale. */
+export const MERGE_RECONCILIATION_STALE_MS = 24 * 60 * 60_000;
+
+/** Best-effort epoch-ms coercion for Timestamp-like objects, numbers, or ISO
+ * strings. Returns null when unparseable. */
+function toMs(value) {
+  if (value == null) return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const t = Date.parse(value);
+    return Number.isNaN(t) ? null : t;
+  }
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  return null;
+}
+
+/**
+ * Account-merge Auth-reconciliation integrity (issue #73). READ-ONLY: surfaces
+ * unresolved/terminal/stale work and impossible field combinations; repair is
+ * the reconciliation worker's job, never this diagnostic's.
+ *
+ * Unresolved means `duplicateAuthDeleted !== true` — which deliberately also
+ * covers legacy merge records that predate the `authReconciliation`
+ * sub-record. A freshly merged record being briefly `pending` is normal and
+ * NOT flagged; only stale unresolved work, terminal failures, stale leases,
+ * and inconsistent terminal combinations are reported.
+ */
+export function findMergeReconciliationIssues(mergeEvents, nowMs = Date.now()) {
+  /** @type {IntegrityFinding[]} */
+  const findings = [];
+  for (const event of mergeEvents) {
+    const rec =
+      event.authReconciliation && typeof event.authReconciliation === "object"
+        ? event.authReconciliation
+        : null;
+    const state = rec?.state ?? null;
+    const resolved = event.duplicateAuthDeleted === true;
+
+    // Malformed record: missing/empty/equal uids can never be reconciled.
+    const canonical = event.canonicalUserId;
+    const duplicate = event.duplicateUserId;
+    if (
+      typeof canonical !== "string" ||
+      canonical.length === 0 ||
+      typeof duplicate !== "string" ||
+      duplicate.length === 0 ||
+      canonical === duplicate
+    ) {
+      findings.push({
+        severity: "critical",
+        category: "merge_reconciliation_malformed",
+        code: "merge_reconciliation.malformed_record",
+        id: event.id,
+        detail: `merge record lacks valid canonical/duplicate uids`,
+      });
+      continue;
+    }
+
+    // Inconsistent terminal combinations.
+    if (resolved && state !== null && state !== "reconciled") {
+      findings.push({
+        severity: "warning",
+        category: "merge_reconciliation_inconsistent",
+        code: "merge_reconciliation.deleted_flag_without_reconciled_state",
+        id: event.id,
+        detail: `duplicateAuthDeleted=true but authReconciliation.state=${state}`,
+      });
+      continue;
+    }
+    if (!resolved && state === "reconciled") {
+      findings.push({
+        // The reconciler re-verifies and heals this combination; it is not a
+        // live contradiction, just a record that has not converged yet.
+        severity: "warning",
+        category: "merge_reconciliation_inconsistent",
+        code: "merge_reconciliation.reconciled_state_without_deleted_flag",
+        id: event.id,
+        detail: `authReconciliation.state=reconciled but duplicateAuthDeleted is not true`,
+      });
+      continue;
+    }
+    if (resolved) continue; // consistent + resolved → nothing to report
+
+    // Unresolved work below here.
+    if (state === "failed") {
+      findings.push({
+        severity: "warning",
+        category: "merge_reconciliation_terminal_failure",
+        code: "merge_reconciliation.terminal_failure",
+        id: event.id,
+        relatedIds: [canonical, duplicate],
+        detail: `terminal failure category=${rec?.lastFailureCategory ?? event.error ?? "unknown"}`,
+      });
+      continue;
+    }
+    const leaseExpiresMs = toMs(rec?.leaseExpiresAt);
+    if (
+      state === "processing" &&
+      leaseExpiresMs !== null &&
+      leaseExpiresMs <= nowMs
+    ) {
+      findings.push({
+        // Reclaimed automatically by the sweep — informational.
+        severity: "info",
+        category: "merge_reconciliation_stale_lease",
+        code: "merge_reconciliation.stale_lease",
+        id: event.id,
+        detail: `processing lease expired; sweep will reclaim`,
+      });
+    }
+    const createdMs = toMs(event.createdAt);
+    const lastAttemptMs = toMs(rec?.lastAttemptAt);
+    const activityMs = lastAttemptMs ?? createdMs;
+    if (
+      activityMs !== null &&
+      nowMs - activityMs > MERGE_RECONCILIATION_STALE_MS
+    ) {
+      findings.push({
+        severity: "warning",
+        category: "merge_reconciliation_stale",
+        code: "merge_reconciliation.unresolved_stale",
+        id: event.id,
+        relatedIds: [canonical, duplicate],
+        detail: `unresolved (state=${state ?? "legacy-pending"}) for more than ${Math.round(MERGE_RECONCILIATION_STALE_MS / 3_600_000)}h`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Merged-away identity marker integrity (issue #73): a `users` doc marked
+ * `mergedIntoUserId` must point at an existing canonical user, and a live
+ * water request must never still be owned by a merged-away identity (the
+ * merge transaction relinks them — a leftover means a missed relink or a
+ * post-merge write to a dead identity).
+ */
+export function findMergedIdentityIssues(users, requests, usersById) {
+  /** @type {IntegrityFinding[]} */
+  const findings = [];
+  for (const user of users) {
+    const uid = user.uid ?? user.id;
+    const mergedInto = user.mergedIntoUserId;
+    if (!mergedInto) continue;
+    if (!usersById.has(mergedInto)) {
+      findings.push({
+        severity: "warning",
+        category: "merge_marker_canonical_missing",
+        code: "merge_marker.canonical_missing",
+        id: uid,
+        relatedIds: [mergedInto],
+        detail: `mergedIntoUserId=${mergedInto} has no users/{uid} document`,
+      });
+    }
+  }
+  for (const request of requests) {
+    if (!request.customerId) continue;
+    const owner = usersById.get(request.customerId);
+    if (owner && owner.mergedIntoUserId) {
+      findings.push({
+        severity: "warning",
+        category: "merge_marker_request_owned_by_merged_user",
+        code: "merge_marker.request_owned_by_merged_user",
+        id: request.id,
+        relatedIds: [request.customerId, owner.mergedIntoUserId],
+        detail: `customerId=${request.customerId} is a merged-away identity`,
+      });
+    }
+  }
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
 // Shared index builders + summary
 // ---------------------------------------------------------------------------
 
@@ -635,15 +812,17 @@ export function runRecoveryChecks({
  *   requests?: Record<string, unknown>[],
  *   batches?: Record<string, unknown>[],
  *   users?: Record<string, unknown>[],
+ *   mergeEvents?: Record<string, unknown>[],
  * }} input
- * @param {{ unresolvedRequestIds?: Iterable<string> }} [options]
+ * @param {{ unresolvedRequestIds?: Iterable<string>, nowMs?: number }} [options]
  *   `unresolvedRequestIds` are request ids referenced by a loaded driver/batch
  *   that a bounded scan did NOT read because its record budget was exhausted.
  *   Checks that infer a "missing" reference skip these ids, so a truncated
  *   scan can never report "not scanned" as "missing". Defaults to none.
+ *   `nowMs` is the epoch-ms "now" for stale-merge-reconciliation detection.
  */
 export function runIntegrityChecks(
-  { drivers = [], requests = [], batches = [], users = [] },
+  { drivers = [], requests = [], batches = [], users = [], mergeEvents = [] },
   options = {},
 ) {
   const { requestsById, batchesById, usersById, driversByUserId } =
@@ -670,6 +849,8 @@ export function runIntegrityChecks(
     ...findPreferredDriverIssues(requests, driversByUserId),
     ...findRoleRegistryInconsistencies(drivers, users, usersById),
     ...findRequestStateInconsistencies(requests),
+    ...findMergeReconciliationIssues(mergeEvents, options.nowMs),
+    ...findMergedIdentityIssues(users, requests, usersById),
   ];
 
   // Deterministic ordering: severity (critical→warning→info), then category,

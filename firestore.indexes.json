@@ -26,6 +26,22 @@
       ]
     },
     {
+      "collectionGroup": "accountMergeEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "duplicateAuthDeleted", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accountMergeEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authReconciliation.state", "order": "ASCENDING" },
+        { "fieldPath": "authReconciliation.leaseExpiresAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "driverOffers",
       "queryScope": "COLLECTION",
       "fields": [
