@@ -6,11 +6,14 @@ not attempt to recreate the full prelaunch development history.
 ## Convention
 
 - Keep an `## Unreleased` section at the top for changes that have
-  merged but not yet gone live for government staff.
-- When a change goes live, move its entry under a new dated heading,
-  e.g. `## 2026-09-01`, in reverse chronological order (newest first).
-  A simple date is sufficient; version numbers are not required unless
-  the project later adopts formal releases.
+  merged but not yet been included in a release.
+- Application versions are intentional release snapshots, not
+  per-merge bumps. When a snapshot is cut, its entries move under a
+  version heading, e.g. `## v0.9.0 — Production-readiness baseline`,
+  in reverse chronological order (newest first). See "Release policy"
+  in `DEPLOYMENT.md` for the version progression.
+- Date-only headings remain acceptable for pilot-era entries that
+  predate formal releases.
 - Write entries for staff/operational impact, not implementation
   detail — what changed for residents, drivers, dispatchers, or admins,
   not which files were touched.
@@ -20,6 +23,53 @@ not attempt to recreate the full prelaunch development history.
   do not need an entry.
 
 ## Unreleased
+
+(No unreleased changes yet.)
+
+## v0.9.0 — Production-readiness baseline
+
+`v0.9.0` is the first formal application release snapshot. It marks the
+application codebase as having reached the production-readiness
+baseline intended for government infrastructure migration, real-provider
+staging acceptance, and final institutional handover work. It does not
+mean government production handover or acceptance is complete — the
+infrastructure, acceptance, and handover gates tracked in
+[`docs/PRODUCTION_READINESS_TEST_MATRIX.md`](./PRODUCTION_READINESS_TEST_MATRIX.md)
+and the Government Production Readiness milestone issues remain open.
+The canonical release identity is the annotated Git tag `v0.9.0` and the
+matching GitHub Release; the `version` field in `package.json` is
+informational metadata only.
+
+Production-readiness capabilities established at this baseline:
+
+- Role-based resident, driver, dispatcher, and admin workflows across
+  the full request lifecycle — submission, prioritization, dispatch,
+  delivery, resident confirmation, disputes, and cancellation.
+- Role and authorization model with Firestore Security Rules verified
+  by an extensive emulator rule suite.
+- Production configuration validation at startup; missing or malformed
+  production configuration fails closed rather than running degraded.
+- CSP and security headers applied to all routes, with report-only CSP
+  support for safe rollout.
+- Atomic security-sensitive audit events recorded transactionally with
+  the mutations they describe.
+- Last-admin invariant: role changes cannot remove the final admin.
+- Production data-integrity diagnostics with explicit, acknowledged,
+  fail-closed targeting and no silent repair.
+- Durable notification outbox with retry handling; delivery
+  confirmation email sends are idempotent and non-blocking.
+- Resident cancellation and staff-recorded dispute paths for
+  unregistered customers.
+- Dispatch ordering correctness work, including escalation ordering
+  and stale driver-lock self-healing.
+- Durable, resumable account-merge Firebase Auth reconciliation so a
+  merged-away identity cannot retain indefinite application access.
+- A production-readiness test matrix documenting verified coverage and
+  honest gaps.
+- A non-destructive, GET-only production smoke runner
+  (`npm run smoke:production`) for post-deployment verification.
+
+Operational changes since the 2026-09-02 pilot launch:
 
 Staff-recorded disputes for unregistered customers:
 - Dispatchers and admins can record a dispute that an unregistered customer
