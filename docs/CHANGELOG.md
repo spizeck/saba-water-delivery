@@ -47,8 +47,9 @@ Production-readiness capabilities established at this baseline:
   delivery, resident confirmation, disputes, and cancellation.
 - Role and authorization model with Firestore Security Rules verified
   by an extensive emulator rule suite.
-- Production configuration validation at startup; missing or malformed
-  production configuration fails closed rather than running degraded.
+- Centralized production configuration validation at explicit runtime
+  boundaries, with missing or malformed required configuration failing
+  closed when used and surfaced through readiness/status reporting.
 - CSP and security headers applied to all routes, with report-only CSP
   support for safe rollout.
 - Atomic security-sensitive audit events recorded transactionally with
@@ -56,8 +57,10 @@ Production-readiness capabilities established at this baseline:
 - Last-admin invariant: role changes cannot remove the final admin.
 - Production data-integrity diagnostics with explicit, acknowledged,
   fail-closed targeting and no silent repair.
-- Durable notification outbox with retry handling; delivery
-  confirmation email sends are idempotent and non-blocking.
+- Durable notification outbox with retry handling; delivery-confirmation
+  processing uses stable provider idempotency keys so retries remain
+  non-blocking and duplicate-delivery risk is bounded by provider
+  idempotency semantics.
 - Resident cancellation and staff-recorded dispute paths for
   unregistered customers.
 - Dispatch ordering correctness work, including escalation ordering
