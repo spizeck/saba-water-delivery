@@ -36,6 +36,28 @@ in practice:
 
 Merging to `main` triggers the production deployment.
 
+### Release policy
+
+Application versions are intentional release snapshots, not per-merge
+bumps — do not tag a version for every PR. The planned progression:
+
+- `v0.9.0` — production-readiness code baseline: the application is
+  ready to enter government-owned infrastructure migration,
+  real-provider staging acceptance, and institutional handover work.
+- Later `v0.9.x` releases only when another intentional baseline
+  snapshot is warranted.
+- `v1.0.0-rc.N` — government-owned infrastructure assembled and final
+  staging/acceptance underway.
+- `v1.0.0` — government production handover/acceptance complete.
+
+A release is an annotated Git tag (e.g. `git tag -a v0.9.0 <sha>`) on a
+merged `main` commit plus a matching GitHub Release; that tag is the
+canonical application release identity. `v0.9.0` does not mean
+government production handover is complete — the remaining
+infrastructure, acceptance, and handover gates are the open Government
+Production Readiness milestone issues (#56–#63, #83, #90). See
+[`CHANGELOG.md`](./CHANGELOG.md) for release contents.
+
 ## Continuous integration and branch protection
 
 CI is defined in `.github/workflows/ci.yml` (workflow **CI**, job
