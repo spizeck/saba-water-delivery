@@ -213,6 +213,7 @@ describe them as durable.
 | No production credentials in CI | Critical | CI | verified | `.github/workflows/ci.yml`, `e2e.yml` — emulator-only env; `verify`/`playwright` jobs need no secrets | — |
 | External notifications cannot reach real residents | Critical | design + unit | verified | Email paths all route through mocked/emulator seams; no live Resend key exists in CI or test env | Real-provider path only with a real key → staging procedure |
 | Emulator refused on deployed Vercel | Critical | code + unit | verified | `assertNotDeployedEmulatorMode` in `firebase/admin.ts` throws on emulator hosts in deployed env | — |
+| Production smoke runner (#84) | High | unit | verified | `scripts/lib/__tests__/production-smoke.test.ts` — fail-closed target validation (`--url` + `--production`, loopback/IP/SSRF rejection), GET-only probes, same-origin redirect policy, timeouts, sanitized `--json`, deterministic exit codes; verified live against the pilot | First run against the government domain → post-#59 |
 
 ---
 
@@ -222,14 +223,14 @@ describe them as durable.
 |---|---|---|
 | Local / CI | Every `verified`/`partial` row: domain logic, transactions, Security Rules, auth flows against emulators, mocked provider contracts, script diagnostics | Real Google OAuth, real Resend delivery, deployed-rules parity, production data, scale |
 | Government staging (future — needs #56/#57/#58) | Real-provider acceptance: Google sign-in, Resend delivery to designated recipients, deployed rules, Vercel callback/origin config | Production data volume |
-| Production smoke | Non-destructive post-deploy liveness: page loads, `/api/health`, `/api/readiness`, auth entry | Any operational mutation — explicitly prohibited |
+| Production smoke | Non-destructive post-deploy liveness: page loads, `/api/health`, `/api/readiness`, auth entry — via `scripts/production-smoke.mjs` (#84, GET-only) | Any operational mutation — explicitly prohibited; provider-level sign-in controls are client-hydrated and stay a staging item |
 
 ## Material gaps and their tracking
 
 | Gap | Severity | Tracking |
 |---|---|---|
 | Government staging environment does not exist (government-owned Firebase project, Vercel, Resend domain) | Blocks all `staging-required` rows | **#83** (blocked on #56, #57, #58) |
-| No automated non-destructive production smoke runner | High | **#84** |
+| Non-destructive production smoke not yet run against government production (runner built, tested, and verified against the pilot; official domain pending #59) | High | **#84** — government execution follows #56/#57/#59 |
 | Real-Firebase-Auth acceptance of merge reconciliation (emulator proven; live disable/revoke/delete + revocation propagation unverified) | High | **#83** (staging) — mechanics verified in CI by #73 |
 | Admin portal UI has no e2e coverage (domain + rules verified below the browser layer) | Low | Acceptable — noted; add e2e only if admin UI gains risky client logic |
 | Continuity + account-setup emails are best-effort (not in outbox) | Low — deliberate design | Documented here; revisit only if a lost email matters operationally |

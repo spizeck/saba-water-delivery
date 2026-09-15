@@ -567,6 +567,37 @@ can be exercised locally against the emulator the same way:
 firebase emulators:exec --only firestore "node scripts/production-integrity.mjs"
 ```
 
+## Automated production smoke runner (issue #84)
+
+`scripts/production-smoke.mjs` (`npm run smoke:production`) is the
+non-destructive post-deployment smoke check. It probes a deployment with
+**GET requests only** — it is structurally read-only: there is no POST/PUT/
+PATCH/DELETE code path, no credentials, no Firebase SDK, and no call to any
+cron or mutation endpoint. Full contract and safety rules live in
+[`ACCEPTANCE_TESTING.md`](./ACCEPTANCE_TESTING.md) "Production smoke".
+
+```bash
+# Production — the acknowledgement flag is required for any non-local target:
+npm run smoke:production -- --url https://saba-water-delivery.vercel.app --production
+
+# Local verification of the runner itself (loopback only, no flag needed):
+npm run smoke:production -- --url http://localhost:3100
+```
+
+Checks: `/api/health` liveness, `/api/readiness` ready contract (Firestore
+dependency ok), `/` renders the application identity, `/login` renders and
+is not in the "sign-in not configured" state, the production security-header
+set on a page response (CSP semantics, not just presence), and the PWA
+manifest + service worker. Per-request timeout is `--timeout-ms` (default
+10s); redirects are followed only within the same origin.
+
+**The runner is never part of `npm run check`, `test:rules`, or
+`test:e2e`** — those suites remain emulator/local-only. The smoke runner is
+invoked separately by an operator (or later by a controlled deployment
+workflow); CI does not point it at any deployment. Its logic is covered by
+`scripts/lib/__tests__/production-smoke.test.ts`, which uses an injected
+fake `fetch` — the tests themselves never touch the network or production.
+
 ## Manual smoke test
 
 Run through this checklist before a production deployment that touches

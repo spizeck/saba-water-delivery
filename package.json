@@ -23,6 +23,7 @@
     "test:e2e:report": "playwright show-report",
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "diagnose:integrity": "node scripts/production-integrity.mjs",
+    "smoke:production": "node scripts/production-smoke.mjs",
     "docs:check-links": "node scripts/check-doc-links.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
   },
