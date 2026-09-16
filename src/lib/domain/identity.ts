@@ -461,10 +461,11 @@ export interface MergeUserAccountsResult {
  *      duplicate through "explicit" mode with a deliberate role list.
  *      The driver role is further gated by the Driver Registry link
  *      state. The committed role list is recomputed from the fresh
- *      canonical/duplicate reads inside the transaction, so a role
- *      gained or lost between preview and commit is honored rather
- *      than clobbered by a stale preview (same TOCTOU discipline as
- *      the last-admin check).
+ *      canonical/duplicate reads inside the transaction, so a canonical
+ *      role gained between preview and commit is preserved rather than
+ *      clobbered by a stale preview, while a privileged role the
+ *      duplicate gains in that window is still filtered out of the union
+ *      (same TOCTOU discipline as the last-admin check).
  *   4. The duplicate's `users` document gets `mergedIntoUserId` INSIDE the
  *      transaction — so from the moment the merge commits, the merged-away
  *      identity is rejected by application authentication boundaries even
