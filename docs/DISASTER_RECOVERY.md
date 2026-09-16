@@ -543,8 +543,8 @@ what must exist for the app to run, and where the authoritative copy lives.
 | --- | --- | --- |
 | `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY` | Firebase console → Project settings → Service accounts | **Re-create** a service-account key in the console (the private key cannot be re-downloaded); update Vercel |
 | `NEXT_PUBLIC_FIREBASE_*` | Firebase console → Project settings → Your apps | Re-copy from console (not secret) |
-| `RESEND_API_KEY` | Resend dashboard → API Keys | **Rotate** (create new key); update Vercel |
-| `CONTINUITY_REPORT_EMAIL_FROM` / `_TO`, `DELIVERY_CONFIRMATION_EMAIL_FROM` | Operational decision (recorded in `.env.example` docs) | Re-enter values |
+| `RESEND_API_KEY` | Vercel-managed Resend integration (Vercel → Integrations → Resend → Resend dashboard) | **Rotate** in the integration's Resend dashboard; the injected Vercel variable updates automatically — do not hand-edit it |
+| `CONTINUITY_REPORT_EMAIL_FROM` / `_TO`, `DELIVERY_CONFIRMATION_EMAIL_FROM`, `ACCOUNT_SETUP_EMAIL_FROM` | Operational decision (recorded in `.env.example` docs) | Re-enter values |
 | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Meta App Dashboard → WhatsApp | **Rotate/recover** in Meta; re-set the webhook verify token |
 | `CRON_SECRET` | Chosen value stored only in Vercel | **Re-generate** and set in Vercel (Vercel Cron uses it) |
 | `RATE_LIMIT_HASH_SECRET` | Chosen value stored only in Vercel (Production and Preview) | **Re-generate** and set; rotating it harmlessly resets in-flight rate-limit windows |

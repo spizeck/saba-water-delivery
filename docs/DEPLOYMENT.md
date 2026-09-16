@@ -153,7 +153,7 @@ build** (client/CSP), so they cannot be changed without rebuilding.
 | `CRON_SECRET` | Authorizes the continuity-report cron request | **secret** | Production | Route **fails closed** (503) | Yes |
 | `RATE_LIMIT_HASH_SECRET` | HMAC salt for rate-limit bucket keys | **secret** | Production, Preview | Limiter **fails open** (allows + logs `rate_limit.secret_missing`); never hashes with a public salt | Yes |
 | `CSP_REPORT_ONLY` | Emit `Content-Security-Policy-Report-Only` instead of enforcing | server | optional | CSP is **enforced** (the default) | Yes (build) |
-| `RESEND_API_KEY` | Resend API key for outbound email | **secret** | feature (email) | Email features disabled (best-effort, logged) | Yes |
+| `RESEND_API_KEY` | Resend API key for outbound email (injected by the Vercel Resend integration in deployed envs) | **secret** | feature (email) | Email features disabled (best-effort, logged) | Yes |
 | `CONTINUITY_REPORT_EMAIL_FROM` | Continuity-report sender (Resend-verified domain) | server | feature (email) | Continuity-report email disabled | Yes |
 | `CONTINUITY_REPORT_EMAIL_TO` | Continuity-report recipients (comma-separated) | server | feature (email) | Continuity-report email disabled | Yes |
 | `DELIVERY_CONFIRMATION_EMAIL_FROM` | Sender for delivery-review emails | server | optional | Falls back to `CONTINUITY_REPORT_EMAIL_FROM` | Yes |
@@ -166,7 +166,10 @@ build** (client/CSP), so they cannot be changed without rebuilding.
 
 Ambient variables provided by the platform — `VERCEL_ENV`, `VERCEL_DEPLOYMENT_ID`,
 `NODE_ENV`, `GCLOUD_PROJECT`/`GOOGLE_CLOUD_PROJECT` — are set by Vercel/Node and
-are not configured by hand. The emulator/test-only variables
+are not configured by hand. The Vercel-managed Resend integration similarly
+injects `RESEND_API_KEY` (consumed by the app) and `RESEND_EMAIL_DOMAIN`
+(the verified sending domain — informational; the app deliberately uses the
+explicit `*_EMAIL_FROM` identities instead). The emulator/test-only variables
 (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`, the
 `NEXT_PUBLIC_FIREBASE_*_EMULATOR_HOST` values, demo project ids) **must never** be
 set in a deployed Vercel environment — a hard guard in
@@ -436,25 +439,37 @@ relying on this schedule as a strict guarantee.
 
 ## Resend
 
+Deployed environments use the **Vercel-managed Resend integration**
+(Vercel → Integrations → Resend). The integration injects
+`RESEND_API_KEY` into the project's environment variables automatically
+— do not create or paste an API key by hand, and never commit it. The
+integration also injects `RESEND_EMAIL_DOMAIN`, the sending domain it
+verified; the application intentionally does not read that variable —
+sender identity is configured explicitly through the `*_EMAIL_FROM`
+variables below, which carry a display name and mailbox that a bare
+domain cannot express.
+
 Production sends from a domain verified in Resend (Resend → Domains) —
 this is the expected configuration, not an interim workaround. Resend's
 own `onboarding@resend.dev` sender is only useful for local development
 before a domain has been verified, and should not be used once a
 verified domain is configured.
 
-1. Add and verify your sending domain in Resend (Resend → Domains),
-   following Resend's DNS verification instructions with your domain
-   registrar.
-2. Create an API key (Resend → API Keys) and set it as
-   `RESEND_API_KEY` in Vercel (never commit it).
+1. Connect the Resend integration to the Vercel project and add/verify
+   the sending domain in Resend (Resend → Domains, reachable from the
+   integration), following Resend's DNS verification instructions with
+   your domain registrar.
+2. Confirm `RESEND_API_KEY` is present in Vercel as an
+   integration-managed variable — no manual key step is needed.
 3. Set `CONTINUITY_REPORT_EMAIL_FROM` to an address on the verified
    domain (for example, a `waterdelivery@` address on that domain).
 4. Set `CONTINUITY_REPORT_EMAIL_TO` to a government distribution list
    or shared operational inbox, not a personal address.
 
-For local development only, before a domain is verified,
-`onboarding@resend.dev` can stand in as `CONTINUITY_REPORT_EMAIL_FROM`
-so email sending can be tested end-to-end.
+For local development only, create a key at Resend → API Keys into
+`.env.local`; before a domain is verified, `onboarding@resend.dev` can
+stand in as `CONTINUITY_REPORT_EMAIL_FROM` so email sending can be
+tested end-to-end.
 
 ## Meta/Facebook Login
 
