@@ -26,6 +26,47 @@ not attempt to recreate the full prelaunch development history.
 
 (No unreleased changes yet.)
 
+## v0.9.1 — Stability and production-readiness maintenance
+
+`v0.9.1` is a maintenance snapshot of the `v0.9.0` production-readiness
+baseline. It captures dependency maintenance, production-runtime
+corrections, operational configuration fixes, and account-merge
+authorization hardening found during live pilot validation. The
+canonical release identity is the annotated Git tag `v0.9.1` and the
+matching GitHub Release. Institutional handover status is unchanged —
+the gates in
+[`docs/PRODUCTION_READINESS_TEST_MATRIX.md`](./PRODUCTION_READINESS_TEST_MATRIX.md)
+remain open.
+
+Changes since `v0.9.0`:
+
+- Routine runtime and tooling maintenance updates, including Next.js
+  16.3.5, React 19.3.0, Firebase client 12.19.0, Resend 6.28.0, and
+  firebase-tools 15.30.0.
+- Firebase Admin rollback: the attempted 13.10.0 → 14.x upgrade broke
+  the Vercel serverless runtime (`ERR_REQUIRE_ESM` via `jwks-rsa` 4 →
+  ESM-only `jose` 6). `firebase-admin` is intentionally pinned back to
+  13.10.0; the future retry is tracked by issue #94 and retains a known
+  transitive advisory tradeoff.
+- Removed an invalid, redundant `waterRequests` composite index that
+  was blocking Firestore index deployment; the production composite
+  indexes required by the notification outbox and merge-auth
+  reconciliation crons deployed successfully.
+- `RATE_LIMIT_HASH_SECRET` is now configured in production; the rate
+  limiter no longer runs in the fail-open misconfigured state.
+- Dependabot policy hardened: dependency updates are grouped by risk
+  class, runtime-critical packages update standalone, and the
+  known-incompatible major lines (`firebase-admin` 14.x, TypeScript 7.x,
+  ESLint 10.x) are suppressed while compatible maintenance continues.
+- Account merge union mode no longer strips privileged roles from the
+  surviving account (the confirmed 2026-09-11 pilot incident). Union
+  mode preserves every role the canonical account already holds and
+  imports only `resident`/`viewer` from the duplicate; privileged
+  duplicate roles still require deliberate explicit-mode selection.
+  The merge transaction computes committed roles from fresh
+  transactional reads and enforces the last-admin invariant on the live
+  transition.
+
 ## v0.9.0 — Production-readiness baseline
 
 `v0.9.0` is the first formal application release snapshot. It marks the
