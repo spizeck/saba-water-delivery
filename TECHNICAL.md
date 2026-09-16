@@ -148,9 +148,9 @@ Mutations that participate (issues #48 then #70):
   happens in **two** ways — both handled in one invariant-protocol transaction
   that runs *before* the merge's other writes, so a `LAST_ADMIN` rejection fails
   closed with no partial state and no `accountMergeEvents` record:
-  - **Canonical demotion** — the merge would take `admin` off the canonical (any
-    union merge of an admin canonical, since union never carries the sensitive
-    `admin` role forward; or an explicit list omitting `admin`).
+  - **Canonical demotion** — the merge would take `admin` off the canonical
+    (an explicit role list omitting `admin`; union mode can never do this —
+    since #95 it preserves every role the canonical already holds).
   - **Duplicate decommissioning ("phantom admin")** — the merge deletes the
     duplicate's Firebase Auth identity, so if the duplicate carried `admin` the
     merge **revokes** `admin` from the leftover duplicate document and counts
@@ -1656,11 +1656,19 @@ role lists, driver registry links, and duplicate-owned request counts.
   already linked to a different registry entry; if both accounts are
   linked to different entries, the merge is blocked.
 - **Role merge policy**:
-  - `union` — unions only non-sensitive roles (`resident`, `viewer`).
-    Admin, dispatcher, and driver roles are never transferred
-    automatically.
+  - `union` — preserves every role the canonical user already holds and
+    imports only the duplicate's non-sensitive roles (`resident`,
+    `viewer`). It can neither revoke a canonical role nor transfer a
+    privileged duplicate role: admin, dispatcher, and driver never move
+    automatically. The committed list is recomputed from the fresh
+    canonical/duplicate reads inside the merge transaction, so a role
+    gained or lost between preview and commit is honored (issue #95 —
+    the previous `safeRoles(canonical ∪ duplicate)` computation
+    silently stripped canonical privileged roles; a confirmed pilot
+    defect corrected during production-readiness validation).
   - `explicit` — admin selects the exact final role list; this is the
-    only way to transfer sensitive roles.
+    only way to transfer sensitive roles from the duplicate or to
+    deliberately drop a canonical role.
 - **Last-admin invariant** (issue #70): a merge that reduces the usable admin
   population runs through the shared last-admin invariant protocol (see "Admin
   role safety") as part of the merge transaction's reads, before any of its

@@ -57,7 +57,7 @@ export function MergeAccountsForm({ users }: Props) {
     try {
       const data = await getMergeAccountPreview(canonicalUid, duplicateUid);
       setPreview(data);
-      setExplicitRoles(data.defaultUnionRoles);
+      setExplicitRoles(data.unionResultRoles);
     } catch {
       setPreview(null);
     } finally {
@@ -233,10 +233,10 @@ export function MergeAccountsForm({ users }: Props) {
                     checked={roleMergePolicy === "union"}
                     onChange={() => {
                       setRoleMergePolicy("union");
-                      setExplicitRoles(preview.defaultUnionRoles);
+                      setExplicitRoles(preview.unionResultRoles);
                     }}
                   />
-                  Safe union (resident + viewer only)
+                  Safe union (keeps canonical roles)
                 </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input
@@ -252,9 +252,11 @@ export function MergeAccountsForm({ users }: Props) {
               {roleMergePolicy === "union" && (
                 <p className="mt-2 text-xs text-slate-500">
                   Resulting roles:{" "}
-                  {preview.defaultUnionRoles.join(", ") || "none"}. Admin,
-                  dispatcher, and driver roles are not transferred
-                  automatically.
+                  {preview.unionResultRoles.join(", ") || "none"}. Union
+                  preserves every role the canonical account already has and
+                  adds only resident/viewer from the duplicate. Transferring a
+                  privileged duplicate role (admin, dispatcher, driver) requires
+                  explicit mode.
                 </p>
               )}
 
@@ -283,6 +285,21 @@ export function MergeAccountsForm({ users }: Props) {
                       </label>
                     ))}
                   </div>
+                  {(() => {
+                    const removedCanonicalRoles = preview.canonicalRoles.filter(
+                      (r) => !explicitRoles.includes(r),
+                    );
+                    return (
+                      removedCanonicalRoles.length > 0 && (
+                        <p className="mt-2 text-xs font-semibold text-red-700">
+                          Warning: this list removes{" "}
+                          {removedCanonicalRoles.join(", ")} from the canonical
+                          account. Explicit mode replaces the canonical roles
+                          entirely — leave a role checked to keep it.
+                        </p>
+                      )
+                    );
+                  })()}
                 </div>
               )}
             </div>

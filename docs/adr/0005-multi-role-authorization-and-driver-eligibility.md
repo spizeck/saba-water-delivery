@@ -109,8 +109,9 @@ not let holding the `driver` role by itself make someone an operational driver.
   - **#48 (2026-09-12)** first made concurrent `removeRole` admin removals safe.
   - **#70 (2026-09-13)** extended the *same* protocol to `mergeUserAccounts`. A
     merge reduces the usable admin population in two ways, both now inside the
-    protocol: (a) demoting the canonical out of `admin` (any union merge of an
-    admin canonical, or an explicit merge dropping `admin`); and (b)
+    protocol: (a) demoting the canonical out of `admin` (an explicit merge
+    dropping `admin`; a union merge can never demote the canonical — since
+    #95 it preserves every canonical role); and (b)
     **decommissioning the duplicate** — the merge deletes the duplicate's Auth
     identity, so if the duplicate carried `admin` the merge **revokes** it from
     the leftover duplicate document (the "phantom admin" fix) and counts that

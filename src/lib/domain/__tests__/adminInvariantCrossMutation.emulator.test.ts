@@ -103,8 +103,10 @@ function settle(p: Promise<unknown>): Promise<Settled> {
   );
 }
 
-/** A union merge of an admin canonical with a resident duplicate demotes the
- *  canonical out of admin (union never carries sensitive roles). */
+/** A union merge of a non-admin canonical with an admin duplicate is
+ *  admin-reducing: the duplicate is decommissioned (its Auth identity is
+ *  deleted) and its admin role is revoked — union preserves canonical roles
+ *  but never transfers a privileged duplicate role (#95). */
 function unionMerge(
   canonicalUid: string,
   duplicateUid: string,
@@ -131,16 +133,16 @@ describe("last-admin invariant across admin-reducing mutations (#70)", () => {
   it("removeRole vs admin-demoting merge cannot both succeed (2 admins)", async () => {
     await seedUser("adminA", ["resident", "admin"]);
     await seedUser("adminB", ["resident", "admin"]);
-    await seedUser("dupForB", ["resident"]);
+    await seedUser("canonR", ["resident"]);
     expect(await countAdmins()).toBe(2);
 
-    // removeRole strips admin from A; the union merge demotes canonical B.
-    // If both commit, zero admins remain.
+    // removeRole strips admin from A; the union merge decommissions admin B
+    // (the duplicate). If both commit, zero admins remain.
     const [rRemove, rMerge] = await Promise.all([
       settle(
         removeRole({ targetUid: "adminA", role: "admin", actorId: "adminB" }),
       ),
-      settle(unionMerge("adminB", "dupForB", "adminA")),
+      settle(unionMerge("canonR", "adminB", "adminA")),
     ]);
 
     const successes = [rRemove, rMerge].filter((r) => r.ok);
@@ -162,13 +164,14 @@ describe("last-admin invariant across admin-reducing mutations (#70)", () => {
   it("two admin-demoting merges cannot both succeed (2 admins)", async () => {
     await seedUser("adminA", ["resident", "admin"]);
     await seedUser("adminB", ["resident", "admin"]);
-    await seedUser("dupA", ["resident"]);
-    await seedUser("dupB", ["resident"]);
+    await seedUser("canonRA", ["resident"]);
+    await seedUser("canonRB", ["resident"]);
     expect(await countAdmins()).toBe(2);
 
+    // Each merge decommissions one of the two admins (the duplicate).
     const [m1, m2] = await Promise.all([
-      settle(unionMerge("adminA", "dupA", "adminB")),
-      settle(unionMerge("adminB", "dupB", "adminA")),
+      settle(unionMerge("canonRA", "adminA", "adminB")),
+      settle(unionMerge("canonRB", "adminB", "adminA")),
     ]);
 
     const successes = [m1, m2].filter((r) => r.ok);
@@ -183,12 +186,14 @@ describe("last-admin invariant across admin-reducing mutations (#70)", () => {
     expect(await countAdmins()).toBe(1);
   }, 30_000);
 
-  it("rejects a merge that would demote the sole remaining admin", async () => {
+  it("rejects a merge that would decommission the sole remaining admin", async () => {
     await seedUser("solo", ["resident", "admin"]);
-    await seedUser("dup", ["resident"]);
+    await seedUser("canon", ["resident"]);
     expect(await countAdmins()).toBe(1);
 
-    await expect(unionMerge("solo", "dup", "solo")).rejects.toThrow(
+    // The sole admin is the duplicate: decommissioning it leaves zero usable
+    // admins, and union will not transfer its admin role (#95).
+    await expect(unionMerge("canon", "solo", "canon")).rejects.toThrow(
       "LAST_ADMIN",
     );
 
@@ -200,18 +205,20 @@ describe("last-admin invariant across admin-reducing mutations (#70)", () => {
     expect((await invariantDoc())?.exists).toBe(false);
   });
 
-  it("allows an admin-demoting merge while another admin remains", async () => {
+  it("allows an admin-decommissioning merge while another admin remains", async () => {
     await seedUser("adminA", ["resident", "admin"]);
     await seedUser("adminB", ["resident", "admin"]);
-    await seedUser("dup", ["resident"]);
+    await seedUser("canon", ["resident"]);
     expect(await countAdmins()).toBe(2);
 
-    const result = await unionMerge("adminA", "dup", "adminB");
-    expect(result.canonicalUser.uid).toBe("adminA");
+    const result = await unionMerge("canon", "adminA", "adminB");
+    expect(result.canonicalUser.uid).toBe("canon");
 
-    // adminA demoted to resident, adminB still admin.
+    // adminA decommissioned (admin revoked), adminB still admin; the
+    // canonical gained no privileged role.
     expect(await rolesOf("adminA")).not.toContain("admin");
     expect(await rolesOf("adminB")).toContain("admin");
+    expect(await rolesOf("canon")).toEqual(["resident"]);
     const remaining = await countAdmins();
     expect(remaining).toBe(1);
     expect(await mergeEventCount()).toBe(1);

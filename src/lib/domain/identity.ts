@@ -20,7 +20,7 @@ import type {
   WaterRequest,
 } from "./types";
 import {
-  buildDefaultUnionRoles,
+  buildUnionMergeRoles,
   findIdentityMatches,
   normalizeEmailForMatching,
   normalizePhoneForMatching,
@@ -299,11 +299,14 @@ export interface AccountMergePreview {
   /** Roles the duplicate user currently has. */
   duplicateRoles: UserRole[];
   /**
-   * Union of non-sensitive roles (resident, viewer). Sensitive roles
-   * (admin, dispatcher, driver) are never included automatically; the
-   * admin must use the explicit role merge policy to transfer them.
+   * The exact role list a "union" merge commits under the currently visible
+   * data (issue #95): every canonical role is preserved, and only the
+   * non-sensitive roles (resident, viewer) are imported from the duplicate.
+   * Privileged duplicate roles (admin, dispatcher, driver) require the
+   * explicit role merge policy. Display-only: the transaction recomputes
+   * the committed result from fresh reads.
    */
-  defaultUnionRoles: UserRole[];
+  unionResultRoles: UserRole[];
   /** Number of water requests currently owned by the duplicate user. */
   requestCountForDuplicate: number;
   /** Whether the merge is blocked and why. */
@@ -372,7 +375,7 @@ export async function getAccountMergePreview(
     duplicateDriverId,
     canonicalRoles: canonicalUser.roles,
     duplicateRoles: duplicateUser.roles,
-    defaultUnionRoles: buildDefaultUnionRoles(
+    unionResultRoles: buildUnionMergeRoles(
       canonicalUser.roles,
       duplicateUser.roles,
     ),
@@ -392,9 +395,11 @@ export interface MergeUserAccountsInput {
   actorId: string;
   reason: string;
   /**
-   * "union" merges only non-sensitive roles (resident, viewer).
+   * "union" preserves every canonical role and imports only the
+   * duplicate's non-sensitive roles (resident, viewer).
    * "explicit" uses `explicitRoles` exactly; this is the only way to
-   * transfer admin, dispatcher, or driver roles.
+   * transfer admin, dispatcher, or driver roles from the duplicate — or
+   * to deliberately drop a canonical role.
    */
   roleMergePolicy: AccountMergeRolePolicy;
   /** Required when roleMergePolicy is "explicit". */
@@ -448,10 +453,19 @@ export interface MergeUserAccountsResult {
  *      moved to canonical. If BOTH are linked to different entries, the
  *      merge is blocked. The relink is applied inside the transaction
  *      against a fresh read, so a concurrent unlink cannot strand it.
- *   3. Roles: "union" mode unions only resident/viewer. Admin,
- *      dispatcher, and driver roles must be transferred through
- *      "explicit" mode with a deliberate role list. The driver role is
- *      further gated by the Driver Registry link state.
+ *   3. Roles: "union" mode preserves every role the canonical user
+ *      already holds and imports only the duplicate's non-sensitive
+ *      roles (resident, viewer) — it can neither revoke a canonical
+ *      role nor transfer a privileged duplicate role (issue #95).
+ *      Admin, dispatcher, and driver roles may only move from the
+ *      duplicate through "explicit" mode with a deliberate role list.
+ *      The driver role is further gated by the Driver Registry link
+ *      state. The committed role list is recomputed from the fresh
+ *      canonical/duplicate reads inside the transaction, so a canonical
+ *      role gained between preview and commit is preserved rather than
+ *      clobbered by a stale preview, while a privileged role the
+ *      duplicate gains in that window is still filtered out of the union
+ *      (same TOCTOU discipline as the last-admin check).
  *   4. The duplicate's `users` document gets `mergedIntoUserId` INSIDE the
  *      transaction — so from the moment the merge commits, the merged-away
  *      identity is rejected by application authentication boundaries even
@@ -494,22 +508,12 @@ export async function mergeUserAccounts(
 
   const db = getAdminDb();
 
-  // Resolve final role list. "union" uses the preview's non-sensitive union;
-  // "explicit" uses the admin's exact choice — the only way to move admin/
-  // dispatcher/driver. The last-admin SAFETY decision below never trusts the
-  // preview; it re-reads live state inside the transaction.
-  let finalRoles: UserRole[];
-  if (roleMergePolicy === "explicit") {
-    finalRoles = [...new Set(explicitRoles!)].sort();
-  } else {
-    finalRoles = preview.defaultUnionRoles;
-  }
-
-  // Validate explicit roles don't silently exceed what makes sense.
-  // We allow any subset the admin explicitly chooses, but if they try
-  // to grant driver without a registry link, that's harmless (portal
-  // access without registry eligibility does not enable deliveries).
-  // The preview already warned about driver-registry state.
+  // The committed role list is NOT resolved here from the preview — that was
+  // the #95 defect: a stale/non-sensitive preview union became the complete
+  // replacement role list and stripped privileged roles the canonical user
+  // already held. It is recomputed inside the transaction from the fresh
+  // canonical/duplicate reads, alongside the last-admin SAFETY decision
+  // which already never trusts the non-transactional preview.
 
   const canonicalRef = db.collection(USERS_COLLECTION).doc(canonicalUid);
   const duplicateRef = db.collection(USERS_COLLECTION).doc(duplicateUid);
@@ -549,7 +553,7 @@ export async function mergeUserAccounts(
   // the write path would let a canonical or duplicate that concurrently gained
   // `admin` slip past the guard — review #70 / Aikido). A merge reduces usable
   // admins in two ways, both handled atomically here:
-  //   1. the canonical loses `admin` (finalRoles omits it while it held it);
+  //   1. the canonical loses `admin` (committedRoles omits it while it held it);
   //   2. the duplicate is decommissioned — its Firebase Auth identity is deleted
   //      below — so if it holds `admin` that role is revoked from the leftover
   //      document to avoid a counted-but-unusable "phantom admin". Other roles
@@ -607,7 +611,17 @@ export async function mergeUserAccounts(
 
     const canonicalRolesLive = toUserRoles(canonicalSnap.data()!.roles);
     const duplicateRolesLive = toUserRoles(duplicateSnap.data()!.roles);
-    const finalKeepsCanonicalAdmin = finalRoles.includes("admin");
+
+    // The committed canonical role list — always derived from the LIVE
+    // documents read inside this transaction, never from the preview
+    // (issue #95). "union" = canonicalRoles ∪ (duplicateRoles ∩ safe);
+    // "explicit" = the admin's exact list. Recomputed on every transaction
+    // attempt so a retry also reflects the newest committed state.
+    const committedRoles: UserRole[] =
+      roleMergePolicy === "explicit"
+        ? [...new Set(explicitRoles!)].sort()
+        : buildUnionMergeRoles(canonicalRolesLive, duplicateRolesLive);
+    const finalKeepsCanonicalAdmin = committedRoles.includes("admin");
     const canonicalLosesAdmin =
       canonicalRolesLive.includes("admin") && !finalKeepsCanonicalAdmin;
     const duplicateLosesAdmin = duplicateRolesLive.includes("admin");
@@ -620,7 +634,7 @@ export async function mergeUserAccounts(
       const pop = await readAdminPopulationInTransaction(db, txn);
       invariantSnap = pop.invariantSnap;
       // Effective admin set AFTER this merge, from the LIVE admin set:
-      //  - the canonical's roles become finalRoles;
+      //  - the canonical's roles become committedRoles;
       //  - the duplicate is decommissioned, so it is never an admin afterwards.
       const afterAdmins = new Set(pop.adminUids);
       afterAdmins.delete(canonicalUid);
@@ -635,7 +649,7 @@ export async function mergeUserAccounts(
     duplicateAdminRevoked = false;
     driverRegistryRelinked = 0;
 
-    txn.update(canonicalRef, { roles: finalRoles, updatedAt: now });
+    txn.update(canonicalRef, { roles: committedRoles, updatedAt: now });
 
     // Always stamp the merged-away marker on the duplicate's profile inside
     // the same commit — it is the immediate, application-level guarantee that
@@ -689,7 +703,7 @@ export async function mergeUserAccounts(
       createdAt: mergeCreatedAt, // stored as string for simplicity; could use timestamp
       reason: reason.trim(),
       roleMergePolicy,
-      mergedRoles: finalRoles,
+      mergedRoles: committedRoles,
       duplicateAuthDeleted: false,
       duplicateAdminRevoked,
       counts: {
