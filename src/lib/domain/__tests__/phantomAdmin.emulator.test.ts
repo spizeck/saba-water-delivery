@@ -130,26 +130,27 @@ afterAll(clearState);
 
 describe("phantom admin — merge cannot leave zero usable admins", () => {
   it("rejects a merge that would leave only the decommissioned duplicate as admin", async () => {
-    // Exactly two usable admins. A union merge demotes the canonical AND
-    // decommissions the duplicate admin — that is zero usable admins, so it
-    // must be refused (previously it succeeded, leaving a phantom).
-    await seedUser("canonAdmin", ["resident", "admin"]);
+    // The duplicate is the ONLY usable admin; the canonical is not an admin.
+    // Decommissioning the duplicate would leave zero usable admins, so the
+    // merge must be refused — union does not transfer the duplicate's admin
+    // (#95), so nothing saves it.
+    await seedUser("canon", ["resident"]);
     await seedUser("dupAdmin", ["resident", "admin"]);
-    expect(await countAdmins()).toBe(2);
+    expect(await countAdmins()).toBe(1);
 
-    await expect(
-      unionMerge("canonAdmin", "dupAdmin", "canonAdmin"),
-    ).rejects.toThrow("LAST_ADMIN");
+    await expect(unionMerge("canon", "dupAdmin", "canon")).rejects.toThrow(
+      "LAST_ADMIN",
+    );
 
     // Fail closed: nothing changed, no audit record, invariant doc untouched.
-    expect(await rolesOf("canonAdmin")).toContain("admin");
+    expect(await rolesOf("canon")).toEqual(["resident"]);
     expect(await rolesOf("dupAdmin")).toContain("admin");
-    expect(await countAdmins()).toBe(2);
+    expect(await countAdmins()).toBe(1);
     expect(await mergeEventCount()).toBe(0);
     expect(await invariantExists()).toBe(false);
   }, 30_000);
 
-  it("revokes the decommissioned duplicate's admin (no phantom) when another usable admin remains", async () => {
+  it("revokes the decommissioned duplicate's admin (no phantom) while the canonical keeps its own admin", async () => {
     await seedUser("canonAdmin", ["resident", "admin"]);
     await seedUser("dupAdmin", ["resident", "viewer", "admin"]);
     await seedUser("thirdAdmin", ["resident", "admin"]); // keeps a usable admin
@@ -158,11 +159,12 @@ describe("phantom admin — merge cannot leave zero usable admins", () => {
     const result = await unionMerge("canonAdmin", "dupAdmin", "thirdAdmin");
     expect(result.canonicalUser.uid).toBe("canonAdmin");
 
-    // Canonical demoted (union drops admin); duplicate's admin REVOKED.
-    expect(await rolesOf("canonAdmin")).not.toContain("admin");
+    // Union PRESERVES the canonical's own admin (#95); the duplicate's admin
+    // is REVOKED on decommission.
+    expect(await rolesOf("canonAdmin")).toContain("admin");
     expect(await rolesOf("dupAdmin")).not.toContain("admin");
-    // Only the untouched third admin remains — and it is a usable identity.
-    expect(await countAdmins()).toBe(1);
+    // Two usable admins remain: the canonical and the untouched third admin.
+    expect(await countAdmins()).toBe(2);
     expect(await rolesOf("thirdAdmin")).toContain("admin");
 
     // Historical duplicate record is preserved (doc + non-admin roles + fields).

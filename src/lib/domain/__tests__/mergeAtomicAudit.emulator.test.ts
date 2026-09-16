@@ -262,15 +262,16 @@ describe("mergeUserAccounts — Firestore state + audit commit atomically (#49)"
       duplicateUid: "dup",
       actorId: "thirdAdmin",
       reason: "dup",
-      roleMergePolicy: "union", // drops admin from canonical -> reducesAdmins
+      roleMergePolicy: "union", // decommissions the duplicate admin -> reducesAdmins
     });
 
     expect(result.requestsRelinked).toBe(MAX);
     expect(result.driverRegistryRelinked).toBe(1);
     expect(await requestOwnerCount("dup")).toBe(0);
     expect(await requestOwnerCount("canon")).toBe(MAX);
-    // Canonical demoted, duplicate admin revoked, third admin remains.
-    expect(await rolesOf("canon")).not.toContain("admin");
+    // Union preserves the canonical's admin role (#95); the decommissioned
+    // duplicate's admin is still revoked.
+    expect(await rolesOf("canon")).toContain("admin");
     expect(await rolesOf("dup")).not.toContain("admin");
 
     const events = await mergeEvents();

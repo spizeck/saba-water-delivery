@@ -408,8 +408,9 @@ Vitest covers the pure domain logic extensively, including:
   parsing, phone matching, and webhook signature/config verification.
 - Identity matching (`identityMatching.ts`): email/phone normalization,
   name-similarity rules, conservative match-strength assignment
-  (strong email, medium phone, weak name-only), and the safe role-union
-  helper used during account merges.
+  (strong email, medium phone, weak name-only), and the union-merge role
+  helper used during account merges (canonical roles preserved; only
+  resident/viewer imported from the duplicate — #95).
 - Account setup email content: configuration reading, branded email
   payload construction, secure-link inclusion, and confirmation that no
   password appears in the message.
@@ -739,7 +740,8 @@ probes only; no operational mutations).
   confirm the historical customer snapshot is preserved unchanged while
   `customerId` now points to the user.
 - Use **Merge Accounts** to reconcile two accounts that belong to the
-  same person; confirm sensitive roles do not transfer unless explicitly
+  same person; confirm a union merge preserves every canonical role,
+  that the duplicate's sensitive roles do not transfer unless explicitly
   selected, and that duplicate-owned requests are relinked. Confirm an
   audit record is created.
 - Attempt to merge two accounts both linked to different Driver Registry

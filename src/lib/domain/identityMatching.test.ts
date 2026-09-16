@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDefaultUnionRoles,
+  buildUnionMergeRoles,
   findIdentityMatches,
   findPhoneMatches,
   findStrongEmailMatch,
@@ -163,16 +163,47 @@ describe("findPhoneMatches", () => {
   });
 });
 
-describe("buildDefaultUnionRoles", () => {
-  it("unions non-sensitive roles and excludes sensitive ones", () => {
-    const result = buildDefaultUnionRoles(
-      ["resident", "viewer"] as UserRole[],
-      ["resident", "admin", "driver"] as UserRole[],
+describe("buildUnionMergeRoles", () => {
+  it("preserves every canonical role, including sensitive ones (#95)", () => {
+    // The confirmed pilot incident shape: a privileged canonical merged with
+    // a resident duplicate must keep all of its roles.
+    const result = buildUnionMergeRoles(
+      ["resident", "driver", "dispatcher", "admin"] as UserRole[],
+      ["resident"] as UserRole[],
+    );
+    expect(result).toEqual(["admin", "dispatcher", "driver", "resident"]);
+  });
+
+  it("never imports privileged roles from the duplicate", () => {
+    const result = buildUnionMergeRoles(
+      ["resident"] as UserRole[],
+      ["resident", "admin", "dispatcher", "driver"] as UserRole[],
+    );
+    expect(result).toEqual(["resident"]);
+  });
+
+  it("imports only resident/viewer from the duplicate", () => {
+    const result = buildUnionMergeRoles(
+      ["resident"] as UserRole[],
+      ["viewer", "driver"] as UserRole[],
     );
     expect(result).toEqual(["resident", "viewer"]);
   });
 
-  it("returns empty when only sensitive roles are present", () => {
-    expect(buildDefaultUnionRoles(["admin"], ["driver"])).toEqual([]);
+  it.each<[UserRole[], UserRole[], UserRole[]]>([
+    [["viewer"], ["resident"], ["resident", "viewer"]],
+    [["admin"], ["viewer"], ["admin", "viewer"]],
+    [["dispatcher"], ["viewer"], ["dispatcher", "viewer"]],
+    [["driver"], ["viewer"], ["driver", "viewer"]],
+    [
+      ["admin", "dispatcher", "driver"],
+      ["admin", "dispatcher", "driver"],
+      ["admin", "dispatcher", "driver"],
+    ],
+    [["resident"], ["resident"], ["resident"]],
+    [[], ["viewer"], ["viewer"]],
+    [["admin"], [], ["admin"]],
+  ])("canonical %j + duplicate %j => %j", (canonical, duplicate, expected) => {
+    expect(buildUnionMergeRoles(canonical, duplicate)).toEqual(expected);
   });
 });

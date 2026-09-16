@@ -86,12 +86,16 @@ different email addresses), use **Admin → Merge Accounts**:
 3. Review the comparison: roles, driver registry link, and number of
    owned requests.
 4. Choose a **role merge policy**:
-   - **Safe union** merges only non-sensitive roles (`resident`,
-     `viewer`). Admin, dispatcher, and driver roles are not transferred
-     automatically.
+   - **Safe union** keeps every role the canonical account already has
+     and adds only non-sensitive roles (`resident`, `viewer`) from the
+     duplicate. Admin, dispatcher, and driver roles are never
+     transferred automatically — and union never removes a canonical
+     role.
    - **Explicit** lets you pick the exact final role list. Use this only
      when you are certain the duplicate's sensitive roles should move to
-     the canonical account.
+     the canonical account, or when you deliberately intend to remove a
+     canonical role — the form warns if your selection would drop a role
+     the canonical account currently holds.
 5. Enter a reason and confirm.
 
 The system relinks the duplicate account's requests to the canonical

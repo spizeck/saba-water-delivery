@@ -176,19 +176,37 @@ export function findPhoneMatches(
 }
 
 /**
- * Builds the default "safe union" role set for account merges: unions
- * non-sensitive roles (resident, viewer) and deliberately excludes
- * system-managed/sensitive roles (admin, dispatcher, driver) unless
- * an admin explicitly opts into transferring them via the explicit
- * role merge policy.
+ * Sensitive roles that a union-mode merge must never transfer from the
+ * duplicate account. They can only reach the canonical account through the
+ * explicit role merge policy (or through the normal audited role grant).
  */
-export function buildDefaultUnionRoles(
-  rolesA: readonly UserRole[],
-  rolesB: readonly UserRole[],
+const SENSITIVE_MERGE_ROLES: readonly UserRole[] = [
+  "admin",
+  "dispatcher",
+  "driver",
+];
+
+/**
+ * Builds the union-mode role set for account merges (issue #95):
+ *
+ *   canonicalRoles UNION (duplicateRoles ∩ {resident, viewer})
+ *
+ * Every role already held by the canonical user is preserved — including
+ * sensitive roles — because union mode must never implicitly revoke an
+ * existing canonical role. Only non-sensitive roles (resident, viewer)
+ * are imported automatically from the duplicate; privileged duplicate
+ * roles require the explicit merge policy. This corrects the confirmed
+ * pilot defect where the result was computed as
+ * `safeRoles(canonical UNION duplicate)`, silently stripping privileged
+ * roles the canonical user already held.
+ */
+export function buildUnionMergeRoles(
+  canonicalRoles: readonly UserRole[],
+  duplicateRoles: readonly UserRole[],
 ): UserRole[] {
-  const sensitive: UserRole[] = ["admin", "dispatcher", "driver"];
-  const union = new Set<UserRole>([...rolesA, ...rolesB]);
-  return Array.from(union)
-    .filter((r) => !sensitive.includes(r))
-    .sort();
+  const union = new Set<UserRole>([
+    ...canonicalRoles,
+    ...duplicateRoles.filter((r) => !SENSITIVE_MERGE_ROLES.includes(r)),
+  ]);
+  return Array.from(union).sort();
 }
