@@ -10,11 +10,84 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
+    # Groups apply to scheduled version updates only (default applies-to);
+    # they do not affect security updates. update-types keeps every major
+    # bump as its own PR — majors are never bundled into a group.
     groups:
-      minor-and-patch:
+      # Framework packages released in lockstep; eslint-config-next is
+      # versioned to match next.
+      framework:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "eslint-config-next"
         update-types:
           - "minor"
           - "patch"
+      # Client Firebase SDK — distinct Auth/PWA/browser risk surface.
+      firebase-client:
+        patterns:
+          - "firebase"
+        update-types:
+          - "minor"
+          - "patch"
+      # Type-only packages; no shipped runtime code.
+      types:
+        patterns:
+          - "@types/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Firebase emulator/dev tooling; nothing here ships to production.
+      firebase-dev-tools:
+        patterns:
+          - "firebase-tools"
+          - "@firebase/rules-unit-testing"
+        update-types:
+          - "minor"
+          - "patch"
+      # Lint/format tooling.
+      lint-tooling:
+        patterns:
+          - "eslint"
+          - "eslint-config-prettier"
+          - "prettier"
+        update-types:
+          - "minor"
+          - "patch"
+      # Test toolchain (Vitest/Playwright).
+      test-tooling:
+        patterns:
+          - "vitest"
+          - "@vitejs/plugin-react"
+          - "vite-tsconfig-paths"
+          - "@playwright/test"
+        update-types:
+          - "minor"
+          - "patch"
+      # Tailwind and its PostCSS plugin release together.
+      styling:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/postcss"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # firebase-admin 14.x breaks the Vercel serverless bundle
+      # (jwks-rsa 4 -> ESM-only jose 6, ERR_REQUIRE_ESM); tracked in #94.
+      # Remove when #94's retry criteria are met.
+      - dependency-name: "firebase-admin"
+        versions: ["14.x"]
+      # TS7 is incompatible with the current Next/typescript-eslint stack;
+      # remove when that ecosystem supports TS7 cleanly.
+      - dependency-name: "typescript"
+        versions: ["7.x"]
+      # ESLint 10 is incompatible with the current Next/React lint stack;
+      # remove when eslint-config-next supports ESLint 10.
+      - dependency-name: "eslint"
+        versions: ["10.x"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -26,4 +99,3 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "security"

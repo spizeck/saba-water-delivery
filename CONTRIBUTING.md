@@ -72,6 +72,29 @@ Main" ruleset; they cannot be bypassed from a PR. See
 [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) "Continuous integration and
 branch protection" for the authoritative description.
 
+## Dependency updates
+
+Dependabot runs weekly for npm and GitHub Actions
+([`.github/dependabot.yml`](./.github/dependabot.yml)). Routine version
+updates are grouped by risk class (framework, Firebase client SDK, type
+packages, dev/emulator tooling, lint/test tooling) so each PR maps to one
+review strategy; runtime-critical packages such as `firebase-admin` and
+`resend` stay ungrouped. Major-version updates are never grouped and are
+never auto-merged.
+
+- **Runtime dependency changes require full verification** — `npm run
+  check` plus the emulator suites that cover the touched surface, and a
+  review of the Vercel Preview deployment.
+- **Serverless-runtime-sensitive upgrades** (`firebase-admin` above all)
+  additionally require exercising the actual Vercel Preview runtime, not
+  only local/emulator tests: `firebase-admin` 14 passed every local and
+  CI check and still broke production with `ERR_REQUIRE_ESM` (#94).
+- **Runtime dependency changes belong in an intentional release
+  baseline.** Application versions are assessed snapshots (see
+  [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) "Release policy"), so a
+  dependency change that alters shipped runtime should land ahead of the
+  next intended release rather than silently changing an assessed one.
+
 ## Testing
 
 The canonical reference is [`docs/TESTING.md`](./docs/TESTING.md). In
