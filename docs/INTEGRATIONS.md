@@ -67,13 +67,21 @@ of each message.
   account setup invitations, and post-delivery confirmation requests for
   registered residents.
 - **Provider:** Resend.
-- **Authentication mechanism:** `RESEND_API_KEY`, a server-only secret.
+- **Authentication mechanism:** `RESEND_API_KEY`, a server-only secret. In
+  deployed Vercel environments it is injected by the Vercel-managed Resend
+  integration (Vercel → Integrations → Resend); locally it is a key created
+  in the Resend dashboard. The integration also injects
+  `RESEND_EMAIL_DOMAIN` (the verified sending domain) — informational only;
+  the application deliberately resolves senders from the explicit
+  `*_EMAIL_FROM` variables so each identity keeps its display name and
+  mailbox.
 - **Application endpoint:** modules under `src/lib/email/` call Resend's
   `emails.send()`.
 - **Required configuration:** `RESEND_API_KEY`,
   `CONTINUITY_REPORT_EMAIL_FROM` (must be on a Resend-verified domain
   for real government use), `CONTINUITY_REPORT_EMAIL_TO`; optional
-  `DELIVERY_CONFIRMATION_EMAIL_FROM` overrides the shared sender.
+  `DELIVERY_CONFIRMATION_EMAIL_FROM` and `ACCOUNT_SETUP_EMAIL_FROM`
+  override the shared sender.
 - **Failure impact:** continuity-report failures are logged and return 502; the
   report is reconstructible operational reporting and is **not** placed in the
   durable outbox. Account-setup invitations remain best-effort (the admin sees
