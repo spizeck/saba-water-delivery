@@ -39,23 +39,27 @@ Merging to `main` triggers the production deployment.
 ### Release policy
 
 Application versions are intentional release snapshots, not per-merge
-bumps — do not tag a version for every PR. The planned progression:
+bumps — do not tag a version for every PR. The progression:
 
-- `v0.9.0` — production-readiness code baseline: the application is
-  ready to enter government-owned infrastructure migration,
-  real-provider staging acceptance, and institutional handover work.
+- `v0.9.0` — first production-readiness code baseline (superseded).
+- `v0.9.1` — **current formal baseline**: a maintenance snapshot of
+  `v0.9.0` capturing dependency maintenance, production-runtime
+  corrections, and account-merge authorization hardening found during
+  live pilot validation. It is the assessed baseline of the current
+  security assessment (see [`../SECURITY_REPORT.md`](../SECURITY_REPORT.md)).
 - Later `v0.9.x` releases only when another intentional baseline
   snapshot is warranted.
 - `v1.0.0-rc.N` — government-owned infrastructure assembled and final
   staging/acceptance underway.
 - `v1.0.0` — government production handover/acceptance complete.
 
-A release is an annotated Git tag (e.g. `git tag -a v0.9.0 <sha>`) on a
+A release is an annotated Git tag (e.g. `git tag -a v0.9.1 <sha>`) on a
 merged `main` commit plus a matching GitHub Release; that tag is the
-canonical application release identity. `v0.9.0` does not mean
+canonical application release identity. `v0.9.1` does not mean
 government production handover is complete — the remaining
 infrastructure, acceptance, and handover gates are the open Government
-Production Readiness milestone issues (#56–#63, #83, #90). See
+Production Readiness milestone issues (#56–#63, #83; Firebase Admin
+upgrade retry #94). See
 [`CHANGELOG.md`](./CHANGELOG.md) for release contents.
 
 ## Continuous integration and branch protection
@@ -104,9 +108,9 @@ the ruleset deliberately — it is required by default.
 | --- | --- |
 | Vercel | Hosting, serverless functions, and the nightly continuity-report cron. |
 | Firebase | Authentication, Firestore (data), Firebase Storage (photos, planned). |
-| Resend | Sending the continuity-report email. |
-| Meta (Facebook Login) | Optional resident/staff sign-in provider. |
-| Meta (WhatsApp Business Platform / Cloud API) | Resident WhatsApp ordering. |
+| Resend | Transactional email (continuity report, account-setup invitations, delivery confirmations). |
+| Meta (Facebook Login) | Optional resident/staff sign-in provider (scaffolded, not enabled). |
+| Meta (WhatsApp Business Platform / Cloud API) | Resident WhatsApp ordering (code exists; not enabled for live residents). |
 | DNS | A verified sending domain in Resend requires DNS records at your domain registrar; Vercel's default `*.vercel.app` domain requires no DNS setup, a custom domain does. |
 
 Production deployments should use accounts, API keys, sending domains,
