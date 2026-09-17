@@ -75,6 +75,7 @@ you need to do:
 | Operate production day to day | [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) | Government staff |
 | Respond to an outage or suspected security incident | [`docs/INCIDENT_RECOVERY.md`](./docs/INCIDENT_RECOVERY.md) | Operators / IT admin |
 | Back up or restore data after loss/corruption | [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | IT admin |
+| Transfer Firebase/GCP ownership to the government | [`docs/FIREBASE_GCP_HANDOVER.md`](./docs/FIREBASE_GCP_HANDOVER.md) | IT admin / government |
 | Manage users, the Driver Registry, and dispatch settings | [`docs/ADMIN_GUIDE.md`](./docs/ADMIN_GUIDE.md) | Administrators |
 | Use the dispatcher dashboard | [`docs/DISPATCHER_GUIDE.md`](./docs/DISPATCHER_GUIDE.md) | Dispatchers |
 | Use the driver app | [`docs/DRIVER_GUIDE.md`](./docs/DRIVER_GUIDE.md) | Drivers |

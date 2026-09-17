@@ -24,6 +24,7 @@ inferring behavior from the code:
 | Deployment, environment variables, branch protection | [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) |
 | Day-to-day operations | [`docs/OPERATIONS.md`](./docs/OPERATIONS.md) |
 | Outage and incident procedures | [`docs/INCIDENT_RECOVERY.md`](./docs/INCIDENT_RECOVERY.md) |
+| Firebase/GCP ownership handover | [`docs/FIREBASE_GCP_HANDOVER.md`](./docs/FIREBASE_GCP_HANDOVER.md) |
 | External integrations | [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md) |
 | Why major decisions were made (ADRs) | [`docs/adr/`](./docs/adr/README.md) |
 | Security policy | [`SECURITY.md`](./SECURITY.md) |

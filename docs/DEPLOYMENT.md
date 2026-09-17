@@ -188,6 +188,11 @@ in `serverConfig.getServerConfigStatus()`. `LOG_LEVEL` is optional; set it to
 
 ## Firebase
 
+For transferring the Firebase/GCP project itself to Public Entity Saba
+ownership (IAM, billing, service-account rotation, verification and
+rollback), see the dedicated runbook:
+[`FIREBASE_GCP_HANDOVER.md`](./FIREBASE_GCP_HANDOVER.md).
+
 Deploy Firestore rules and indexes (and storage rules, if changed)
 whenever they change:
 
