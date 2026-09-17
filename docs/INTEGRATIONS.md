@@ -16,6 +16,8 @@ operation does not depend on an individual developer.
 paths. Facebook is scaffolded but disabled in the login UI. Firebase/GCP is
 described as developer-owned pilot infrastructure in [#56](https://github.com/spizeck/saba-water-delivery/issues/56);
 government ownership has not been established by the existence of this guide.
+The ownership-transfer runbook is
+[`FIREBASE_GCP_HANDOVER.md`](./FIREBASE_GCP_HANDOVER.md).
 
 - **Purpose:** authentication, Firestore (the application's source of
   truth for all data), and Firebase Storage (planned use for photo
