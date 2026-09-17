@@ -82,7 +82,9 @@ you need to do:
 | Understand external service integrations | [`docs/INTEGRATIONS.md`](./docs/INTEGRATIONS.md) | Developers / IT admin |
 | See what changed in production | [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) | Everyone |
 
-Security policy and reporting: [`SECURITY.md`](./SECURITY.md).
+Security policy and reporting: [`SECURITY.md`](./SECURITY.md). Current
+security/readiness assessment (baseline `v0.9.1`):
+[`SECURITY_REPORT.md`](./SECURITY_REPORT.md).
 
 ## Development quick start
 
