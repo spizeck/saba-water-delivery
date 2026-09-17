@@ -60,7 +60,7 @@ in §3 is not.
 | Composite indexes | `firestore.indexes.json` — `notificationOutbox`, `accountMergeEvents`, `driverOffers`, `waterRequests` | repo root |
 | Firestore TTL policy | `rateLimits.expiresAt` — a **manual, console/gcloud-only** setting; not represented in `firebase.json` | [`DEPLOYMENT.md`](./DEPLOYMENT.md) "Firestore TTL" |
 | Firebase Functions | **None.** Scheduling is Vercel Cron: `/api/cron/continuity-report` (daily 00:00 UTC), `/api/cron/notifications` (every 10 min), `/api/cron/merge-auth-reconciliation` (hourly) | [`vercel.json`](../vercel.json) |
-| Firebase Storage | Bucket provisioned (`NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`); **no production data** — deny-all rules, no Storage code paths | `storage.rules`, `TECHNICAL.md` |
+| Firebase Storage | Bucket provisioned (`NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`). Repository evidence shows **no active application Storage workflow** — `storage.rules` is deny-all and no code path reads or writes Storage — so the application is not expected to store production objects. The repo cannot prove the live bucket's contents: the **console inventory is the source of truth** (verify in §5) before any handover or deletion decision | `storage.rules`, `TECHNICAL.md` |
 
 ### Authentication
 
@@ -178,19 +178,32 @@ All must hold before the transfer session begins:
    deployed `main` SHA and release tag (`v0.9.1` at time of writing).
 5. **[OPERATOR]** A rollback owner is named, and a maintenance window is
    agreed if Option B is chosen (Option A needs no downtime).
-6. **[OPERATOR]** **Data safeguard before any change:** confirm #60
-   backup status. If PITR/scheduled backups are not yet enabled, take an
-   on-demand managed export first — this is the documented
-   pre-risky-change habit in
-   [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) §2, item 3:
+6. **[OPERATOR]** **Data safeguard before any change — depends on the
+   #60 export bucket.** The canonical private, least-privilege,
+   government-controlled export bucket is provisioned under #60 (see
+   [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) §4); this runbook
+   deliberately does not design a second backup scheme.
 
-   ```bash
-   gcloud firestore export gs://<BACKUP_BUCKET>/pre-handover-<YYYYMMDD> \
-     --database='(default)' --project=saba-water-delivery
-   ```
+   - **If #60 has already established the bucket:** record its name and
+     take an on-demand managed export — the documented
+     pre-risky-change habit in
+     [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) §2, item 3:
 
-   This requires Blaze and a private least-privilege bucket (§5). Do not
-   improvise a second backup scheme; #60 owns the durable backup design.
+     ```bash
+     gcloud firestore export gs://<BACKUP_BUCKET>/pre-handover-<YYYYMMDD> \
+       --database='(default)' --project=saba-water-delivery
+     ```
+
+   - **If #60 has NOT established one: [STOP/ROLLBACK]** — do not begin
+     the risky ownership/credential steps that rely on this safeguard
+     until the bucket exists. For reference, a Firestore managed-export
+     destination minimally requires: the Blaze plan, a private bucket
+     (no public access) reachable from the project, and the project's
+     Firestore service agent
+     (`service-<PROJECT_NUMBER>@gcp-sa-firestore.iam.gserviceaccount.com`)
+     holding `roles/storage.admin` on that bucket. Provisioning a
+     durable bucket meeting those prerequisites is #60's decision —
+     never improvised inside the handover session.
 7. **[OPERATOR]** A manual Firebase Auth export is taken per
    [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) §7 (contains password
    hashes and PII — handle as a secret, store on an administrator's
@@ -243,8 +256,11 @@ console. Record results categorically in the handover record (§14).
       restrictions for the production origin(s).
 - [ ] **[OPERATOR]** Quotas and any budgets/billing alerts (#62 consumes
       this for monitoring).
-- [ ] **[OPERATOR]** Storage: confirm the provisioned bucket and that it
-      contains no production data.
+- [ ] **[OPERATOR]** Storage: inventory the provisioned bucket's objects
+      in the console — the source of truth for whether production
+      objects exist (the repository cannot prove this; §2 is
+      application inference only). Record the finding before any
+      handover or deletion decision.
 - [ ] **[OPERATOR]** Other Firebase surfaces enabled in the console
       (Hosting, Analytics, App Check, etc.) — record for completeness.
 
@@ -333,13 +349,30 @@ service-account credential, and no developer-held key retains access.
    dedicated service account for the application runtime — e.g.
    `saba-water-app-runtime` — rather than reusing the console-default
    `firebase-adminsdk` account.
-2. **[OPERATOR]** Grant it least-privilege roles covering what the code
-   uses: `roles/datastore.user` (Firestore read/write) and
-   `roles/firebaseauth.admin` (verify/mint/revoke tokens, manage users
-   for merge reconciliation). If verification shows an additional
-   permission is required, add the narrowest role that resolves it —
-   the console-generated default is the much broader `roles/editor`,
-   which is sufficient but not preferred.
+2. **[OPERATOR]** Grant it the preferred minimum project-level role
+   set — each role covers a distinct permission the code paths require:
+
+   | Role | Permission it covers | Used by |
+   | --- | --- | --- |
+   | `roles/datastore.user` | Firestore document reads/writes | Every server data path — portals, crons, webhooks |
+   | `roles/firebaseauth.admin` | Firebase Auth user management | `verifyIdToken`/`createSessionCookie`/`verifySessionCookie`, `getUser`, and merge-reconciliation disable/revoke/delete |
+   | `roles/serviceusage.serviceUsageConsumer` | `serviceusage.services.use` — consume the project's enabled Google Cloud APIs (quota/billing attribution) | Every Google API call the Admin SDK makes |
+
+   The third role is easy to miss: `serviceusage.services.use` is
+   inherited implicitly by broad roles like Owner/Editor — which is why
+   the console-default `firebase-adminsdk` account (typically granted
+   `roles/editor`) never hits this failure — but a purpose-built
+   least-privilege account does not inherit it. Without it, Admin SDK
+   calls fail with `PERMISSION_DENIED` / `USER_PROJECT_DENIED` (this is
+   a documented, observed failure mode against
+   `identitytoolkit.googleapis.com`). Grant it explicitly unless §5
+   verification shows an equivalent permission is already inherited —
+   e.g. from an organization-level grant — in which case record the
+   equivalence rather than granting twice.
+
+   Do **not** fall back to `roles/editor` for convenience. If
+   verification shows a further permission is required, add the
+   narrowest role that resolves it.
 3. **[OPERATOR]** Generate a **new** private key on that service
    account. Deliver the JSON to whoever sets Vercel variables over a
    secure channel (government-approved vault/share) — **never** through
@@ -355,9 +388,15 @@ service-account credential, and no developer-held key retains access.
    `FIREBASE_ADMIN_*` values in Vercel and redeploy — the old key is
    still valid because nothing has been deleted yet. Diagnose before
    retrying.
-7. **[VERIFY]** Confirm in IAM → Service accounts that the application
-   is authenticated as the new account (auth logs / last-used
-   timestamps), then proceed to §13 for old-credential removal.
+7. **[VERIFY]** Confirm the new account is actually serving before any
+   revocation: the §11 checks exercise each required permission —
+   readiness + cron runs prove Firestore writes (`datastore.user`), a
+   real sign-in proves session-cookie minting (`firebaseauth.admin`),
+   and the absence of `PERMISSION_DENIED`/`USER_PROJECT_DENIED` errors
+   proves `serviceusage.services.use`. Confirm in IAM → Service
+   accounts that the application authenticated as the new account
+   (last-used timestamps / audit logs), then proceed to §13 for
+   old-credential removal.
 
 ## 9. Firebase Auth verification
 
@@ -399,7 +438,12 @@ service-account credential, and no developer-held key retains access.
   ```
 
   Deploying identical definitions is a no-op; do it only if §5 found a
-  parity doubt, and note that index creation takes minutes.
+  parity doubt, and note that index creation takes minutes. (On
+  2026-09-16, during preparation of this runbook, the existing
+  unchanged `firestore.rules`, `firestore.indexes.json`, and
+  `storage.rules` were redeployed to `saba-water-delivery` and accepted
+  cleanly — production parity confirmed at that date; re-verify at
+  handover time.)
 - [ ] **[VERIFY]** `rateLimits` TTL policy on `expiresAt` is enabled
       (recreate per DEPLOYMENT.md if not).
 - [ ] **[VERIFY]** Spot-check the inventory from
@@ -552,6 +596,8 @@ point.
 - [ ] **[GOVERNMENT/DEVELOPER]** Option A vs B decided after a §5-style
       inspection.
 - [ ] **[DEVELOPER]** Release SHA/tag recorded.
+- [ ] **[OPERATOR]** Canonical #60 export bucket confirmed to exist —
+      **[STOP/ROLLBACK]** the session if it does not (§4.6).
 - [ ] **[OPERATOR]** Pre-handover Firestore export taken (§4.6); Auth
       export taken and secured (§4.7).
 - [ ] **[OPERATOR]** §5 console checklist completed and recorded.
