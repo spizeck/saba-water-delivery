@@ -143,15 +143,27 @@ runs on developer-owned infrastructure, but the following are
 **operator-verification items**, marked **[OPERATOR]** in §5:
 
 - Organization placement, project ownership, and project number.
-- Billing account ownership and plan (Spark vs Blaze — **Blaze is
-  required** for PITR, scheduled backups, and export; this gates #60).
-- Every IAM principal and role on the project.
+- Billing account **ownership** (a paid billing account is attached and
+  working — verified 2026-09-16 — but who controls that account still needs
+  confirming at transfer).
+- Every IAM principal and role on the project. **Verified 2026-09-16:** the
+  sole human principal is the developer's Google identity (`roles/owner`);
+  the only service account is `firebase-adminsdk-fbsvc` (Firebase Admin SDK
+  agent roles plus `roles/storage.admin`); standard Google-managed service
+  agents only. No government principal exists yet — this is #61's gap.
 - Service accounts, their keys, key ages, and which keys are deployed.
+  **Verified 2026-09-16:** two Google-provided keys exist on
+  `firebase-adminsdk-fbsvc`; no user-managed keys are listed.
 - Firebase Auth provider configuration, OAuth consent settings, and
   **authorized domains**.
 - The actual Firestore database ID, location, type (Native mode), and
-  whether PITR/scheduled backups/TTL are enabled.
-- API enablement, quotas, and any alerting/budgets.
+  whether PITR/scheduled backups/TTL are enabled. **Verified 2026-09-16**
+  (full table in [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) "Current
+  verified state"): `(default)`, `FIRESTORE_NATIVE`, `nam5`; PITR **on**
+  (7-day window); daily (30d) + weekly (98d) scheduled backups **on**; delete
+  protection **off**; no TTL policies.
+- API enablement, quotas, and any alerting/budgets. **Verified 2026-09-16:**
+  no Cloud Monitoring alert policies exist.
 - Whether any other Firebase surface (Hosting, App Check, Dynamic Links,
   Analytics, Crashlytics, Cloud Messaging) is enabled in the console.
 
@@ -184,7 +196,11 @@ All must hold before the transfer session begins:
    [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) §4); this runbook
    deliberately does not design a second backup scheme.
 
-   - **If #60 has already established the bucket:** record its name and
+   **Verified 2026-09-16: the canonical bucket does NOT yet exist** (the
+   project's only bucket is the default application Storage bucket), so the
+   **[STOP/ROLLBACK]** branch below is currently in force.
+
+   - **Once the #60 bucket exists:** record its name and
      take an on-demand managed export — the documented
      pre-risky-change habit in
      [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) §2, item 3:
@@ -194,13 +210,14 @@ All must hold before the transfer session begins:
        --database='(default)' --project=saba-water-delivery
      ```
 
-   - **If #60 has NOT established one: [STOP/ROLLBACK]** — do not begin
+   - **Until #60 establishes one: [STOP/ROLLBACK]** — do not begin
      the risky ownership/credential steps that rely on this safeguard
      until the bucket exists. For reference, a Firestore managed-export
-     destination minimally requires: the Blaze plan, a private bucket
+     destination minimally requires: the paid plan (attached and working —
+     verified 2026-09-16), a private bucket
      (no public access) reachable from the project, and the project's
      Firestore service agent
-     (`service-<PROJECT_NUMBER>@gcp-sa-firestore.iam.gserviceaccount.com`)
+     (`service-403343982145@gcp-sa-firestore.iam.gserviceaccount.com`)
      holding `roles/storage.admin` on that bucket. Provisioning a
      durable bucket meeting those prerequisites is #60's decision —
      never improvised inside the handover session.
@@ -549,7 +566,7 @@ resident PII**):
 | **#57** Vercel ownership | Owns Vercel team/project transfer and the env-var custody itself. This runbook names which variables change and when, but executing the Vercel changes is shared/#57 work. |
 | **#58** Resend | Sender identity and `RESEND_API_KEY` — untouched here. |
 | **#59** Domain/DNS | Adds the official authorized domain + `NEXT_PUBLIC_APP_URL` update after this handover. |
-| **#60** Backups/PITR | Owns enabling PITR/scheduled backups. This runbook requires their state known and uses the §2 on-demand export habit as the pre-change safeguard — it does not design backups. |
+| **#60** Backups/PITR | Owns backup/recovery protections. **Verified 2026-09-16:** PITR and daily+weekly scheduled backups are enabled on `(default)`; the canonical export bucket is **not** yet provisioned, so the §4.6 STOP gate currently blocks. This runbook does not design backups. |
 | **#61** Admins/break-glass | Owns who the government administrators are and emergency recovery. This runbook consumes its administrator list; break-glass is not duplicated here. |
 | **#62** Monitoring | Consumes the §5 quota/billing-alert findings. |
 | **#63** Handover drill | The acceptance gate this runbook feeds. |

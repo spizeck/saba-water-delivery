@@ -19,11 +19,31 @@ WhatsApp outage, and handling a suspected security incident). When an incident
 involves **lost or corrupted data**, `INCIDENT_RECOVERY.md` points here.
 
 > **Status.** This document defines the strategy and the exact operator steps.
-> It does **not**, by itself, enable any cloud backup. Every item marked
-> **[OPERATOR ACTION REQUIRED]** must be performed by a project administrator in
-> the Google Cloud / Firebase console or with `gcloud`/`firebase` before the
-> protection it describes is actually active. Do not assume backups exist
-> because this file does.
+> The managed Firestore protections were **verified against the live project on
+> 2026-09-16** — see the table immediately below. Items still marked
+> **[OPERATOR ACTION REQUIRED]** are **not** in place. Do not assume a
+> protection exists because this file describes it — re-verify with the §13
+> commands before relying on it.
+
+### Current verified state (verified 2026-09-16)
+
+Verified read-only with `gcloud`/`firebase` against project
+`saba-water-delivery`, Firestore database `(default)` (`FIRESTORE_NATIVE`,
+`STANDARD` edition, location `nam5`):
+
+| Protection | State | Detail |
+| --- | --- | --- |
+| PITR | **ENABLED** | 7-day window (`versionRetentionPeriod` `604800s`); earliest restorable version at inspection was 2026-09-10 |
+| Scheduled backups | **ENABLED** | Two schedules on `(default)`: **daily**, 30-day retention; and **weekly (Sunday)**, 98-day retention. 16 managed backups in `READY` state in `nam5`, newest snapshot 2026-09-16 |
+| Billing | **ENABLED** | A paid billing account is attached (required for PITR, scheduled backups, and managed export) |
+| Database delete protection | **DISABLED** | `DELETE_PROTECTION_DISABLED` — enabling it is recommended; pending owner approval (§14) |
+| Canonical export bucket | **DOES NOT EXIST** | No backup/export bucket is provisioned; `gcloud firestore export`/`import` steps are blocked until §4's bucket is approved and created. Managed-backup **restore** (`databases restore`) does **not** need a bucket and is **not** blocked |
+| Backup-failure alerting | **NONE** | No Cloud Monitoring alert policies exist; a notification channel and policy are pending (see #62) |
+| Government recovery access | **NONE** | The sole human project owner is the developer's Google identity; government administrator access is pending (#56/#61) |
+| Isolated restore drill | **NOT YET RUN** | Backups exist, but none has been restored and validated; the first drill is an issue-#60 acceptance step (§12). Not blocked by the missing export bucket — pending owner approval only |
+| TTL policies | None configured | Optional `rateLimits` housekeeping only (DEPLOYMENT.md); no recovery impact |
+| Firebase Auth export | Manual habit only | No automated Auth backup by design; see §7 |
+| Firebase Storage objects | Bucket empty | The app Storage bucket contains no objects (console-verified); see §8 |
 
 ---
 
@@ -125,14 +145,18 @@ For this small government service:
 
 1. **Enable PITR** (7-day window). It is the cheapest, highest-value protection
    against the most common incident — an accidental delete or a bad deployment
-   noticed within a day or two. **[OPERATOR ACTION REQUIRED]**
+   noticed within a day or two. **ENABLED — verified 2026-09-16** on `(default)`
+   (7-day window).
 2. **Enable a daily scheduled backup** with **14 days** retention (a reasonable
    floor; 28–35 days is stronger if the storage cost is acceptable). This is the
-   dependable recovery point for anything beyond the PITR window. **[OPERATOR
-   ACTION REQUIRED]**
+   dependable recovery point for anything beyond the PITR window. **ENABLED —
+   verified 2026-09-16** on `(default)`, and the live configuration exceeds the
+   recommendation: a **daily** schedule with **30-day** retention *and* a
+   **weekly (Sunday)** schedule with **98-day** retention are both active.
 3. **Take an on-demand export before any risky migration or bulk change**
    (e.g. before running a data-migration script). This is a manual habit, not a
-   schedule.
+   schedule. **BLOCKED until §4's canonical export bucket is provisioned** — no
+   export bucket exists today (verified 2026-09-16).
 
 Exact commands are in §11 (restore) and below (enable).
 
@@ -142,25 +166,40 @@ Exact commands are in §11 (restore) and below (enable).
 > **must be reviewed and approved** by the project owner before enabling. Do not
 > enable billing-bearing features without that approval.
 
-**Enable commands (run once, by an administrator):**
+**Protection commands — for a newly serving NAMED database only.** PITR and
+both backup schedules are **already applied to `(default)`** (verified
+2026-09-16 — see the table above). **Do not re-run these against `(default)`**
+while it is the healthy serving database: `schedules create` is not idempotent
+and would create **duplicate** schedules. The commands exist for one purpose —
+applying the same protections to a **named** database that becomes the serving
+database after a §6.8 failover. Set `ACTIVE_DATABASE` to that named database
+first (§6.0), then:
 
 ```bash
-# Point-in-time recovery (7-day window) — [OPERATOR ACTION REQUIRED]
-gcloud firestore databases update --database='(default)' --enable-pitr \
-  --project=saba-water-delivery
+# ACTIVE_DATABASE is the NAMED database now serving production — e.g.
+#   ACTIVE_DATABASE='recovery-20260917'
+# NOT '(default)' while (default) remains healthy and protected.
 
-# Daily scheduled backup, 14-day retention — [OPERATOR ACTION REQUIRED]
-gcloud firestore backups schedules create --database='(default)' \
-  --recurrence=daily --retention=14d --project=saba-water-delivery
+# Point-in-time recovery (7-day window)
+gcloud firestore databases update --database="$ACTIVE_DATABASE" --enable-pitr \
+  --project="$PROJECT"
+
+# Scheduled backups — mirror the verified production policy on (default):
+# daily with 30-day retention AND weekly (Sunday) with 98-day retention.
+gcloud firestore backups schedules create --database="$ACTIVE_DATABASE" \
+  --recurrence=daily --retention=30d --project="$PROJECT"
+gcloud firestore backups schedules create --database="$ACTIVE_DATABASE" \
+  --recurrence=weekly --day-of-week=SUN --retention=98d \
+  --project="$PROJECT"
 ```
 
 Neither command is run by this repository. Verify the plan and cost in the
 Google Cloud console first.
 
-> **These settings are per database.** They protect `(default)`. If a recovery
-> ever leaves production serving a **named** database (§6.8), that database is
-> NOT covered by the settings above — re-run these commands with
-> `--database=<that-database>`, or treat the failover as temporary and
+> **These settings are per database.** They currently protect `(default)`. If a
+> recovery ever leaves production serving a **named** database (§6.8), that
+> database is NOT covered by the `(default)` settings — run the commands above
+> with `ACTIVE_DATABASE` set to it, or treat the failover as temporary and
 > consolidate back to `(default)`.
 
 ---
@@ -173,8 +212,13 @@ them.
 
 | Objective | Target | Basis |
 | --- | --- | --- |
-| **RPO** (max data loss) | **≤ 24 hours** with daily scheduled backups; **~minutes** for any incident caught within the 7-day **PITR** window | Daily backup cadence; continuous PITR retention |
-| **RTO** (time to restore) | **Hours, not minutes** — realistically a few hours for a full Firestore restore, validation, and service switch-over | Managed restore creates a new database; validation and reconciliation take operator time |
+| **RPO** (max data loss) | **≤ 24 hours** with the enabled daily scheduled backups; **~minutes** for any incident caught within the 7-day **PITR** window | Verified daily + weekly backup schedules (30d/98d retention); continuous PITR retention — both confirmed enabled 2026-09-16 |
+| **RTO** (time to restore) | **Hours, not minutes** — realistically a few hours for a full Firestore restore, validation, and service switch-over | Managed restore creates a new database; validation and reconciliation take operator time. **Not yet measured** — the first isolated restore drill (§12) will produce a real observation |
+
+These targets are derived from the enabled configuration, **not** yet from a
+tested restore — treat them as provisional until the §12 drill records an
+actual RTO. Formal RPO/RTO approval is a **government IT decision**, not made
+here.
 
 Do not promise stakeholders an RPO/RTO tighter than the enabled configuration
 and a *tested* runbook can actually deliver. A single mis-set request is a
@@ -194,6 +238,66 @@ targeted repair (minutes), not a full restore (hours) — see §5.
   channels unnecessarily; refer to it as `gs://<BACKUP_BUCKET>` in tickets.
 - **Never** put a service-account key, password, or Auth export **in a script,
   in this repo, in a GitHub Actions artifact, or in logs.**
+
+### Canonical export bucket — NOT YET PROVISIONED
+
+**Verified 2026-09-16: no backup/export bucket exists.** The project's only
+bucket is the default Firebase Storage bucket; there is no canonical
+Firestore export destination.
+
+**What the missing bucket blocks** — anything that moves data through Cloud
+Storage:
+
+- `gcloud firestore export` / `gcloud firestore import` (all §6 export/import
+  commands, including the §6.2 incident-evidence export and the §6.5
+  PITR-export-then-import path),
+- the #56 pre-handover managed export.
+
+**What it does NOT block** — the managed-backup recovery path needs no bucket:
+
+- `gcloud firestore databases restore` from an existing scheduled backup into
+  an isolated named database (the §12 restore drill — backups already exist
+  and are `READY`),
+- `verify-recovery.mjs` validation of that restored database.
+
+So the **§12 restore drill can run before this bucket is provisioned**; only
+its approval (temporary billable database) is outstanding. **[STOP]** Do not
+improvise an ad-hoc bucket; create the canonical one below (a billable
+resource requiring owner approval).
+
+Required configuration for the canonical bucket:
+
+- **Dedicated bucket**, separate from the application Storage bucket, with a
+  clear name (e.g. `saba-water-delivery-firestore-exports` — the exact name is
+  the provisioning decision).
+- **Location** consistent with the database's `nam5` multi-region — a `US`
+  multi-region or US regional bucket (the operator's choice; record it).
+- **Uniform bucket-level access: ON.** **Public-access prevention: ENFORCED.**
+  No public or all-authenticated-users access, ever — backup data is
+  production data.
+- **IAM (bucket-level only, least privilege):**
+  - `roles/storage.admin` **on the bucket** for the project's Firestore
+    service agent, `service-403343982145@gcp-sa-firestore.iam.gserviceaccount.com`
+    — required for managed export/import. Do **not** grant it project-wide
+    Storage Admin.
+  - Object read/write for the named administrators who run exports/drills.
+- **Lifecycle rule** deleting exports older than the approved retention (e.g.
+  90 days) so old PII-bearing exports do not accumulate.
+- **Standard class, platform-default encryption** — no special key management
+  is warranted at this scale.
+- **Ownership:** created under — or transferred to — government control per
+  #56; the export destination must not remain a developer-owned resource.
+
+Provisioning commands (after approval):
+
+```bash
+gcloud storage buckets create gs://<BACKUP_BUCKET> --location=<US_LOC> \
+  --uniform-bucket-level-access --public-access-prevention \
+  --project=saba-water-delivery
+gcloud storage buckets add-iam-policy-binding gs://<BACKUP_BUCKET> \
+  --member="serviceAccount:service-403343982145@gcp-sa-firestore.iam.gserviceaccount.com" \
+  --role="roles/storage.admin" --project=saba-water-delivery
+```
 
 ### Same project vs. separate project
 
@@ -279,6 +383,11 @@ different, new database and is named explicitly in §6.5.
     --database="$ACTIVE_DATABASE" --project="$PROJECT"
   ```
 
+  Requires the §4 canonical export bucket. **If no bucket exists yet** (true as
+  of 2026-09-16): **[STOP]** do not improvise one mid-incident — skip the
+  evidence export, rely on the managed backups and PITR window already in
+  place (§6.4), and record the gap in the incident notes.
+
 - Preserve relevant Vercel and Google Cloud audit logs.
 
 ### 6.3 Temporarily stop writes where appropriate
@@ -312,12 +421,21 @@ with the continuity report per `INCIDENT_RECOVERY.md`.
   database — a backup of `(default)` is not a backup of a named serving database:
 
   ```bash
-  # List backups in the location, then pick one whose database is "$ACTIVE_DATABASE".
-  gcloud firestore backups list --location=<LOC> --project="$PROJECT"
+  # List ONLY backups whose source database is "$ACTIVE_DATABASE". The filter
+  # value must be the full resource path, quoted inside the expression —
+  # without the inner quotes the filter silently matches nothing.
+  gcloud firestore backups list --location=nam5 \
+    --filter="database=\"projects/$PROJECT/databases/$ACTIVE_DATABASE\"" \
+    --project="$PROJECT"
   # Scheduled-backup schedules are per-database:
   gcloud firestore backups schedules list --database="$ACTIVE_DATABASE" \
     --project="$PROJECT"
   ```
+
+  Before selecting a backup, confirm its `database` field equals
+  `projects/$PROJECT/databases/$ACTIVE_DATABASE` — never assume a `READY`
+  backup in the location came from the served database. If the project ever
+  holds a second database's backups, an unfiltered list would mix them.
 
 ### 6.5 Restore into a SEPARATE target first (never in place)
 
@@ -337,6 +455,8 @@ gcloud firestore databases restore \
 ```bash
 # OR from PITR of the served database: export as of a timestamp, then import
 # into a new/empty database. The export reads "$ACTIVE_DATABASE".
+# NOTE: this path needs the §4 canonical export bucket — the managed-backup
+# restore above does not. Until the bucket exists, prefer the backup restore.
 gcloud firestore export gs://<BACKUP_BUCKET>/pitr-<YYYYMMDD-HHMM> \
   --database="$ACTIVE_DATABASE" --snapshot-time=<RFC3339_TIMESTAMP> \
   --project="$PROJECT"
@@ -676,13 +796,67 @@ validator flag it. The validator's checks are also covered by unit tests
 
 ### Managed-restore drill (isolated/test project — [OPERATOR ACTION REQUIRED])
 
-Once per quarter, an administrator should prove a real managed backup restores:
+**Status 2026-09-16: not yet performed.** 16 managed backups exist but none
+has been restored — the first drill is an issue-#60 acceptance step and
+requires owner approval (it creates a temporary billable database). This drill
+uses `gcloud firestore databases restore` directly on a managed backup — **it
+does not need the §4 export bucket and is not blocked by its absence.** Do not
+claim "backups tested" until this has actually run.
 
-1. Restore the latest scheduled backup into a **new** database (or a dedicated
-   test project) — never over production (§6.5).
-2. Run the validation checklist and `verify-recovery.mjs` against it.
-3. Record the restore time (informing the RTO target) and any findings.
-4. Delete the drill database/project afterward to avoid recurring cost.
+Once per quarter (and once for #60 acceptance), an administrator should prove
+a real managed backup restores:
+
+1. **Pick the newest `READY` backup of the served database.** Set
+   `ACTIVE_DATABASE` to the currently served database (§6.0 — `(default)` in
+   normal operation) and **filter by source database** so a backup belonging
+   to a different database can never be selected by mistake:
+
+   ```bash
+   PROJECT=saba-water-delivery
+   ACTIVE_DATABASE='(default)'
+   gcloud firestore backups list --location=nam5 \
+     --filter="database=\"projects/$PROJECT/databases/$ACTIVE_DATABASE\"" \
+     --project="$PROJECT"
+   ```
+
+   (The filter value must be the full resource path, quoted inside the
+   expression — unquoted, it silently matches nothing.) Confirm the chosen
+   backup's `database` field is exactly
+   `projects/$PROJECT/databases/$ACTIVE_DATABASE` before using its name as
+   `--source-backup`.
+
+2. **Restore it into a NEW named database** — never over production:
+
+   ```bash
+   gcloud firestore databases restore \
+     --source-backup=projects/"$PROJECT"/locations/nam5/backups/<BACKUP_ID> \
+     --destination-database=recovery-<YYYYMMDD> \
+     --project="$PROJECT"
+   ```
+
+   The restore runs as a long-running operation
+   (`gcloud firestore operations list --project=saba-water-delivery`); record
+   wall-clock start/finish — that is the measured RTO observation.
+3. **Validate the restored data** against the recovery database — not
+   `(default)`:
+
+   ```bash
+   node scripts/verify-recovery.mjs --database=recovery-<YYYYMMDD>
+   ```
+
+   plus the §11 manual checklist. Expect exit 0 with zero findings; every
+   finding needs an explanation or a targeted-repair plan.
+4. **Delete the drill database** after validation — it contains a full copy of
+   production data (PII) and must not linger:
+
+   ```bash
+   gcloud firestore databases delete --database=recovery-<YYYYMMDD> \
+     --project=saba-water-delivery
+   ```
+
+5. **Record the drill** (date, backup ID used, restore duration, validator
+   result, operator) in the handover/ops record — **categorical facts only**,
+   never document contents or PII.
 
 Document any recurring cloud cost a drill incurs before scheduling it.
 
@@ -702,32 +876,89 @@ Document any recurring cloud cost a drill incurs before scheduling it.
     --project="$PROJECT"
   gcloud firestore databases describe --database="$ACTIVE_DATABASE" \
     --project="$PROJECT"   # shows pointInTimeRecoveryEnablement
-  # Existing backups in the location (confirm one belongs to "$ACTIVE_DATABASE"):
-  gcloud firestore backups list --location=<LOC> --project="$PROJECT"
+  # Existing backups of the served database — filtered so a backup belonging
+  # to another database cannot be miscounted (see §6.4 for the quoting note):
+  gcloud firestore backups list --location=nam5 \
+    --filter="database=\"projects/$PROJECT/databases/$ACTIVE_DATABASE\"" \
+    --project="$PROJECT"
   ```
 
 - If a simple supported alert for backup failures is available in the project's
   Cloud Monitoring, enable it. Do **not** build a custom backup-monitoring
-  service inside this application.
+  service inside this application. **Verified 2026-09-16: no alert policies
+  exist** — backup-failure notification requires a notification channel and a
+  policy (e.g. on Firestore backup metrics or the Cloud Logging entries a
+  failed schedule produces); establishing it is tracked with the monitoring
+  work in #62 and is a pending #60 acceptance gap.
 - Confirm during each quarterly drill that recent backups exist for the served
   database and are restorable. If production is on a named database, confirm that
   database — not just `(default)` — is protected (§6.8).
 
+### Operator checklist
+
+**Monthly backup verification** (~5 minutes, read-only):
+
+- [ ] `gcloud firestore backups schedules list --database="$ACTIVE_DATABASE" --project=saba-water-delivery` → the daily and weekly schedules are still present.
+- [ ] `gcloud firestore backups list --location=nam5 --filter="database=\"projects/saba-water-delivery/databases/$ACTIVE_DATABASE\"" --project=saba-water-delivery` → a `READY` backup newer than 24–48 h exists **for the served database** (the filter guarantees the source DB; see §6.4).
+- [ ] `gcloud firestore databases describe --database="$ACTIVE_DATABASE" --project=saba-water-delivery` → `POINT_IN_TIME_RECOVERY_ENABLED` and (once enabled) delete protection.
+- [ ] If production serves a named database, that database — not `(default)` — is the one checked (§6.8).
+- [ ] **[STOP]** No fresh `READY` backup or PITR disabled → escalate to the project owner; do not ignore.
+
+**Before a risky change** (migration script, bulk edit, handover step):
+
+- [ ] §4 canonical export bucket exists and is private. **[STOP]** if it does not — see §4, do not improvise.
+- [ ] On-demand export taken to a uniquely named prefix (`pre-change-<YYYYMMDD-HHMM>`).
+- [ ] Export reported `SUCCEEDED` (`gcloud firestore operations list`).
+
+**During a recovery event** — follow §6 in order. Obvious STOP conditions:
+
+- [ ] **[STOP]** Single record / stale lock → targeted repair (§5.1), not a restore.
+- [ ] **[STOP]** Never `import` or restore over `(default)` or the served database in place — always into a new named database (§6.5).
+- [ ] **[STOP]** Never treat client security rules as a write freeze (§6.3).
+
+**After any restore:**
+
+- [ ] `verify-recovery.mjs --database=<restored>` exits 0 (§6.6) — checked against the *restored* database.
+- [ ] §11 manual checklist done; Auth re-verified if restored (§7).
+- [ ] Serving database has PITR + schedules re-enabled before leaving it in production (§6.8 warning).
+- [ ] Incident/drill evidence recorded categorically — no PII, no secrets (§6.11).
+
 ---
 
-## 14. Summary of manual actions this document requires
+## 14. Summary of manual actions
 
-Nothing in this PR enables a cloud backup. A project administrator must:
+**Done — verified in production 2026-09-16:**
 
-- **[OPERATOR ACTION REQUIRED]** Enable Firestore PITR (§2).
-- **[OPERATOR ACTION REQUIRED]** Create a daily scheduled backup with retention
-  (§2), after reviewing cost.
-- **[OPERATOR ACTION REQUIRED]** Create/secure a private export bucket with
-  least-privilege IAM and a lifecycle rule if on-demand exports are used (§4).
+- Firestore PITR enabled on `(default)` — 7-day window (§2).
+- Scheduled backups enabled on `(default)` — daily (30-day retention) and
+  weekly-Sunday (98-day retention); recent backups in `READY` state (§2, §13).
+- A paid billing account is attached — required for PITR, backups, and export.
+
+**Still required — a project administrator / government owner must:**
+
+- **[OPERATOR ACTION REQUIRED]** Provision the §4 canonical export bucket with
+  least-privilege IAM (bucket-level `roles/storage.admin` for the Firestore
+  service agent) — this unblocks every export/import step and the #56
+  pre-handover export. Billable; needs approval.
+- **[OPERATOR ACTION REQUIRED]** Run the first isolated restore drill (§12) —
+  issue #60 acceptance requires an actual validated restore into a separate
+  target; backups exist but none has been restored. Uses a managed backup
+  directly — does **not** need the export bucket; pending owner approval only
+  (temporary billable database).
+- **[OPERATOR ACTION REQUIRED]** Enable database delete protection
+  (`DELETE_PROTECTION_DISABLED` today): `gcloud firestore databases update
+  --database='(default)' --delete-protection --project=saba-water-delivery`.
+  Free; prevents accidental database deletion.
+- **[OPERATOR ACTION REQUIRED]** Establish backup-failure alerting — no Cloud
+  Monitoring alert policies exist today (§13; tracked with #62).
+- **[GOVERNMENT]** Give at least two government technical administrators
+  recovery access (#61) — the sole human project owner today is the
+  developer's identity.
 - **[OPERATOR ACTION REQUIRED]** Decide same-project vs. separate-project backup
   storage (§4) and document it.
 - **[OPERATOR ACTION REQUIRED]** Establish the manual Auth-export habit and
   storage/handling rules (§7).
 - **[OPERATOR ACTION REQUIRED]** Enable Storage object versioning **when** photos
   ship (§8).
-- **Ongoing:** run the quarterly restore drill (§12) and verify backups (§13).
+- **Ongoing:** monthly backup verification (§13 checklist) and the quarterly
+  restore drill (§12).
