@@ -570,9 +570,11 @@ and Firebase Auth identities) is covered by its own canonical runbook,
 
 - understand what is backed up (Firestore collections; Firebase Auth is backed
   up separately; Firebase Storage is not in production use yet);
-- enable the recommended managed protections (Firestore point-in-time recovery
-  and daily scheduled backups) — these are **operator/console actions and are
-  not enabled by the application**;
+- understand which managed protections are enabled (Firestore PITR and
+  daily+weekly scheduled backups are **on** for the production database —
+  verified 2026-09-16) and which remain **operator/console actions** (export
+  bucket, restore drill, backup-failure alerting) — nothing is enabled by the
+  application;
 - run the read-only recovery validator (`npm run verify:recovery`) and the
   quarterly restore drill;
 - recover source code (GitHub) and environment variables (Vercel / vendor
