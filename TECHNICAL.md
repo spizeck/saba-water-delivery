@@ -3069,6 +3069,13 @@ instrumentation convention: `src/instrumentation.ts` (register +
 `src/sentry.server.config.ts`, `src/sentry.edge.config.ts`, all sharing
 `buildSentryInitOptions()` in `src/lib/monitoring/sentryShared.ts`.
 
+**Production-only gate.** `resolveSentryEnv().enabled` is the single
+canonical check: Sentry initializes only when a DSN is present AND the
+deployment environment resolves to `production` (`VERCEL_ENV` server-side;
+its `NEXT_PUBLIC_SENTRY_ENVIRONMENT` inline client-side). Preview, dev, test,
+and local production builds can never emit events — even with a DSN
+configured — so a misconfigured Preview cannot create telemetry or releases.
+
 **Capture paths.** (1) `onRequestError` reports uncaught render, route-handler,
 and Server Action errors. (2) `withApiRoute` reports unexpected 5xx throws via
 `captureServerError()` (`src/lib/monitoring/serverCapture.ts`), tagged
@@ -3094,14 +3101,17 @@ existing `logging/redaction` pipeline. Browser events travel the same-origin
 **Metadata.** `environment` comes from `VERCEL_ENV` (client via the
 `next.config.ts` `env` inline of `NEXT_PUBLIC_SENTRY_ENVIRONMENT`), `release`
 from the build's `SENTRY_RELEASE`/`VERCEL_GIT_COMMIT_SHA`, `deploymentId` from
-`VERCEL_DEPLOYMENT_ID`. Source maps upload at build when `SENTRY_AUTH_TOKEN` +
-`SENTRY_ORG` + `SENTRY_PROJECT` are set; without a token the build succeeds and
-events still arrive, just unsymbolicated.
+`VERCEL_DEPLOYMENT_ID`. Source maps upload only on **Production** builds when
+`SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` are set (Preview builds
+never upload or create releases); without a token the Production build
+succeeds and events still arrive, just unsymbolicated.
 
-**Preview verification.** `GET /api/internal/sentry-check` exists only outside
-Production (structural `VERCEL_ENV` gate → 404 there) and throws a fixed
-data-free error through the real capture path; the 500 body's `requestId`
-locates the event by tag.
+**Verification.** Preview deploys are the packaging/runtime gate (build,
+bundle, `/api/health`, `/api/readiness`, auth/session load, CSP — no Sentry
+events are expected or possible). Real ingestion is verified post-deploy in
+Production from the first naturally occurring unexpected error — no
+deliberate production crash is ever generated; the checklist is in
+`DEPLOYMENT.md` "Error monitoring (Sentry)".
 
 ---
 

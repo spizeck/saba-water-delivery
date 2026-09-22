@@ -121,21 +121,25 @@ event to Sentry**:
   non-allowlisted headers/tags/contexts dropped; URL identifiers normalized;
   PII masked in exception text; business-error events dropped in `beforeSend`).
 - `src/lib/monitoring/__tests__/serverCapture.test.ts` — `@sentry/nextjs`
-  mocked: disabled config is a no-op, expected errors are never captured,
-  unexpected errors are captured with `route`/`requestId`/`deploymentId` tags
-  plus a bounded flush, and an SDK failure can never propagate.
+  mocked: disabled config is a no-op, **Preview with a DSN is still a no-op**
+  (production-only gate), expected errors are never captured, unexpected
+  errors are captured with `route`/`requestId`/`deploymentId` tags plus a
+  bounded flush, and an SDK failure can never propagate.
 - `src/lib/http/__tests__/apiRoute.test.ts` — the boundary reports each
   unexpected 5xx once, and never reports 4xx or framework control flow.
-- `src/app/api/internal/sentry-check/__tests__/route.test.ts` — the synthetic
-  endpoint is unreachable in Production (structural 404), exercises the real
-  capture path in Preview, and answers cleanly when unconfigured.
 
-**Preview verification (manual, one-time per setup).** On a Vercel Preview
-with the Sentry env vars set: `curl -i https://<preview>/api/internal/sentry-check`
-→ expect 500 with a `requestId` in the body → confirm a Sentry event with
-`environment: preview`, that `requestId` tag, the release SHA, a symbolicated
-stack, and no cookies/headers/PII. The route structurally 404s in Production —
-never attempt the check there. See `DEPLOYMENT.md` "Error monitoring (Sentry)".
+**Production-only gate.** `resolveSentryEnv().enabled` requires BOTH a DSN
+and `VERCEL_ENV === "production"` (or its inlined `NEXT_PUBLIC_` copy in the
+browser bundle), so Preview/dev/test can never send events. Source maps
+likewise upload only on Production builds.
+
+**Preview verification.** Preview is the packaging/runtime gate, NOT a
+telemetry test: the Vercel Preview must deploy, serve `/api/health` and
+`/api/readiness`, load the auth/session route, and render pages — with zero
+Sentry events produced (the gate makes ingestion impossible). Real event
+delivery and symbolication are verified post-deploy in Production from the
+first naturally occurring error — no deliberate production crash; the
+checklist is in `DEPLOYMENT.md` "Error monitoring (Sentry)".
 
 ### Notification outbox tests (issue #53)
 

@@ -39,7 +39,9 @@ export interface SentryRuntimeEnv {
  *
  * Variable roles (see docs/DEPLOYMENT.md "Canonical configuration table"):
  *   - `NEXT_PUBLIC_SENTRY_DSN` — public DSN; safe to expose, required for the
- *     integration to do anything at all.
+ *     integration to do anything at all. Project-specific, and in Vercel it
+ *     is scoped to the Production environment so Preview builds never inline
+ *     it (the runtime gate below is defense in depth on top of that).
  *   - `NEXT_PUBLIC_SENTRY_ENVIRONMENT` — inlined into the browser bundle by
  *     `next.config.ts` from `VERCEL_ENV` (which is server-only at runtime);
  *     not operator-managed.
@@ -51,23 +53,31 @@ export function resolveSentryEnv(
   env: Record<string, string | undefined> = process.env,
 ): SentryRuntimeEnv {
   const dsn = env.NEXT_PUBLIC_SENTRY_DSN?.trim() || undefined;
-  const environment =
-    env.VERCEL_ENV ??
-    env.NEXT_PUBLIC_SENTRY_ENVIRONMENT?.trim() ??
-    env.NODE_ENV ??
-    "development";
+  // `VERCEL_ENV` server-side; its inlined `NEXT_PUBLIC_` copy client-side.
+  const vercelEnv =
+    env.VERCEL_ENV ?? nonEmpty(env.NEXT_PUBLIC_SENTRY_ENVIRONMENT);
+  const environment = vercelEnv ?? env.NODE_ENV ?? "development";
   const release =
     env.SENTRY_RELEASE ??
     env.NEXT_PUBLIC_SENTRY_RELEASE ??
     env.VERCEL_GIT_COMMIT_SHA ??
     undefined;
   return {
-    enabled: Boolean(dsn),
+    // Policy: Sentry is production-only. A DSN alone does not enable it —
+    // Preview, development, and test are disabled even if a DSN is present,
+    // so accidental Preview telemetry is impossible without deliberately
+    // faking VERCEL_ENV.
+    enabled: Boolean(dsn) && vercelEnv === "production",
     dsn,
-    environment: environment || "development",
+    environment,
     release: release || undefined,
     deploymentId: env.VERCEL_DEPLOYMENT_ID,
   };
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 /**

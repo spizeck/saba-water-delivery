@@ -3,9 +3,12 @@ import type { NextConfig } from "next";
 
 import { buildSecurityHeaders } from "./src/lib/security/headers";
 
-// Source maps upload only when a build token exists; a build without
-// SENTRY_AUTH_TOKEN still succeeds and serves errors, just unsymbolicated.
+// Source maps upload only on Production builds (Sentry is production-only by
+// policy — Preview creates no releases or artifacts). A Production build
+// without SENTRY_AUTH_TOKEN still succeeds and serves errors, just
+// unsymbolicated.
 const sentryUploadEnabled =
+  process.env.VERCEL_ENV === "production" &&
   Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN?.trim()) &&
   Boolean(process.env.SENTRY_AUTH_TOKEN);
 

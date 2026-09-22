@@ -163,6 +163,8 @@ const deployedRequired = (d: Deployment): ConfigLevel =>
   d.isDeployed ? "required" : "optional";
 const productionRequired = (d: Deployment): ConfigLevel =>
   d.target === "production" ? "required" : "optional";
+const productionRecommended = (d: Deployment): ConfigLevel =>
+  d.target === "production" ? "recommended" : "optional";
 const deployedRecommended = (d: Deployment): ConfigLevel =>
   d.isDeployed ? "recommended" : "optional";
 const emailField =
@@ -328,27 +330,31 @@ const REGISTRY: ConfigDescriptor[] = [
     level: whatsappField(),
     check: presence("WHATSAPP_VERIFY_TOKEN"),
   },
-  // --- Sentry error monitoring (optional; issue #115) ---
+  // --- Sentry error monitoring (optional; issue #115; production-only) ---
   {
     // The DSN is public by design (it only identifies the ingest endpoint).
-    // When absent, the whole integration disables cleanly — no crash, no
-    // events, local/CI unaffected.
+    // Project-specific; in Vercel it is scoped to the Production environment.
+    // The runtime gate (`resolveSentryEnv`) enables Sentry only when the
+    // resolved environment is production, so a DSN set elsewhere still sends
+    // nothing. When absent, the integration disables cleanly.
     variable: "NEXT_PUBLIC_SENTRY_DSN",
     classification: "public",
     feature: "sentry",
-    level: deployedRecommended,
+    level: productionRecommended,
     check: presence("NEXT_PUBLIC_SENTRY_DSN"),
   },
   {
+    // Shared org slug across projects in the same Sentry organization —
+    // needed (with SENTRY_PROJECT + token) for production-build source-map
+    // upload. "Shared" means intentionally reused, not public.
     variable: "SENTRY_ORG",
     classification: "server",
     feature: "sentry",
-    // Needed (with SENTRY_PROJECT + token) for source-map upload; without it
-    // the app still captures errors, just unsymbolicated.
     level: sentryField(),
     check: presence("SENTRY_ORG"),
   },
   {
+    // Project-specific slug identifying this app's Sentry project.
     variable: "SENTRY_PROJECT",
     classification: "server",
     feature: "sentry",
@@ -356,6 +362,9 @@ const REGISTRY: ConfigDescriptor[] = [
     check: presence("SENTRY_PROJECT"),
   },
   {
+    // Shared build credential for the Sentry org (source-map upload,
+    // `project:releases` scope). Secret, build-time only — never exposed to
+    // runtime or client bundles.
     variable: "SENTRY_AUTH_TOKEN",
     classification: "secret",
     feature: "sentry",

@@ -18,13 +18,62 @@ describe("resolveSentryEnv", () => {
     expect(env.dsn).toBeUndefined();
   });
 
-  it("is enabled when a public DSN is present", () => {
+  it("is enabled only when a DSN AND production environment are present", () => {
+    const env = resolveSentryEnv({
+      NEXT_PUBLIC_SENTRY_DSN: "https://abc@o1.ingest.sentry.io/2",
+      VERCEL_ENV: "production",
+    });
+    expect(env.enabled).toBe(true);
+    expect(env.environment).toBe("production");
+  });
+
+  it("is disabled in Production when the DSN is missing", () => {
+    const env = resolveSentryEnv({ VERCEL_ENV: "production" });
+    expect(env.enabled).toBe(false);
+  });
+
+  // Production-only policy: a DSN present in a non-production environment
+  // still must not send telemetry.
+  it("is disabled in Preview even when a DSN is present", () => {
     const env = resolveSentryEnv({
       NEXT_PUBLIC_SENTRY_DSN: "https://abc@o1.ingest.sentry.io/2",
       VERCEL_ENV: "preview",
     });
-    expect(env.enabled).toBe(true);
+    expect(env.enabled).toBe(false);
     expect(env.environment).toBe("preview");
+  });
+
+  it("is disabled in development/test even when a DSN is present", () => {
+    for (const env of [
+      { NODE_ENV: "development" },
+      { NODE_ENV: "test" },
+      { NODE_ENV: "production" }, // local prod build — no VERCEL_ENV
+    ]) {
+      expect(
+        resolveSentryEnv({
+          NEXT_PUBLIC_SENTRY_DSN: "https://abc@o1.ingest.sentry.io/2",
+          ...env,
+        }).enabled,
+      ).toBe(false);
+    }
+  });
+
+  it("applies the gate client-side via the inlined NEXT_PUBLIC_SENTRY_ENVIRONMENT", () => {
+    // The browser bundle cannot read VERCEL_ENV; next.config.ts inlines it.
+    expect(
+      resolveSentryEnv({
+        NEXT_PUBLIC_SENTRY_DSN: "d",
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: "preview",
+        NODE_ENV: "production",
+      }).enabled,
+    ).toBe(false);
+    expect(
+      resolveSentryEnv({
+        NEXT_PUBLIC_SENTRY_DSN: "d",
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: "production",
+        NODE_ENV: "production",
+      }).enabled,
+    ).toBe(true);
   });
 
   it("distinguishes production vs preview from VERCEL_ENV", () => {

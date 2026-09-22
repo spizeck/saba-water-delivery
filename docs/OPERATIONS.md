@@ -242,10 +242,10 @@ strings, and non-allowlisted tags/contexts are removed, and identifier
 path segments normalize to `:id`. **No session replay, no profiling, no
 performance tracing.**
 
-**Event metadata:** each event carries `environment` (`production` or
-`preview` — Preview events are never mixed with Production), `release`
-(the Git commit SHA), `deploymentId` (Vercel deployment), and the `route`
-tag (logical route name, e.g. `api.cron.notifications`).
+**Event metadata:** each event carries `environment` (always `production` —
+Sentry is production-only by policy, so Preview deployments never emit
+events), `release` (the Git commit SHA), `deploymentId` (Vercel deployment),
+and the `route` tag (logical route name, e.g. `api.cron.notifications`).
 
 **Triaging a Sentry issue:**
 
@@ -257,9 +257,10 @@ tag (logical route name, e.g. `api.cron.notifications`).
    in-app audit trail, not Sentry, for "who/what/when" business detail.
 
 **Alerting (configured in the Sentry console, not in this repo):** create
-alert rules on the Production environment only for (a) a new issue, (b) a
-regression of a resolved issue, and (c) an error-rate spike — not one
-notification per event. Route them to the operational email/chat channel
+alert rules scoped to the `production` environment only for (a) a new issue,
+(b) a regression of a resolved issue, and (c) an error-rate spike — not one
+notification per event. No Preview alerting exists because Preview sends no
+events. Route them to the operational email/chat channel
 agreed with the government team. Boundary with issue #62: **Sentry owns
 application exceptions and regressions; uptime/readiness/cron/backup
 alerting stays with #62's monitoring** — do not build a second uptime

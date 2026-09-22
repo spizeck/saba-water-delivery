@@ -38,7 +38,19 @@ describe("captureServerError", () => {
     expect(mocks.captureException).not.toHaveBeenCalled();
   });
 
+  it("does nothing in Preview even with a DSN (production-only policy)", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://abc@o1.ingest.sentry.io/2");
+
+    const result = await captureServerError(new Error("boom"), {
+      route: "api.thing",
+    });
+    expect(result).toBeUndefined();
+    expect(mocks.captureException).not.toHaveBeenCalled();
+  });
+
   it("filters expected business-state errors without touching Sentry", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://abc@o1.ingest.sentry.io/2");
 
     for (const error of [
@@ -54,6 +66,7 @@ describe("captureServerError", () => {
   });
 
   it("captures an unexpected error with safe operational tags and flushes", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://abc@o1.ingest.sentry.io/2");
     vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_test_1");
 
@@ -78,6 +91,7 @@ describe("captureServerError", () => {
   });
 
   it("never propagates a monitoring failure", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "https://abc@o1.ingest.sentry.io/2");
     mocks.captureException.mockImplementationOnce(() => {
       throw new Error("sentry sdk exploded");
