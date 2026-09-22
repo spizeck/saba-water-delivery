@@ -97,6 +97,33 @@ export default function PrivacyPage() {
                   Third-party services
                 </h2>
                 <p className="mt-2 text-slate-600">
+                  The service relies on a small number of providers to run:
+                </p>
+                <ul className="mt-2 list-inside list-disc text-slate-600">
+                  <li>
+                    <strong className="text-slate-900">
+                      Firebase (Google Cloud)
+                    </strong>{" "}
+                    — sign-in and the database that stores requests, deliveries,
+                    and operational records.
+                  </li>
+                  <li>
+                    <strong className="text-slate-900">Vercel</strong> — hosts
+                    and runs the application, and keeps short-lived technical
+                    hosting logs.
+                  </li>
+                  <li>
+                    <strong className="text-slate-900">Resend</strong> — sends
+                    service emails such as account-setup invitations and
+                    delivery-confirmation messages, so it processes the
+                    recipient&apos;s email address.
+                  </li>
+                  <li>
+                    <strong className="text-slate-900">Sentry</strong> —
+                    technical error monitoring, described in the next section.
+                  </li>
+                </ul>
+                <p className="mt-2 text-slate-600">
                   Authentication may be provided through Google or Facebook
                   sign-in if enabled by the government. WhatsApp is currently
                   used only as a support contact number; no WhatsApp integration
@@ -106,11 +133,45 @@ export default function PrivacyPage() {
 
               <section>
                 <h2 className="text-lg font-semibold text-slate-900">
+                  Error monitoring
+                </h2>
+                <p className="mt-2 text-slate-600">
+                  To keep the service reliable, unexpected application errors
+                  are reported automatically to Sentry, a technical error-
+                  monitoring service. When an unexpected error occurs, Sentry
+                  may receive limited technical diagnostic information — for
+                  example the type and message of the error after the
+                  application&apos;s own redaction, which part of the
+                  application was involved, the browser or device type, a
+                  request correlation identifier, and the version of the
+                  software that was running.
+                </p>
+                <p className="mt-2 text-slate-600">
+                  The application is configured to exclude personal and
+                  sensitive information from these reports — including names,
+                  email addresses, phone numbers, delivery addresses and
+                  directions, water-request contents, form contents, account
+                  identifiers, cookies, sign-in headers and tokens, request
+                  bodies, and secrets. Error reports pass through a privacy
+                  filter before they leave the application.
+                </p>
+                <p className="mt-2 text-slate-600">
+                  Error monitoring is used only for reliability and fault
+                  diagnosis — never for advertising, tracking, behavioral
+                  profiling, or product analytics.
+                </p>
+              </section>
+
+              <section>
+                <h2 className="text-lg font-semibold text-slate-900">
                   Retention
                 </h2>
                 <p className="mt-2 text-slate-600">
                   Operational records are kept as long as required for service
-                  delivery, audit, and oversight purposes.
+                  delivery, audit, and oversight purposes. Limited technical
+                  diagnostic records — such as error reports and hosting logs —
+                  are retained by the providers that hold them according to
+                  those providers&apos; configured retention settings.
                 </p>
               </section>
 

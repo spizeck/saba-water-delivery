@@ -48,7 +48,7 @@ non-destructive:
 - No attempts to access other users' accounts or data.
 - No social engineering of staff, drivers, or residents.
 
-Third-party infrastructure (Firebase/GCP, Vercel, Resend, Meta) is
+Third-party infrastructure (Firebase/GCP, Vercel, Resend, Meta, Sentry) is
 outside this repository's scope — report provider vulnerabilities to
 the provider.
 
