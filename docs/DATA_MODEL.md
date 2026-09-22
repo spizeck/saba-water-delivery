@@ -487,27 +487,53 @@ guarantee; the rule is defense in depth.
 
 ## Indexes
 
-Composite indexes are defined in `firestore.indexes.json` and support:
+Composite indexes are defined in `firestore.indexes.json`, the repository
+source of truth. The canonical inventory mapping every production query
+shape to its required index is `src/lib/firebase/indexContract.ts`
+(enforced by a contract test — see `docs/DEPLOYMENT.md` "Firestore index
+contract" and `docs/TESTING.md`).
 
-- Driver offer history lookups (`driverId` + `response` + `offeredAt`/`respondedAt`).
-- Duplicate detection by customer phone (`customer.phone` + `status`).
+The manifest supports:
+
+- Driver offer history lookups (`driverId` + `response` + `offeredAt`
+  descending for the pending-offer lookup; `driverId` + `response` +
+  `respondedAt` in **both** directions — descending for decline history,
+  ascending for the decline-count queries whose `respondedAt >=` range
+  has no explicit `orderBy` and so implicitly orders ascending).
+- Duplicate detection by customer phone (`customer.phone` + `status` —
+  deployed and retained for parity, though the equality-only query is
+  served by merged single-field indexes).
 - A resident's own request history and active-request checks
   (`customerId` + `status`/`requestedAt`/`confirmedAt`).
 - Preferred-driver hold expiration scans (`status` + `preferredDriverExpiresAt`).
 - Priority-ordered dispatch selection (`status` + `preferredDriverId`/`dispatchPriority` + `requestedAt`; the override-ranked candidate stream additionally uses `dispatchPriority` + `dispatchOverrideRank` + `requestedAt`, and the missing-ordering-field catch-all scans by document ID — see TECHNICAL.md "Canonical candidate scan").
 - The general outstanding-request queue (`status` + `requestedAt`).
-- A batch's current member requests, in run-sheet order (`dispatchBatchId` + `batchSequence`).
 - Notification outbox worker queries (issue #53): due pending notifications
   (`state` + `nextAttemptAt` + `createdAt`) and expired processing leases to
   reclaim (`state` + `leaseExpiresAt`); plus the admin failed-notification
   listing, newest first (`state` + `createdAt` descending).
+- Account-merge Auth reconciliation (issue #73): due pending events
+  (`authReconciliation.state` + `authReconciliation.nextAttemptAt`),
+  expired processing leases (`authReconciliation.state` +
+  `authReconciliation.leaseExpiresAt` — also serves the overview's
+  equality-plus-range counts, which implicitly order by the range field),
+  and unresolved events oldest-first (`duplicateAuthDeleted` +
+  `createdAt`).
+
+A few deployed indexes are retained for parity even though no current
+query requires them — they are enumerated with reasons in
+`RETAINED_INDEXES` in `indexContract.ts`. Removing them from the manifest
+would delete them in production on the next index deploy, so removal is
+a deliberate cleanup decision, not part of routine maintenance.
 
 `whatsappSessions` and `whatsappProcessedMessages` need no composite
 indexes — both are accessed only by direct document ID lookup.
 `dispatchBatches` itself needs no composite index either — the batch
 list is a single `orderBy("createdAt")`, and Batch Dispatch's eligible-
 requests query reuses the existing `status + priorityRank +
-requestedAt` index.
+requestedAt` index. The deployed `waterRequests` `dispatchBatchId +
+batchSequence` composite is retained but unused: `getRequestsForDispatchBatch()`
+deliberately fetches by `dispatchBatchId` alone and sorts in memory.
 
 Deploy index changes with:
 

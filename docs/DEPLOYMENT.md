@@ -211,6 +211,63 @@ and `storage.rules` in the repository root. Index changes can take
 several minutes to build in Firestore after deploying; a query that
 needs a not-yet-built index will fail until the build completes.
 
+### Firestore index contract
+
+`firestore.indexes.json` is the **repository source of truth** for
+required composite indexes. The canonical inventory of every Firestore
+query shape the application can issue — and the composite index each
+shape requires, if any — is `src/lib/firebase/indexContract.ts`, enforced
+by `src/lib/firebase/__tests__/indexContract.test.ts` (runs under
+`npm run test` / `npm run check`).
+
+Rules that apply here:
+
+- **A query change and its index change ship together.** When you add or
+  modify a `where`/`orderBy` combination, update `QUERY_SHAPES` in the
+  contract module in the same change; the test fails if a required
+  composite is missing from the manifest or if a recorded query shape is
+  unregistered.
+- **Not every multi-filter query needs a composite.** Equality-only
+  filters (`==`, `in`, `array-contains`, `array-contains-any`) — even
+  several of them — are served by merged single-field indexes, including
+  when ordered by document ID. A composite is required for equality +
+  range/order, multiple order fields, or ordering on a field different
+  from a range filter. Note that a range filter with no explicit
+  `orderBy` still implicitly orders by that field ASCENDING then document
+  ID — this was the issue-#113 incident (`driverOffers` decline counts
+  needed `driverId, response, respondedAt ASC, __name__ ASC`, which the
+  DESC index could not serve).
+- **Do not add speculative indexes.** An index manifest entry that
+  Firestore does not need can be REJECTED outright — issue #96 hit this:
+  an unnecessary `waterRequests status + __name__` composite failed
+  validation and aborted the whole index deployment, leaving required
+  indexes undeployed. Every manifest entry must be tied to a registered
+  query shape or explicitly documented in `RETAINED_INDEXES`.
+- **The emulator does not prove index coverage.** The Firestore emulator
+  answers queries without enforcing production composite-index rules, so
+  "tests pass" never means "production indexes are correct". The contract
+  test verifies manifest completeness against the registered query
+  contract; verifying deployed parity is an operator action (below), not
+  a CI step.
+- **Firebase-generated missing-index links:** when production throws a
+  `FAILED_PRECONDITION` index error, the error's console link pre-fills
+  the exact required index. Creating it manually is fine for incident
+  recovery — but then add the index to `firestore.indexes.json` and to
+  `QUERY_SHAPES` in the same follow-up change, or the manifest stops
+  being authoritative.
+
+Inspect what is actually deployed in production (read-only):
+
+```bash
+gcloud firestore indexes composite list \
+  --project=saba-water-delivery --database='(default)'
+```
+
+Note that deployed definitions show an implicit `__name__` field that the
+manifest omits — compare semantically, not textually. After a deploy,
+verify each new index reaches `READY` (the console shows
+`BUILDING` → `ENABLED`) before relying on the query in production.
+
 ## Backup and disaster recovery
 
 The full backup/restore strategy, runbook, RPO/RTO, and drills live in

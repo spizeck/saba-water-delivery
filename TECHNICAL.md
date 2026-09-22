@@ -789,6 +789,16 @@ show the correct message without hard-coding "1 hour" or "tomorrow".
 `countDeclinesToday()` exists in `driverOffers.ts` for read-only queries, but
 the authoritative counting is performed inside the decline transaction.
 
+Both count the same way — `driverId ==`, `response == "declined"`,
+`respondedAt >= lookback` — and both run with **no explicit `orderBy`**.
+Firestore implicitly orders that range filter ascending (then document ID),
+so they need `driverOffers` `driverId ASC, response ASC, respondedAt ASC,
+__name__ ASC` — the **ascending** index, not the descending one that serves
+`getDeclinedRequestIdsForDriver()`'s explicit `orderBy("respondedAt",
+"desc")`. This distinction caused a production missing-index failure (issue
+#113); both directions are declared in `firestore.indexes.json` and pinned
+by the index contract test.
+
 `cooldownUntil` is intentionally separate from `eligibilityStatus`
 (government authorization) and `availabilityStatus` (the driver's own
 online/offline preference) — see PRODUCT.md "Driver Availability" and
@@ -1169,9 +1179,14 @@ statistic needed to change to remain correct.
 
 ## Firestore indexes and rules
 
-One new composite index was required:
-`waterRequests`: `dispatchBatchId ASC, batchSequence ASC, __name__ ASC`
-(for `getRequestsForDispatchBatch()`). `getBatchEligibleRequests()`
+A `waterRequests` composite index `dispatchBatchId ASC, batchSequence ASC,
+__name__ ASC` was declared for `getRequestsForDispatchBatch()`, but the
+implementation deliberately queries only on `dispatchBatchId` and sorts
+`batchSequence` in memory (see `getRequestsForDispatchBatch()`), so the
+index is unused — retained in the manifest and tracked in
+`RETAINED_INDEXES` in `src/lib/firebase/indexContract.ts` pending an
+explicit cleanup decision.
+`getBatchEligibleRequests()`
 reuses the existing `status + priorityRank + requestedAt` index — an
 `"in"` equality filter on the first field of an existing composite
 index does not require a new one. `getAllDispatchBatches()` uses a

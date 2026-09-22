@@ -24,7 +24,15 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
-(No unreleased changes yet.)
+- Firestore index audit (issue #113): `firestore.indexes.json` now
+  includes the `driverOffers` ascending `respondedAt` composite index the
+  daily decline-count query requires (previously created manually in the
+  Firebase Console during incident recovery — no code change needed, and
+  the production index is already built). A canonical query/index
+  contract (`src/lib/firebase/indexContract.ts`) plus a contract test now
+  guards against future query/index drift. **Deploy note:** the manifest
+  is already production-equivalent; running `firebase deploy --only
+  firestore:indexes` reconciles it without deleting anything.
 
 ## v0.9.1 — Stability and production-readiness maintenance
 
