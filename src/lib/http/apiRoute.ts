@@ -13,6 +13,7 @@ import {
   setRequestIdHeader,
   withLogContext,
 } from "@/lib/logging";
+import { captureServerError } from "@/lib/monitoring/serverCapture";
 
 export interface WithApiRouteOptions {
   /**
@@ -99,6 +100,14 @@ export function withApiRoute<Args extends unknown[]>(
             status: appError.statusCode,
             durationMs,
             error: buildServerErrorContext(error),
+          });
+          // Sentry (issue #115): report the same unexpected failure once,
+          // tagged with the correlation id and logical route name. Expected
+          // business-state errors are filtered inside captureServerError;
+          // a monitoring failure can never propagate.
+          await captureServerError(error, {
+            route: `api.${name}`,
+            requestId,
           });
         } else {
           // A handler that threw an expected AppError (e.g. a 4xx) — not a

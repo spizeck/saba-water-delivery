@@ -5,6 +5,10 @@ const { processNotificationOutboxMock } = vi.hoisted(() => ({
   processNotificationOutboxMock: vi.fn(),
 }));
 
+vi.mock("@/lib/monitoring/serverCapture", () => ({
+  captureServerError: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/notifications/worker", () => ({
   processNotificationOutbox: processNotificationOutboxMock,
 }));

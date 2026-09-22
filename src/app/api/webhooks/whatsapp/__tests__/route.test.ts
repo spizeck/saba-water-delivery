@@ -8,6 +8,10 @@ const { claimMessageIdMock, handleIncomingMock } = vi.hoisted(() => ({
   handleIncomingMock: vi.fn(),
 }));
 
+vi.mock("@/lib/monitoring/serverCapture", () => ({
+  captureServerError: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/whatsapp/idempotency", () => ({
   claimMessageId: claimMessageIdMock,
 }));

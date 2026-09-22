@@ -108,6 +108,39 @@ the test does not drive are registered as `verification: "declared"` —
 still manifest-checked, but their shape is asserted by review rather than
 by execution.
 
+### Sentry error monitoring tests (issue #115)
+
+The monitoring layer is covered by mocked tests — **no test ever sends a real
+event to Sentry**:
+
+- `src/lib/monitoring/__tests__/sentryShared.test.ts` — env/release
+  resolution (enabled/disabled, production vs preview tags),
+  `isExpectedBusinessError` (SCREAMING_SNAKE codes and sub-500 `AppError`s
+  filtered, real errors pass), and the `scrubSentryEvent`/`scrubSentryBreadcrumb`
+  privacy layer (user objects, request bodies, cookies, query strings,
+  non-allowlisted headers/tags/contexts dropped; URL identifiers normalized;
+  PII masked in exception text; business-error events dropped in `beforeSend`).
+- `src/lib/monitoring/__tests__/serverCapture.test.ts` — `@sentry/nextjs`
+  mocked: disabled config is a no-op, **Preview with a DSN is still a no-op**
+  (production-only gate), expected errors are never captured, unexpected
+  errors are captured with `route`/`requestId`/`deploymentId` tags plus a
+  bounded flush, and an SDK failure can never propagate.
+- `src/lib/http/__tests__/apiRoute.test.ts` — the boundary reports each
+  unexpected 5xx once, and never reports 4xx or framework control flow.
+
+**Production-only gate.** `resolveSentryEnv().enabled` requires BOTH a DSN
+and `VERCEL_ENV === "production"` (or its inlined `NEXT_PUBLIC_` copy in the
+browser bundle), so Preview/dev/test can never send events. Source maps
+likewise upload only on Production builds.
+
+**Preview verification.** Preview is the packaging/runtime gate, NOT a
+telemetry test: the Vercel Preview must deploy, serve `/api/health` and
+`/api/readiness`, load the auth/session route, and render pages — with zero
+Sentry events produced (the gate makes ingestion impossible). Real event
+delivery and symbolication are verified post-deploy in Production from the
+first naturally occurring error — no deliberate production crash; the
+checklist is in `DEPLOYMENT.md` "Error monitoring (Sentry)".
+
 ### Notification outbox tests (issue #53)
 
 The durable notification outbox has both fast and emulator-backed coverage:

@@ -143,6 +143,9 @@ const WHATSAPP_VARS = [
 function emailEnabled(env: EnvRecord): boolean {
   return isPresent(env.RESEND_API_KEY);
 }
+function sentryEnabled(env: EnvRecord): boolean {
+  return isPresent(env.NEXT_PUBLIC_SENTRY_DSN);
+}
 function whatsappEnabled(env: EnvRecord): boolean {
   return WHATSAPP_VARS.some((v) => isPresent(env[v]));
 }
@@ -160,6 +163,8 @@ const deployedRequired = (d: Deployment): ConfigLevel =>
   d.isDeployed ? "required" : "optional";
 const productionRequired = (d: Deployment): ConfigLevel =>
   d.target === "production" ? "required" : "optional";
+const productionRecommended = (d: Deployment): ConfigLevel =>
+  d.target === "production" ? "recommended" : "optional";
 const deployedRecommended = (d: Deployment): ConfigLevel =>
   d.isDeployed ? "recommended" : "optional";
 const emailField =
@@ -170,6 +175,10 @@ const whatsappField =
   () =>
   (_d: Deployment, env: EnvRecord): ConfigLevel =>
     whatsappEnabled(env) ? "required" : "optional";
+const sentryField =
+  () =>
+  (_d: Deployment, env: EnvRecord): ConfigLevel =>
+    sentryEnabled(env) ? "recommended" : "optional";
 
 /**
  * The canonical registry. Kept in sync with docs/DEPLOYMENT.md's configuration
@@ -320,6 +329,47 @@ const REGISTRY: ConfigDescriptor[] = [
     feature: "whatsapp",
     level: whatsappField(),
     check: presence("WHATSAPP_VERIFY_TOKEN"),
+  },
+  // --- Sentry error monitoring (optional; issue #115; production-only) ---
+  {
+    // The DSN is public by design (it only identifies the ingest endpoint).
+    // Project-specific; in Vercel it is scoped to the Production environment.
+    // The runtime gate (`resolveSentryEnv`) enables Sentry only when the
+    // resolved environment is production, so a DSN set elsewhere still sends
+    // nothing. When absent, the integration disables cleanly.
+    variable: "NEXT_PUBLIC_SENTRY_DSN",
+    classification: "public",
+    feature: "sentry",
+    level: productionRecommended,
+    check: presence("NEXT_PUBLIC_SENTRY_DSN"),
+  },
+  {
+    // Shared org slug across projects in the same Sentry organization —
+    // needed (with SENTRY_PROJECT + token) for production-build source-map
+    // upload. "Shared" means intentionally reused, not public.
+    variable: "SENTRY_ORG",
+    classification: "server",
+    feature: "sentry",
+    level: sentryField(),
+    check: presence("SENTRY_ORG"),
+  },
+  {
+    // Project-specific slug identifying this app's Sentry project.
+    variable: "SENTRY_PROJECT",
+    classification: "server",
+    feature: "sentry",
+    level: sentryField(),
+    check: presence("SENTRY_PROJECT"),
+  },
+  {
+    // Shared build credential for the Sentry org (source-map upload,
+    // `project:releases` scope). Secret, build-time only — never exposed to
+    // runtime or client bundles.
+    variable: "SENTRY_AUTH_TOKEN",
+    classification: "secret",
+    feature: "sentry",
+    level: sentryField(),
+    check: presence("SENTRY_AUTH_TOKEN"),
   },
   // --- Optional operational ---
   {

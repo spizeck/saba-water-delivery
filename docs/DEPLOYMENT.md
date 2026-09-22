@@ -166,6 +166,10 @@ build** (client/CSP), so they cannot be changed without rebuilding.
 | `WHATSAPP_PHONE_NUMBER_ID` | Meta Cloud API number id | server | feature (whatsapp) | WhatsApp ordering disabled | Yes |
 | `WHATSAPP_APP_SECRET` | Verifies inbound webhook signatures | **secret** | feature (whatsapp) | WhatsApp ordering disabled | Yes |
 | `WHATSAPP_VERIFY_TOKEN` | Verifies the webhook subscription handshake | **secret** | feature (whatsapp) | WhatsApp ordering disabled | Yes |
+| `NEXT_PUBLIC_SENTRY_DSN` | Sentry error-monitoring DSN — project-specific; scope to Production only in Vercel | public | recommended (Production only) | Sentry disabled entirely — no events, no overhead | Yes (build) |
+| `SENTRY_ORG` | Sentry org slug — shared build credential across the org's projects | server | feature (sentry) | Errors captured but stack traces unsymbolicated | Yes |
+| `SENTRY_PROJECT` | Sentry project slug — project-specific | server | feature (sentry) | As above | Yes |
+| `SENTRY_AUTH_TOKEN` | Source-map upload token — shared org build credential (`project:releases` scope) | **secret** | feature (sentry) | Build succeeds; source maps not uploaded | Yes (build) |
 | `LOG_LEVEL` | Minimum structured-log level (`debug`/`info`/`warn`/`error`) | server | optional | `info` in production, `debug` otherwise | Yes |
 
 Ambient variables provided by the platform — `VERCEL_ENV`, `VERCEL_DEPLOYMENT_ID`,
@@ -486,6 +490,72 @@ point an uptime monitor at `/api/health` (and `/api/readiness` if you want a
 Firestore-dependent signal). They are **not** a replacement for the full
 application smoke test in docs/TESTING.md. The endpoints are intentionally **not**
 rate limited so probing stays reliable.
+
+## Error monitoring (Sentry)
+
+Issue #115 adds privacy-safe error monitoring via `@sentry/nextjs` (error
+events only — **no** session replay, profiling, performance tracing, or
+analytics). It complements — never replaces — the structured logs: info/warn
+lines stay in Vercel Logs; Sentry receives only unexpected failures.
+
+**Production-only policy.** Sentry is intentionally enabled **only** in
+Vercel Production. `resolveSentryEnv` (`src/lib/monitoring/sentryShared.ts`)
+enables the integration only when the resolved deployment environment is
+`production` — so Preview, local dev, and CI send nothing even if a DSN is
+accidentally set there. Two layers enforce this: (1) scope
+`NEXT_PUBLIC_SENTRY_DSN` to the Production environment in Vercel so Preview
+builds never inline it, and (2) the runtime gate, which makes a stray DSN
+harmless. Preview deployments are the packaging/runtime compatibility gate
+(proof that the SDK bundles and serverless loads — the issue #94 lesson),
+not a telemetry source: they must never create Sentry events or releases,
+and Preview builds skip source-map upload entirely.
+
+**What is captured.** Unhandled client errors (`app/error.tsx`,
+`app/global-error.tsx`), uncaught render/route/Server-Action errors
+(`onRequestError` in `src/instrumentation.ts`), and unexpected 5xx throws at
+the API boundary (`captureServerError` in `withApiRoute`). Expected
+business-state errors — bare SCREAMING_SNAKE domain codes
+(`DUPLICATE_ACTIVE_REQUEST`, `DRIVER_IN_COOLDOWN`, …) and `AppError`s below
+500 — are filtered both at capture and in `beforeSend`, so validation,
+auth-conflict, and stale-state outcomes never become incidents.
+
+**Privacy.** `sendDefaultPii: false`, plus an allowlist scrubber
+(`src/lib/monitoring/sentryShared.ts`) applied to every event: `user` objects,
+request bodies, cookies, `query_string`, and non-allowlisted headers/tags/
+extra/contexts are dropped; URLs lose their query/fragment and identifier
+path segments normalize to `:id`; free text passes through the existing PII
+redaction layer. Only safe operational tags (`requestId`, `deploymentId`,
+`route`, `component`) are attached.
+
+**Setup.** Set the four variables in the configuration table above (Vercel →
+Environment Variables; scope `NEXT_PUBLIC_SENTRY_DSN` and the shared build
+credentials to **Production**; `SENTRY_AUTH_TOKEN` applies to build).
+Environment and release tags derive automatically from `VERCEL_ENV` /
+`VERCEL_GIT_COMMIT_SHA` — each event carries the commit that produced it.
+Browser events POST to the same-origin `/sentry-tunnel` route (created by
+`withSentryConfig`), which forwards to the Sentry ingest endpoint — so **no
+CSP change is required** and ad-blockers cannot drop client events. Without
+`NEXT_PUBLIC_SENTRY_DSN` the integration disables cleanly (local dev and CI
+need nothing).
+
+**Preview verification.** Preview proves packaging/runtime compatibility
+only: the Vercel build succeeds, the SDK bundles without module-load/ESM
+regressions, `/api/health` + `/api/readiness` respond, the auth/session route
+loads, pages render, and CSP holds. Sentry stays disabled in Preview by
+policy, so **no Sentry event should ever appear from a Preview deployment**.
+
+**Production verification (post-deploy, no synthetic crash).** Do NOT
+deliberately throw in Production. After the first real deployment with the
+env vars configured, verify using the first naturally occurring unexpected
+error (or a separately approved operator-safe capture mechanism): the event
+arrives with `environment: production`, the release equals the deployed
+commit SHA, `deploymentId` is set, the stack is symbolicated via the uploaded
+source maps for that release, and no cookies/headers/customer data appear.
+
+**Alerting.** Alert rules (new Production issue, regression, spike) are
+configured in the Sentry console, not in this repo — the exact operator
+actions and the division of responsibility with uptime monitoring (issue #62)
+are documented in `docs/OPERATIONS.md` "Error monitoring (Sentry)".
 
 ## Cron
 

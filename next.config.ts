@@ -1,6 +1,16 @@
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 import { buildSecurityHeaders } from "./src/lib/security/headers";
+
+// Source maps upload only on Production builds (Sentry is production-only by
+// policy — Preview creates no releases or artifacts). A Production build
+// without SENTRY_AUTH_TOKEN still succeeds and serves errors, just
+// unsymbolicated.
+const sentryUploadEnabled =
+  process.env.VERCEL_ENV === "production" &&
+  Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN?.trim()) &&
+  Boolean(process.env.SENTRY_AUTH_TOKEN);
 
 // pdfkit v0.20+ ships its Base-14 font metrics as dynamically required
 // `./standard-fonts/*.cjs` modules (plus a shared `chunks` file), while
@@ -14,6 +24,14 @@ const PDFKIT_TRACE = [
 ];
 
 const nextConfig: NextConfig = {
+  env: {
+    // VERCEL_ENV / VERCEL_GIT_COMMIT_SHA are server-only at runtime; inline
+    // them so the browser-side Sentry init can tag environment + release.
+    // Both are non-secret categorical metadata.
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: process.env.VERCEL_ENV ?? "",
+    NEXT_PUBLIC_SENTRY_RELEASE: process.env.VERCEL_GIT_COMMIT_SHA ?? "",
+  },
+
   async headers() {
     return [
       {
@@ -123,4 +141,24 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  // Client events POST to this same-origin route which the SDK forwards to
+  // Sentry — avoids ad-blocker drops and requires no CSP connect-src change.
+  tunnelRoute: "/sentry-tunnel",
+  widenClientFileUpload: true,
+  useRunAfterProductionCompileHook: true,
+  sourcemaps: {
+    disable: !sentryUploadEnabled,
+  },
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+    autoInstrumentAppDirectory: true,
+    autoInstrumentServerFunctions: true,
+  },
+});

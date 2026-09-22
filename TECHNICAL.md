@@ -3059,6 +3059,60 @@ readiness distinction is wanted, `/api/readiness` (a 503 there means "app up,
 Firestore not reachable"). They are not a replacement for the full application
 smoke test in docs/TESTING.md.
 
+## Error monitoring (Sentry, issue #115)
+
+`@sentry/nextjs` provides error-only monitoring — **no** session replay,
+profiling, performance tracing (`tracesSampleRate: 0`), or analytics. The
+integration is `withSentryConfig` in `next.config.ts` plus the Next.js
+instrumentation convention: `src/instrumentation.ts` (register +
+`onRequestError`), `src/instrumentation-client.ts`,
+`src/sentry.server.config.ts`, `src/sentry.edge.config.ts`, all sharing
+`buildSentryInitOptions()` in `src/lib/monitoring/sentryShared.ts`.
+
+**Production-only gate.** `resolveSentryEnv().enabled` is the single
+canonical check: Sentry initializes only when a DSN is present AND the
+deployment environment resolves to `production` (`VERCEL_ENV` server-side;
+its `NEXT_PUBLIC_SENTRY_ENVIRONMENT` inline client-side). Preview, dev, test,
+and local production builds can never emit events — even with a DSN
+configured — so a misconfigured Preview cannot create telemetry or releases.
+
+**Capture paths.** (1) `onRequestError` reports uncaught render, route-handler,
+and Server Action errors. (2) `withApiRoute` reports unexpected 5xx throws via
+`captureServerError()` (`src/lib/monitoring/serverCapture.ts`), tagged
+`route`/`requestId`/`deploymentId` — the caught error never reaches
+`onRequestError`, so nothing is double-reported. (3) `app/error.tsx` and
+`app/global-error.tsx` report client-side React errors. Capture is always
+best-effort: monitoring failures are swallowed and a bounded `flush()` keeps
+the envelope on serverless without delaying the error response.
+
+**Expected-error filtering.** Domain code signals expected business-state
+failures as bare `SCREAMING_SNAKE` `Error` messages or `AppError`s below 500;
+`isExpectedBusinessError()` filters them at the capture site AND in
+`beforeSend`, so validation/auth/conflict outcomes stay in structured logs and
+never become incidents.
+
+**Privacy.** `sendDefaultPii: false`, then `scrubSentryEvent()` allowlists:
+`user` objects, request `data`/`cookies`/`query_string`, non-allowlisted
+headers/tags/extra/contexts are dropped; URLs lose query+fragment and
+identifier path segments normalize to `:id`; exception text passes through the
+existing `logging/redaction` pipeline. Browser events travel the same-origin
+`/sentry-tunnel` route (`tunnelRoute`), so CSP needs no Sentry origin.
+
+**Metadata.** `environment` comes from `VERCEL_ENV` (client via the
+`next.config.ts` `env` inline of `NEXT_PUBLIC_SENTRY_ENVIRONMENT`), `release`
+from the build's `SENTRY_RELEASE`/`VERCEL_GIT_COMMIT_SHA`, `deploymentId` from
+`VERCEL_DEPLOYMENT_ID`. Source maps upload only on **Production** builds when
+`SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` are set (Preview builds
+never upload or create releases); without a token the Production build
+succeeds and events still arrive, just unsymbolicated.
+
+**Verification.** Preview deploys are the packaging/runtime gate (build,
+bundle, `/api/health`, `/api/readiness`, auth/session load, CSP — no Sentry
+events are expected or possible). Real ingestion is verified post-deploy in
+Production from the first naturally occurring unexpected error — no
+deliberate production crash is ever generated; the checklist is in
+`DEPLOYMENT.md` "Error monitoring (Sentry)".
+
 ---
 
 # Saba Operational Timezone

@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/monitoring/serverCapture", () => ({
+  captureServerError: vi.fn(async () => undefined),
+}));
+
 import { GET } from "@/app/api/health/route";
 
 let consoleSpies: ReturnType<typeof vi.spyOn>[] = [];
