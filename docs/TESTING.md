@@ -73,6 +73,41 @@ run entirely locally against a throwaway test project id. The rules suite
 includes a check that the durable notification outbox (`notificationOutbox`,
 issue #53) is deny-by-default to every client, including an admin.
 
+### Firestore index contract (issue #113)
+
+`firestore.indexes.json` is the repository source of truth for composite
+indexes, but "the tests pass" has never meant "production has the indexes
+the queries need" — the Firestore emulator answers queries without
+enforcing production composite-index rules. The guard is
+`src/lib/firebase/indexContract.ts` + its contract test
+(`src/lib/firebase/__tests__/indexContract.test.ts`), which run under the
+plain `npm run test` and therefore `npm run check` and CI:
+
+- `QUERY_SHAPES` is a declarative registry of every Firestore query shape
+  the application or its operator tooling can issue, with the exact
+  composite index each requires (or `null` when automatic single-field
+  indexes — including equality merging — suffice).
+- The test **drives the real domain functions** against a recording
+  Firestore fake and asserts the queries they construct match the
+  registry — so changing a `where`/`orderBy` combination without updating
+  the contract fails, as does adding an unregistered query.
+- It asserts every required composite exists in `firestore.indexes.json`,
+  the manifest has no unexplained or duplicate entries, and no registered
+  shape declares a composite that Firestore would reject as unnecessary
+  (the issue-#96 `status + __name__` failure mode).
+- Deployed indexes no query needs are tracked explicitly in
+  `RETAINED_INDEXES` with reasons, so manifest↔production parity is a
+  stated decision rather than drift.
+
+What this does **not** prove: that the indexes are actually deployed and
+READY in production. That is an operator verification
+(`gcloud firestore indexes composite list
+--project=saba-water-delivery --database='(default)'`) — see
+`DEPLOYMENT.md` "Firestore index contract". Query shapes built in modules
+the test does not drive are registered as `verification: "declared"` —
+still manifest-checked, but their shape is asserted by review rather than
+by execution.
+
 ### Notification outbox tests (issue #53)
 
 The durable notification outbox has both fast and emulator-backed coverage:
