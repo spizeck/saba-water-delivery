@@ -213,6 +213,66 @@ any secret or access token. If you need the full business detail of a
 request (who, what, when), use the in-app request history / audit trail,
 not the logs.
 
+### Error monitoring (Sentry)
+
+When `NEXT_PUBLIC_SENTRY_DSN` is configured, the app also reports
+**unexpected** errors to Sentry (issue #115) so operators are notified
+proactively instead of depending on user screenshots. Sentry complements
+the structured logs — it does not replace them.
+
+**What reaches Sentry:**
+
+- Unhandled browser/React errors (via `app/error.tsx` and
+  `app/global-error.tsx`).
+- Uncaught server errors in rendering, route handlers, and Server Actions
+  (via Next.js `onRequestError` in `src/instrumentation.ts`).
+- Unexpected 5xx failures at the API boundary (`withApiRoute` →
+  `captureServerError`), tagged with the same `requestId` as the logs and
+  the `x-request-id` response header — search Sentry by tag `requestId` to
+  join an event to its Vercel log lines.
+
+**What does NOT reach Sentry:** expected business outcomes (validation
+failures, normal 401/403 access denials, duplicate-request rejections,
+stale-state/eligibility conflicts, intentional 404s — domain
+`SCREAMING_SNAKE` error codes and `AppError`s below 500 are filtered),
+routine info/warn log lines, and any customer data. Every event is
+scrubbed before transport (`src/lib/monitoring/sentryShared.ts`): user
+objects, request bodies, cookies, Authorization/session headers, query
+strings, and non-allowlisted tags/contexts are removed, and identifier
+path segments normalize to `:id`. **No session replay, no profiling, no
+performance tracing.**
+
+**Event metadata:** each event carries `environment` (`production` or
+`preview` — Preview events are never mixed with Production), `release`
+(the Git commit SHA), `deploymentId` (Vercel deployment), and the `route`
+tag (logical route name, e.g. `api.cron.notifications`).
+
+**Triaging a Sentry issue:**
+
+1. Open the issue → check `environment` and `release` to see where and
+   which commit introduced it.
+2. Use the `requestId` tag to find the matching structured logs in Vercel
+   → Logs for the full request story.
+3. `request.data`, cookies, and user fields are absent by design — use the
+   in-app audit trail, not Sentry, for "who/what/when" business detail.
+
+**Alerting (configured in the Sentry console, not in this repo):** create
+alert rules on the Production environment only for (a) a new issue, (b) a
+regression of a resolved issue, and (c) an error-rate spike — not one
+notification per event. Route them to the operational email/chat channel
+agreed with the government team. Boundary with issue #62: **Sentry owns
+application exceptions and regressions; uptime/readiness/cron/backup
+alerting stays with #62's monitoring** — do not build a second uptime
+monitor out of Sentry.
+
+**Ownership and handover:** the production Sentry project must ultimately
+live in a government-controlled Sentry organization with **at least two
+government admins**, the alert destinations they choose, and a rotated
+`SENTRY_AUTH_TOKEN` issued under that org; developer access should be
+reduced after handover (issue #61). If the pilot project is still
+developer-controlled, treat that as a known transitional state and record
+it in the handover checklist.
+
 ### Checking whether the app is up (health & readiness)
 
 Before digging into logs, you can confirm at a glance whether the

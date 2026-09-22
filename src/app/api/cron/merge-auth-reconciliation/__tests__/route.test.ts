@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { processMock } = vi.hoisted(() => ({ processMock: vi.fn() }));
 
+vi.mock("@/lib/monitoring/serverCapture", () => ({
+  captureServerError: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/domain/mergeReconciliation", () => ({
   processMergeAuthReconciliation: processMock,
 }));

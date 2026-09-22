@@ -24,6 +24,13 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+- Sentry error monitoring (issue #115): optional privacy-safe error capture
+  (`@sentry/nextjs`) for unexpected client and server failures, with
+  environment/release/deployment tags, source-map upload when
+  `SENTRY_AUTH_TOKEN` is set, an allowlist scrubber that strips customer
+  data/secrets from every event, and a Preview-only `/api/internal/sentry-check`
+  verification route that structurally 404s in Production. No behavior change
+  when `NEXT_PUBLIC_SENTRY_DSN` is unset — the integration disables cleanly.
 - Firestore index audit (issue #113): `firestore.indexes.json` now
   includes the `driverOffers` ascending `respondedAt` composite index the
   daily decline-count query requires (previously created manually in the

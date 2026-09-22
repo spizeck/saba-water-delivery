@@ -11,6 +11,10 @@ const {
   sendContinuityReportEmailMock: vi.fn(),
 }));
 
+vi.mock("@/lib/monitoring/serverCapture", () => ({
+  captureServerError: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/domain/continuityReport", () => ({
   generateContinuityReportData: generateContinuityReportDataMock,
 }));

@@ -5,6 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppValidationError } from "@/lib/errors";
 import { REQUEST_ID_HEADER } from "@/lib/logging";
 
+const mocks = vi.hoisted(() => ({
+  captureServerError: vi.fn(async () => "evt-test"),
+}));
+
+vi.mock("@/lib/monitoring/serverCapture", () => ({
+  captureServerError: mocks.captureServerError,
+}));
+
 import { withApiRoute } from "../apiRoute";
 
 function makeRequest(headers: Record<string, string> = {}): NextRequest {
@@ -21,6 +29,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 function logCalls(level: "info" | "warn" | "error"): Record<string, unknown>[] {
@@ -94,6 +103,20 @@ describe("withApiRoute — unexpected throws (closes the #29 gap)", () => {
     expect(errors[0].event).toBe("api.thing.unhandled_error");
     expect(JSON.stringify(errors[0])).not.toContain("resident@example.com");
   });
+
+  it("reports an unexpected 5xx to Sentry once, with route + request id", async () => {
+    const cause = new TypeError("undefined is not a function");
+    const wrapped = withApiRoute("thing", async () => {
+      throw cause;
+    });
+    await wrapped(makeRequest({ [REQUEST_ID_HEADER]: "corr-sentry" }));
+
+    expect(mocks.captureServerError).toHaveBeenCalledTimes(1);
+    expect(mocks.captureServerError).toHaveBeenCalledWith(cause, {
+      route: "api.thing",
+      requestId: "corr-sentry",
+    });
+  });
 });
 
 describe("withApiRoute — thrown AppErrors", () => {
@@ -117,6 +140,7 @@ describe("withApiRoute — thrown AppErrors", () => {
     await wrapped(makeRequest());
 
     expect(logCalls("error")).toHaveLength(0);
+    expect(mocks.captureServerError).not.toHaveBeenCalled();
     const warns = logCalls("warn");
     expect(warns.some((w) => w.event === "api.thing.client_error")).toBe(true);
   });
@@ -131,5 +155,6 @@ describe("withApiRoute — framework control flow", () => {
     // swallowed into a normalized 500 response.
     await expect(wrapped(makeRequest())).rejects.toThrow();
     expect(logCalls("error")).toHaveLength(0);
+    expect(mocks.captureServerError).not.toHaveBeenCalled();
   });
 });

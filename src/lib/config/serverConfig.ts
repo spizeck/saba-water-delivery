@@ -143,6 +143,9 @@ const WHATSAPP_VARS = [
 function emailEnabled(env: EnvRecord): boolean {
   return isPresent(env.RESEND_API_KEY);
 }
+function sentryEnabled(env: EnvRecord): boolean {
+  return isPresent(env.NEXT_PUBLIC_SENTRY_DSN);
+}
 function whatsappEnabled(env: EnvRecord): boolean {
   return WHATSAPP_VARS.some((v) => isPresent(env[v]));
 }
@@ -170,6 +173,10 @@ const whatsappField =
   () =>
   (_d: Deployment, env: EnvRecord): ConfigLevel =>
     whatsappEnabled(env) ? "required" : "optional";
+const sentryField =
+  () =>
+  (_d: Deployment, env: EnvRecord): ConfigLevel =>
+    sentryEnabled(env) ? "recommended" : "optional";
 
 /**
  * The canonical registry. Kept in sync with docs/DEPLOYMENT.md's configuration
@@ -320,6 +327,40 @@ const REGISTRY: ConfigDescriptor[] = [
     feature: "whatsapp",
     level: whatsappField(),
     check: presence("WHATSAPP_VERIFY_TOKEN"),
+  },
+  // --- Sentry error monitoring (optional; issue #115) ---
+  {
+    // The DSN is public by design (it only identifies the ingest endpoint).
+    // When absent, the whole integration disables cleanly — no crash, no
+    // events, local/CI unaffected.
+    variable: "NEXT_PUBLIC_SENTRY_DSN",
+    classification: "public",
+    feature: "sentry",
+    level: deployedRecommended,
+    check: presence("NEXT_PUBLIC_SENTRY_DSN"),
+  },
+  {
+    variable: "SENTRY_ORG",
+    classification: "server",
+    feature: "sentry",
+    // Needed (with SENTRY_PROJECT + token) for source-map upload; without it
+    // the app still captures errors, just unsymbolicated.
+    level: sentryField(),
+    check: presence("SENTRY_ORG"),
+  },
+  {
+    variable: "SENTRY_PROJECT",
+    classification: "server",
+    feature: "sentry",
+    level: sentryField(),
+    check: presence("SENTRY_PROJECT"),
+  },
+  {
+    variable: "SENTRY_AUTH_TOKEN",
+    classification: "secret",
+    feature: "sentry",
+    level: sentryField(),
+    check: presence("SENTRY_AUTH_TOKEN"),
   },
   // --- Optional operational ---
   {

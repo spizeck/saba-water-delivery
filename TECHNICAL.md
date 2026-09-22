@@ -3059,6 +3059,50 @@ readiness distinction is wanted, `/api/readiness` (a 503 there means "app up,
 Firestore not reachable"). They are not a replacement for the full application
 smoke test in docs/TESTING.md.
 
+## Error monitoring (Sentry, issue #115)
+
+`@sentry/nextjs` provides error-only monitoring — **no** session replay,
+profiling, performance tracing (`tracesSampleRate: 0`), or analytics. The
+integration is `withSentryConfig` in `next.config.ts` plus the Next.js
+instrumentation convention: `src/instrumentation.ts` (register +
+`onRequestError`), `src/instrumentation-client.ts`,
+`src/sentry.server.config.ts`, `src/sentry.edge.config.ts`, all sharing
+`buildSentryInitOptions()` in `src/lib/monitoring/sentryShared.ts`.
+
+**Capture paths.** (1) `onRequestError` reports uncaught render, route-handler,
+and Server Action errors. (2) `withApiRoute` reports unexpected 5xx throws via
+`captureServerError()` (`src/lib/monitoring/serverCapture.ts`), tagged
+`route`/`requestId`/`deploymentId` — the caught error never reaches
+`onRequestError`, so nothing is double-reported. (3) `app/error.tsx` and
+`app/global-error.tsx` report client-side React errors. Capture is always
+best-effort: monitoring failures are swallowed and a bounded `flush()` keeps
+the envelope on serverless without delaying the error response.
+
+**Expected-error filtering.** Domain code signals expected business-state
+failures as bare `SCREAMING_SNAKE` `Error` messages or `AppError`s below 500;
+`isExpectedBusinessError()` filters them at the capture site AND in
+`beforeSend`, so validation/auth/conflict outcomes stay in structured logs and
+never become incidents.
+
+**Privacy.** `sendDefaultPii: false`, then `scrubSentryEvent()` allowlists:
+`user` objects, request `data`/`cookies`/`query_string`, non-allowlisted
+headers/tags/extra/contexts are dropped; URLs lose query+fragment and
+identifier path segments normalize to `:id`; exception text passes through the
+existing `logging/redaction` pipeline. Browser events travel the same-origin
+`/sentry-tunnel` route (`tunnelRoute`), so CSP needs no Sentry origin.
+
+**Metadata.** `environment` comes from `VERCEL_ENV` (client via the
+`next.config.ts` `env` inline of `NEXT_PUBLIC_SENTRY_ENVIRONMENT`), `release`
+from the build's `SENTRY_RELEASE`/`VERCEL_GIT_COMMIT_SHA`, `deploymentId` from
+`VERCEL_DEPLOYMENT_ID`. Source maps upload at build when `SENTRY_AUTH_TOKEN` +
+`SENTRY_ORG` + `SENTRY_PROJECT` are set; without a token the build succeeds and
+events still arrive, just unsymbolicated.
+
+**Preview verification.** `GET /api/internal/sentry-check` exists only outside
+Production (structural `VERCEL_ENV` gate → 404 there) and throws a fixed
+data-free error through the real capture path; the 500 body's `requestId`
+locates the event by tag.
+
 ---
 
 # Saba Operational Timezone

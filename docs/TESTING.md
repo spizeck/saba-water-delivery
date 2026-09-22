@@ -108,6 +108,35 @@ the test does not drive are registered as `verification: "declared"` —
 still manifest-checked, but their shape is asserted by review rather than
 by execution.
 
+### Sentry error monitoring tests (issue #115)
+
+The monitoring layer is covered by mocked tests — **no test ever sends a real
+event to Sentry**:
+
+- `src/lib/monitoring/__tests__/sentryShared.test.ts` — env/release
+  resolution (enabled/disabled, production vs preview tags),
+  `isExpectedBusinessError` (SCREAMING_SNAKE codes and sub-500 `AppError`s
+  filtered, real errors pass), and the `scrubSentryEvent`/`scrubSentryBreadcrumb`
+  privacy layer (user objects, request bodies, cookies, query strings,
+  non-allowlisted headers/tags/contexts dropped; URL identifiers normalized;
+  PII masked in exception text; business-error events dropped in `beforeSend`).
+- `src/lib/monitoring/__tests__/serverCapture.test.ts` — `@sentry/nextjs`
+  mocked: disabled config is a no-op, expected errors are never captured,
+  unexpected errors are captured with `route`/`requestId`/`deploymentId` tags
+  plus a bounded flush, and an SDK failure can never propagate.
+- `src/lib/http/__tests__/apiRoute.test.ts` — the boundary reports each
+  unexpected 5xx once, and never reports 4xx or framework control flow.
+- `src/app/api/internal/sentry-check/__tests__/route.test.ts` — the synthetic
+  endpoint is unreachable in Production (structural 404), exercises the real
+  capture path in Preview, and answers cleanly when unconfigured.
+
+**Preview verification (manual, one-time per setup).** On a Vercel Preview
+with the Sentry env vars set: `curl -i https://<preview>/api/internal/sentry-check`
+→ expect 500 with a `requestId` in the body → confirm a Sentry event with
+`environment: preview`, that `requestId` tag, the release SHA, a symbolicated
+stack, and no cookies/headers/PII. The route structurally 404s in Production —
+never attempt the check there. See `DEPLOYMENT.md` "Error monitoring (Sentry)".
+
 ### Notification outbox tests (issue #53)
 
 The durable notification outbox has both fast and emulator-backed coverage:
