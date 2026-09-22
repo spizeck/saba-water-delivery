@@ -44,6 +44,13 @@ a set of principles worth recording together.
 - **A monitoring vendor (Sentry/OpenTelemetry/etc.):** rejected for this scale —
   structured stdout logs captured by Vercel plus health/readiness endpoints meet
   the need without another dependency or cost.
+  - **Update (2026-09-22):** production experience showed logs and user
+    screenshots alone were insufficient for fast exception diagnosis, so this
+    alternative was revisited and Sentry was adopted for privacy-scrubbed,
+    production-only exception monitoring in #115 — see
+    [ADR 0019](./0019-production-error-monitoring-sentry.md). Every other
+    decision in this ADR remains in force; structured logs remain the
+    canonical operational telemetry.
 - **Rate limiting that fails closed:** rejected — the limiter must never turn a
   Firestore blip into a water-delivery outage; authentication and business rules,
   not the limiter, are the authoritative controls.

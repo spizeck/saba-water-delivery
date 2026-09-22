@@ -24,6 +24,10 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+- Privacy Policy update (issue #117): the public policy now discloses
+  production error monitoring (Sentry) and transactional email delivery
+  (Resend) in plain language, alongside the already-disclosed Firebase,
+  Vercel, and authentication providers.
 - Sentry error monitoring (issue #115): optional privacy-safe error capture
   (`@sentry/nextjs`) for unexpected client and server failures, with
   environment/release/deployment tags, source-map upload on Production builds

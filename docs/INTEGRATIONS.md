@@ -57,6 +57,42 @@ The public pilot hostname is not an official government custom domain;
   unreachable. Firestore data is unaffected. See
   [`INCIDENT_RECOVERY.md`](./INCIDENT_RECOVERY.md) "Vercel outage."
 
+## Sentry
+
+**Lifecycle status:** implemented and production-scoped (issue #115 / PR
+#116); error events flow only once `NEXT_PUBLIC_SENTRY_DSN` is configured for
+the Production environment in Vercel. The Sentry organization/project are
+handover items — government-controlled ownership with at least two government
+admins is required (issues #61/#62).
+
+- **Purpose:** capture of unexpected application errors (client, server,
+  route-handler, and Server-Action failures) with stack traces and
+  release/deployment context so operators are not dependent on user
+  screenshots. **Not** used for session replay, profiling, performance
+  tracing, or analytics.
+- **Provider:** Sentry.
+- **Authentication mechanism:** a public DSN identifies the ingest endpoint;
+  `SENTRY_AUTH_TOKEN` (secret, build-time only) authorizes private source-map
+  upload during Production builds.
+- **Application endpoint:** `src/instrumentation.ts`,
+  `src/instrumentation-client.ts`, `src/sentry.server.config.ts`,
+  `src/sentry.edge.config.ts`, and the same-origin `/sentry-tunnel` route
+  created by `withSentryConfig` in `next.config.ts`.
+- **Required configuration:** `NEXT_PUBLIC_SENTRY_DSN` (project-specific,
+  Production scope); `SENTRY_ORG` + `SENTRY_AUTH_TOKEN` (shared organization
+  build credentials) and `SENTRY_PROJECT` (project-specific) for source maps.
+- **Privacy controls:** production-only runtime gate
+  (`resolveSentryEnv().enabled`), `sendDefaultPii: false`, an allowlist event
+  scrubber (`src/lib/monitoring/sentryShared.ts`) that drops user objects,
+  request bodies, cookies, query strings, and non-allowlisted
+  headers/tags/contexts and normalizes identifier path segments, plus
+  expected-business-error filtering. See
+  [ADR 0019](./adr/0019-production-error-monitoring-sentry.md) and
+  `docs/DEPLOYMENT.md` "Error monitoring (Sentry)".
+- **Failure impact:** none to the application — capture is best-effort and a
+  missing or failing Sentry configuration never breaks requests; errors
+  simply remain in structured Vercel logs only.
+
 ## Resend
 
 **Lifecycle status:** email sending is implemented; [#58](https://github.com/spizeck/saba-water-delivery/issues/58)
