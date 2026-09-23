@@ -48,6 +48,12 @@ export interface SentryRuntimeEnv {
  *   - `NEXT_PUBLIC_SENTRY_RELEASE` — likewise inlined from
  *     `VERCEL_GIT_COMMIT_SHA`; the webpack plugin's `SENTRY_RELEASE`
  *     define takes precedence on the server bundle.
+ *   - `NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID` — inlined from
+ *     `VERCEL_DEPLOYMENT_ID` (non-secret operational metadata) so browser
+ *     events carry the same `deploymentId` tag as server events. Release
+ *     identifies the code commit; deploymentId identifies the particular
+ *     Vercel deployment of that code/config — the same SHA can be
+ *     redeployed under changed environment variables.
  */
 export function resolveSentryEnv(
   env: Record<string, string | undefined> = process.env,
@@ -71,7 +77,9 @@ export function resolveSentryEnv(
     dsn,
     environment,
     release: release || undefined,
-    deploymentId: env.VERCEL_DEPLOYMENT_ID,
+    deploymentId:
+      env.VERCEL_DEPLOYMENT_ID ??
+      nonEmpty(env.NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID),
   };
 }
 
@@ -283,6 +291,7 @@ export function buildSentryInitOptions(
   release?: string;
   sendDefaultPii: false;
   tracesSampleRate: 0;
+  initialScope?: { tags: { deploymentId: string } };
   ignoreErrors: (string | RegExp)[];
   beforeSend: <T extends object>(event: T) => T | null;
   beforeBreadcrumb: (crumb: BreadcrumbLike) => BreadcrumbLike;
@@ -294,6 +303,12 @@ export function buildSentryInitOptions(
     environment: resolved.environment,
     release: resolved.release,
     sendDefaultPii: false,
+    // Canonical deployment correlation: every event from this runtime — the
+    // browser especially, which has no per-request scope — carries the Vercel
+    // deployment that emitted it (same tag name the server capture uses).
+    ...(resolved.deploymentId
+      ? { initialScope: { tags: { deploymentId: resolved.deploymentId } } }
+      : {}),
     tracesSampleRate: 0,
     ignoreErrors:
       role === "client"

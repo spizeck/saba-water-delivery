@@ -9,7 +9,6 @@ import { getAllUsers } from "@/lib/domain/admin";
 import { getDispatchSettings } from "@/lib/domain/dispatchSettings";
 
 import { DispatchSettingsForm } from "./DispatchSettingsForm";
-import { SentryVerificationPanel } from "./SentryVerificationPanel";
 import { UserList } from "./UserList";
 
 export const metadata: Metadata = {
@@ -73,7 +72,6 @@ export default async function AdminPortalPage() {
             </div>
           </Card>
           <DispatchSettingsForm settings={dispatchSettings} />
-          <SentryVerificationPanel />
           <UserList users={users} />
         </Container>
       </main>

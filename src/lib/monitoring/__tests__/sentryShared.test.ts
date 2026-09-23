@@ -124,6 +124,54 @@ describe("resolveSentryEnv", () => {
       }).deploymentId,
     ).toBe("dpl_123");
   });
+
+  it("falls back to the inlined NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID (browser)", () => {
+    // The browser bundle cannot read VERCEL_DEPLOYMENT_ID; next.config.ts
+    // inlines it as the NEXT_PUBLIC_ copy so browser events carry the same
+    // deploymentId tag as server events (issue #119 Stage B).
+    expect(
+      resolveSentryEnv({
+        NEXT_PUBLIC_SENTRY_DSN: "d",
+        NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID: "dpl_browser",
+      }).deploymentId,
+    ).toBe("dpl_browser");
+    // Server-side value wins when both are present.
+    expect(
+      resolveSentryEnv({
+        NEXT_PUBLIC_SENTRY_DSN: "d",
+        VERCEL_DEPLOYMENT_ID: "dpl_server",
+        NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID: "dpl_browser",
+      }).deploymentId,
+    ).toBe("dpl_server");
+  });
+
+  it("does not let a deployment id affect enablement", () => {
+    // Preview build metadata may include a deployment id — the integration
+    // must still stay disabled there.
+    const preview = resolveSentryEnv({
+      NEXT_PUBLIC_SENTRY_DSN: "d",
+      VERCEL_ENV: "preview",
+      VERCEL_DEPLOYMENT_ID: "dpl_1",
+    });
+    expect(preview.enabled).toBe(false);
+    expect(preview.deploymentId).toBe("dpl_1");
+
+    const prod = resolveSentryEnv({
+      NEXT_PUBLIC_SENTRY_DSN: "d",
+      VERCEL_ENV: "production",
+      VERCEL_DEPLOYMENT_ID: "dpl_1",
+    });
+    expect(prod.enabled).toBe(true);
+    expect(prod.deploymentId).toBe("dpl_1");
+
+    // No deployment id must never block enablement either.
+    expect(
+      resolveSentryEnv({
+        NEXT_PUBLIC_SENTRY_DSN: "d",
+        VERCEL_ENV: "production",
+      }).enabled,
+    ).toBe(true);
+  });
 });
 
 describe("buildSentryInitOptions", () => {
@@ -136,6 +184,22 @@ describe("buildSentryInitOptions", () => {
     // Structural: no replay/profiling keys are ever produced.
     expect("replaysSessionSampleRate" in opts).toBe(false);
     expect("profilesSampleRate" in opts).toBe(false);
+  });
+
+  it("tags every event with the deployment id via initialScope", () => {
+    // One canonical mechanism for browser AND server: the SDK applies
+    // initialScope tags to all events from that init, so browser events
+    // (which have no per-request scope) still carry deploymentId.
+    const withId = buildSentryInitOptions("client", {
+      NEXT_PUBLIC_SENTRY_DSN: "d",
+      NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID: "dpl_42",
+    });
+    expect(withId.initialScope?.tags.deploymentId).toBe("dpl_42");
+
+    const without = buildSentryInitOptions("client", {
+      NEXT_PUBLIC_SENTRY_DSN: "d",
+    });
+    expect(without.initialScope).toBeUndefined();
   });
 
   it("filters transient browser noise on the client only", () => {
