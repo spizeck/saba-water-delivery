@@ -540,11 +540,20 @@ need nothing).
 
 **Browser env boundary.** `NEXT_PUBLIC_*` values reach the client bundle only
 as literal `process.env.NAME` references, which webpack rewrites at build
-time. `src/instrumentation-client.ts` therefore enumerates the three
+time. `src/instrumentation-client.ts` therefore enumerates the
 `NEXT_PUBLIC_SENTRY_*` values explicitly before calling the shared
 `buildSentryInitOptions` — passing `process.env` through for dynamic reads
 cannot be inlined and silently disables the client SDK (the defect fixed in
 issue #119). `instrumentationClientEnv.test.ts` guards the boundary.
+
+**Deployment correlation.** Both browser and server events carry
+`release` (the Git commit SHA — identifies the code) and `deploymentId`
+(the Vercel deployment ID — identifies the particular deployment/runtime of
+that code and config; the same commit can be redeployed under changed
+environment variables). The browser value arrives via
+`NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID`, inlined from `VERCEL_DEPLOYMENT_ID` at
+build time — non-secret operational metadata, never operator-managed. The
+SDK applies it to every event through `initialScope` tags.
 
 **Preview verification.** Preview proves packaging/runtime compatibility
 only: the Vercel build succeeds, the SDK bundles without module-load/ESM
@@ -552,19 +561,19 @@ regressions, `/api/health` + `/api/readiness` respond, the auth/session route
 loads, pages render, and CSP holds. Sentry stays disabled in Preview by
 policy, so **no Sentry event should ever appear from a Preview deployment**.
 
-**Production verification (post-deploy, no synthetic crash).** Issue #119
-ships a **temporary** admin control for exactly this: on `/admin`, the
-"Send Sentry server test event" button (visible only in the Production
-deployment) invokes a server action that requires admin role + `VERCEL_ENV
-=== "production"` + enabled Sentry, sends one fixed diagnostic error
-(`Sentry server verification test - 2026-09-22`, tagged
-`capture: sentry-verification`) through `captureServerError`, and enforces a
-short per-instance cooldown. To verify: trigger an uncaught browser error on
-the Production site, then use the admin control once; confirm both events in
-Sentry with `environment: production`, release = deployed commit SHA,
-`deploymentId` set, symbolicated stacks, and no cookies/headers/customer
-data. **The control is removed in the #119 Stage B cleanup PR immediately
-after verification** — it is not a permanent diagnostic surface.
+**Production verification — completed (issue #119).** After the first
+Production deploy with the env vars configured, a temporary admin-only
+"Send Sentry server test event" control (since removed) and a deliberate
+uncaught browser error were used to verify real ingestion end-to-end.
+Verified in Production: browser events POST through `/sentry-tunnel` and
+arrive with `environment: production`, the deployed commit SHA as release,
+`deploymentId`, working symbolication for application frames, and the
+privacy scrubber applied; the server event arrived with the same
+environment/release/deployment metadata and a stack resolved to the
+application source. No cookies, auth headers, request bodies, Firebase
+UIDs, customer data, or secrets appeared in either inspected event. The
+temporary control has been removed; there is no permanent diagnostic
+endpoint.
 
 **Alerting.** Alert rules (new Production issue, regression, spike) are
 configured in the Sentry console, not in this repo — the exact operator

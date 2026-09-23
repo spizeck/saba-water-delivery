@@ -25,11 +25,14 @@ const PDFKIT_TRACE = [
 
 const nextConfig: NextConfig = {
   env: {
-    // VERCEL_ENV / VERCEL_GIT_COMMIT_SHA are server-only at runtime; inline
-    // them so the browser-side Sentry init can tag environment + release.
-    // Both are non-secret categorical metadata.
+    // VERCEL_ENV / VERCEL_GIT_COMMIT_SHA / VERCEL_DEPLOYMENT_ID are
+    // server-only at runtime; inline them so the browser-side Sentry init
+    // can tag environment + release + deployment. All three are non-secret
+    // operational metadata required for browser event correlation — derived
+    // automatically from Vercel, never operator-managed.
     NEXT_PUBLIC_SENTRY_ENVIRONMENT: process.env.VERCEL_ENV ?? "",
     NEXT_PUBLIC_SENTRY_RELEASE: process.env.VERCEL_GIT_COMMIT_SHA ?? "",
+    NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID: process.env.VERCEL_DEPLOYMENT_ID ?? "",
   },
 
   async headers() {

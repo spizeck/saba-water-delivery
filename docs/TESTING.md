@@ -134,11 +134,6 @@ event to Sentry**:
   only inlines statically-analyzable references into the browser bundle, and
   the env-injecting unit tests exercise a path vitest never bundles. This
   test fails if the client entry regresses to indirect env access.
-- `src/app/admin/__tests__/sentryVerification.test.ts` (issue #119,
-  TEMPORARY — removed by the Stage B cleanup PR) — the admin verification
-  action's auth/environment/enabled gates, single fixed-message capture, and
-  per-instance cooldown, with `captureServerError` mocked.
-
 **Production-only gate.** `resolveSentryEnv().enabled` requires BOTH a DSN
 and `VERCEL_ENV === "production"` (or its inlined `NEXT_PUBLIC_` copy in the
 browser bundle), so Preview/dev/test can never send events. Source maps
@@ -148,11 +143,11 @@ likewise upload only on Production builds.
 telemetry test: the Vercel Preview must deploy, serve `/api/health` and
 `/api/readiness`, load the auth/session route, and render pages — with zero
 Sentry events produced (the gate makes ingestion impossible). Real event
-delivery and symbolication are verified post-deploy in Production — via a
-deliberate browser error plus the temporary admin "Send Sentry server test
-event" control (issue #119, removed by the Stage B cleanup PR), never via a
-deliberate production crash; the checklist is in `DEPLOYMENT.md` "Error
-monitoring (Sentry)".
+delivery and symbolication were verified in Production in issue #119 —
+browser event through `/sentry-tunnel` plus one server event via a
+temporary admin control (removed in Stage B) — never via a deliberate
+production crash; the verified results are recorded in `DEPLOYMENT.md`
+"Error monitoring (Sentry)".
 
 ### Notification outbox tests (issue #53)
 

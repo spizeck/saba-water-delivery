@@ -34,6 +34,7 @@ describe("instrumentation-client environment boundary", () => {
     "NEXT_PUBLIC_SENTRY_DSN",
     "NEXT_PUBLIC_SENTRY_ENVIRONMENT",
     "NEXT_PUBLIC_SENTRY_RELEASE",
+    "NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID",
   ])(
     "references %s as a literal process.env member expression (inlinable)",
     (name) => {

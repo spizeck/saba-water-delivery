@@ -27,9 +27,11 @@ not attempt to recreate the full prelaunch development history.
 - Sentry browser fix (issue #119): browser-side error monitoring now actually
   initializes in Production — the client entry point previously read
   `NEXT_PUBLIC_SENTRY_*` through a dynamic env object that Next.js could not
-  inline into the browser bundle, so the SDK never started. A temporary
-  admin-only "Send Sentry server test event" control on `/admin` supports
-  one-time Production verification and is removed again immediately after.
+  inline into the browser bundle, so the SDK never started. Production
+  ingestion was verified end-to-end (browser + server events, symbolication,
+  privacy scrubbing); the temporary admin verification control used for that
+  check has been removed. Browser events now also carry the Vercel
+  `deploymentId` tag, matching server events.
 - Privacy Policy update (issue #117): the public policy now discloses
   production error monitoring (Sentry) and transactional email delivery
   (Resend) in plain language, alongside the already-disclosed Firebase,

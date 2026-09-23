@@ -21,12 +21,6 @@ export interface ServerErrorContext {
   route?: string;
   requestId?: string;
   component?: string;
-  /**
-   * Categorizes the capture site (`capture` tag). Defaults to the
-   * `withApiRoute` boundary; the temporary #119 verification action sets
-   * `sentry-verification` so the test event is distinguishable in Sentry.
-   */
-  capture?: string;
 }
 
 /**
@@ -50,7 +44,7 @@ export async function captureServerError(
       if (context.component) scope.setTag("component", context.component);
       const env = resolveSentryEnv();
       if (env.deploymentId) scope.setTag("deploymentId", env.deploymentId);
-      scope.setTag("capture", context.capture ?? "apiRouteBoundary");
+      scope.setTag("capture", "apiRouteBoundary");
       return Sentry.captureException(error);
     });
 

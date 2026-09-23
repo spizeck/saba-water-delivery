@@ -13,6 +13,8 @@ const options = buildSentryInitOptions("client", {
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   NEXT_PUBLIC_SENTRY_ENVIRONMENT: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
   NEXT_PUBLIC_SENTRY_RELEASE: process.env.NEXT_PUBLIC_SENTRY_RELEASE,
+  NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID:
+    process.env.NEXT_PUBLIC_SENTRY_DEPLOYMENT_ID,
   NODE_ENV: process.env.NODE_ENV,
 });
 if (options.enabled) {
