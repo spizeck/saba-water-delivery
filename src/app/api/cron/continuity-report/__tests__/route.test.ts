@@ -5,10 +5,12 @@ const {
   generateContinuityReportDataMock,
   renderContinuityReportPdfMock,
   sendContinuityReportEmailMock,
+  recordCronHeartbeatMock,
 } = vi.hoisted(() => ({
   generateContinuityReportDataMock: vi.fn(),
   renderContinuityReportPdfMock: vi.fn(),
   sendContinuityReportEmailMock: vi.fn(),
+  recordCronHeartbeatMock: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/lib/monitoring/serverCapture", () => ({
@@ -23,6 +25,9 @@ vi.mock("@/lib/reports/continuityReportPdf", () => ({
 }));
 vi.mock("@/lib/email/continuityReportEmail", () => ({
   sendContinuityReportEmail: sendContinuityReportEmailMock,
+}));
+vi.mock("@/lib/monitoring/cronHeartbeat", () => ({
+  recordCronHeartbeat: recordCronHeartbeatMock,
 }));
 
 import { GET } from "@/app/api/cron/continuity-report/route";
@@ -44,6 +49,7 @@ describe("GET /api/cron/continuity-report", () => {
     generateContinuityReportDataMock.mockReset();
     renderContinuityReportPdfMock.mockReset();
     sendContinuityReportEmailMock.mockReset();
+    recordCronHeartbeatMock.mockClear();
   });
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
@@ -82,6 +88,10 @@ describe("GET /api/cron/continuity-report", () => {
     expect(generateContinuityReportDataMock).toHaveBeenCalledTimes(1);
     expect(renderContinuityReportPdfMock).toHaveBeenCalledTimes(1);
     expect(sendContinuityReportEmailMock).toHaveBeenCalledTimes(1);
+    expect(recordCronHeartbeatMock).toHaveBeenCalledWith(
+      "continuity-report",
+      "success",
+    );
   });
 
   it("returns a non-200 status and does not throw when email sending fails", async () => {
@@ -104,6 +114,10 @@ describe("GET /api/cron/continuity-report", () => {
     expect(response.status).toBe(502);
     expect(body.ok).toBe(false);
     expect(body.error).toBe("Resend down");
+    expect(recordCronHeartbeatMock).toHaveBeenCalledWith(
+      "continuity-report",
+      "failure",
+    );
   });
 
   it("fails closed when CRON_SECRET is unset", async () => {

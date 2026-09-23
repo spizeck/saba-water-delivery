@@ -204,6 +204,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Scheduled-operation heartbeat records (issue #62). Written only by the
+    // Admin SDK in trusted cron code; read by the admin surface and the
+    // read-only heartbeat checker. No client access — deny-by-default.
+    match /cronHeartbeats/{cronName} {
+      allow read, write: if false;
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;

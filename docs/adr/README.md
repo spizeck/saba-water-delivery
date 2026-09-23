@@ -97,6 +97,7 @@ original date is uncertain the ADR says so.
 | [0017](./0017-notification-outbox-and-retry.md)              | Durable notification outbox and retry                              | Accepted |
 | [0018](./0018-account-merge-auth-reconciliation.md)          | Durable account-merge Firebase Auth reconciliation                 | Accepted |
 | [0019](./0019-production-error-monitoring-sentry.md)         | Production exception monitoring via Sentry                         | Accepted |
+| [0020](./0020-scheduled-operation-heartbeat-monitoring.md)   | Scheduled-operation heartbeat monitoring                           | Accepted |
 
 ## Especially dangerous assumptions preserved here
 

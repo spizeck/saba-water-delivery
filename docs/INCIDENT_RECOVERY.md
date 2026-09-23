@@ -12,6 +12,12 @@ is written for government operations staff and IT support.
 > deletion, a botched migration, or a full database restore), use
 > [`DISASTER_RECOVERY.md`](./DISASTER_RECOVERY.md) — the canonical backup and
 > data-recovery runbook — instead of, or in addition to, this document.
+>
+> **How you find out something is wrong:** the monitoring signals, alert
+> matrix, and escalation expectations are in
+> [`OPERATIONS.md`](./OPERATIONS.md) "Production monitoring and alerting" —
+> including the `cron.heartbeat.stale` signal for a scheduled job that never
+> ran and the `/admin/notifications` "Scheduled jobs" view.
 
 ## Website unavailable
 

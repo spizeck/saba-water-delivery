@@ -644,6 +644,20 @@ can be exercised locally against the emulator the same way:
 firebase emulators:exec --only firestore "node scripts/production-integrity.mjs"
 ```
 
+## Cron heartbeat check (issue #62)
+
+`scripts/check-cron-heartbeats.mjs` (`npm run check:heartbeats`) is the
+read-only scheduled-operation check: it prints each registered cron's last
+attempt/success and exits non-zero when any job is stale or never recorded
+(the "cron never ran" signal). Same fail-closed target contract as the
+integrity diagnostic — emulator under `emulators:exec`, cloud only with
+`--production` + explicit `--project`. Semantics and the alert matrix:
+[`OPERATIONS.md`](./OPERATIONS.md) "Production monitoring and alerting".
+
+```bash
+firebase emulators:exec --only firestore "node scripts/check-cron-heartbeats.mjs"
+```
+
 ## Automated production smoke runner (issue #84)
 
 `scripts/production-smoke.mjs` (`npm run smoke:production`) is the

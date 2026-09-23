@@ -1,10 +1,17 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { processMock } = vi.hoisted(() => ({ processMock: vi.fn() }));
+const { processMock, heartbeatMock } = vi.hoisted(() => ({
+  processMock: vi.fn(),
+  heartbeatMock: vi.fn(async () => undefined),
+}));
 
 vi.mock("@/lib/monitoring/serverCapture", () => ({
   captureServerError: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/lib/monitoring/cronHeartbeat", () => ({
+  recordCronHeartbeat: heartbeatMock,
 }));
 
 vi.mock("@/lib/domain/mergeReconciliation", () => ({
@@ -26,6 +33,7 @@ describe("GET /api/cron/merge-auth-reconciliation", () => {
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV, CRON_SECRET: "test-secret" };
     processMock.mockReset();
+    heartbeatMock.mockClear();
   });
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
@@ -74,6 +82,10 @@ describe("GET /api/cron/merge-auth-reconciliation", () => {
     expect(body.ok).toBe(true);
     expect(body.reconciled).toBe(1);
     expect(processMock).toHaveBeenCalledTimes(1);
+    expect(heartbeatMock).toHaveBeenCalledWith(
+      "merge-auth-reconciliation",
+      "success",
+    );
     // The cron response must never leak uids or provider errors — only
     // aggregate counts and the duration field may be present.
     for (const key of Object.keys(body)) {
@@ -101,5 +113,9 @@ describe("GET /api/cron/merge-auth-reconciliation", () => {
 
     expect(response.status).toBe(500);
     expect(body.ok).toBe(false);
+    expect(heartbeatMock).toHaveBeenCalledWith(
+      "merge-auth-reconciliation",
+      "failure",
+    );
   });
 });

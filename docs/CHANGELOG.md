@@ -24,6 +24,18 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+- Scheduled-operation monitoring (issue #62): every cron now records a
+  heartbeat (`cronHeartbeats/{name}`) and the every-10-minute notification
+  worker runs a watchdog that logs a deduplicated `cron.heartbeat.stale`
+  error when a scheduled job misses its expected window — so a cron that
+  never runs is now detectable instead of silent. `/admin/notifications`
+  gains a "Scheduled jobs" card (Fresh/Failing/Stale per job) and a new
+  read-only `npm run check:heartbeats` maintainer check reports the same
+  staleness. `OPERATIONS.md` gains the full monitoring/alerting section:
+  provider responsibility split, alert matrix, government-recipient model,
+  and the controlled alert-delivery test procedure. **External alert routing
+  itself is deliberately not configured by this change** — it remains an
+  operator console step pending government-controlled destinations.
 - Sentry browser fix (issue #119): browser-side error monitoring now actually
   initializes in Production — the client entry point previously read
   `NEXT_PUBLIC_SENTRY_*` through a dynamic env object that Next.js could not

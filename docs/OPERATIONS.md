@@ -650,3 +650,161 @@ can temporarily raise verbosity by setting the `LOG_LEVEL` environment
 variable to `debug` in Vercel and redeploying (see
 [`DEPLOYMENT.md`](./DEPLOYMENT.md)); it is optional and safe to leave
 unset.
+
+## Production monitoring and alerting (issue #62)
+
+This section is the canonical record of **what watches the production system,
+which signals exist, and what still requires external provider/console
+configuration**. It distinguishes carefully between what the code produces
+(signals) and what an operator must configure (delivery). **No external alert
+routing is configured by this repository** — the matrix below marks each row
+as implemented-in-code versus pending operator configuration.
+
+### Monitoring architecture — who owns what
+
+| Provider | Responsibility | Status |
+| --- | --- | --- |
+| **Application structured logs** (Vercel Logs) | Canonical operational/security evidence; every cron failure, readiness failure, and `security.*` event lands here with a `requestId`. | Implemented — always emitted. |
+| **Sentry** | Unexpected application **exceptions** only (production-only, scrubbed, release/deployment-tagged — see "Error monitoring (Sentry)"). | Ingestion verified in Production; alert rules are console-side (below). |
+| **Vercel** | Deployment/runtime/platform visibility, Cron scheduling. | Deploy/cron dashboards exist; no alert delivery configured in-repo. |
+| **GCP / Firebase** | Firestore availability, backup job status, platform quotas. | PITR + scheduled backups enabled; backup-failure alerting is **issue #60**'s scope. |
+| **Resend** | Transactional email delivery; its own dashboard shows sends/bounces. | Delivery failures are captured by the outbox (below). |
+
+The repository deliberately does **not** add another monitoring vendor. The
+signals below are designed so the providers above (or an equivalent
+government-chosen tool) can deliver them.
+
+### Scheduled-operation heartbeats
+
+A cron route that fails logs an error — but a cron that is **never invoked**
+logs nothing. To make absence detectable, every cron records a heartbeat
+document (`cronHeartbeats/{name}`: `lastAttemptAt`, `lastSuccessAt`,
+`lastStatus`, `consecutiveFailures`; see
+[ADR 0020](./adr/0020-scheduled-operation-heartbeat-monitoring.md)):
+
+- Each cron writes its heartbeat at the end of its run (success or failure).
+- The notification worker (every 10 minutes) then runs a **watchdog pass**
+  over all registered crons: any cron whose last success is missing or older
+  than its threshold produces a deduplicated `cron.heartbeat.stale` ERROR log
+  (re-alarms at most every 4 hours while stale).
+- **`/admin/notifications` "Scheduled jobs"** shows each job's last success
+  and a Fresh / Failing / **Stale** badge — the operator-facing view.
+- **`npm run check:heartbeats`** is the read-only maintainer check — it prints
+  each cron's last success/attempt and exits non-zero on any stale job, using
+  the same fail-closed target contract as `diagnose:integrity`:
+
+```bash
+# Emulator:
+firebase emulators:exec --only firestore "node scripts/check-cron-heartbeats.mjs"
+
+# Production (explicit flag + project; credentials from a key FILE):
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json \
+  npm run check:heartbeats -- --production --project=<gcp-project>
+```
+
+Registered staleness thresholds (grace on top of the `vercel.json` cadence):
+
+| Cron | Schedule | Stale after |
+| --- | --- | --- |
+| `notifications` | every 10 min | 1 hour |
+| `merge-auth-reconciliation` | hourly at :37 | 3 hours |
+| `continuity-report` | daily 00:00 UTC | 27 hours |
+
+### Alert matrix
+
+Severity: **critical** = service unavailable or a core function silently
+broken; **warning** = degraded but still operating / a single scheduled run
+missed; **info** = worth a look, no immediate action. "Delivery" is the
+current routing state: **log** = structured log only (no notification
+configured yet), **admin** = visible on an admin surface, **provider** =
+requires console configuration by an operator.
+
+| Condition | Signal | Severity | Debounce | Recovery | Operator action | Delivery |
+| --- | --- | --- | --- | --- | --- | --- |
+| App down / unreachable | `/api/health` probe failure | critical | 2–3 consecutive probe failures (uptime check interval 1–5 min) | probe returns 200 | Check Vercel deployment status; see INCIDENT_RECOVERY | **provider** — external uptime check required (below) |
+| App up but Firestore unreachable | repeated `/api/readiness` 503 | critical | sustained ≥5–10 min, not a single blip | readiness returns 200 | Check Firebase status + `FIREBASE_ADMIN_*` env | **provider** — uptime check on `/api/readiness` or GCP log-based alert on readiness failures |
+| Unexpected exception spike / new issue / regression | Sentry issue & alert rules | warning→critical | per Sentry rule (new issue = immediate; spike = rate threshold) | rule auto-resolves | Triage in Sentry, join to logs via `requestId` tag | **provider** — Sentry console rules (below) |
+| Continuity report cron fails | `report.continuity.email_failed` / `generation_failed` + heartbeat `lastStatus: failure` | warning | alert on failure (next run is next day) | next nightly success | Check logs; report can be regenerated manually | **log** now; route via log-based alert |
+| Continuity report cron absent | `cron.heartbeat.stale` (`continuity-report`) + Stale badge | warning | stale >27h | next success resets | Check Vercel Cron config/invocations | **log + admin** now; provider alert pending |
+| Notification outbox worker fails/absent | `notifications.outbox.cron_failed` / `cron.heartbeat.stale` (`notifications`) | warning→critical | stale >1h | next success | Check cron + outbox at `/admin/notifications` | **log + admin** now; provider alert pending |
+| Outbox terminal failure(s) | failed entries on `/admin/notifications` | warning | any terminal failure | manual retry after fix | Fix cause, then Retry on the admin page | **admin** — periodic check; provider alert pending |
+| Merge reconciliation fails/absent | `merge.auth_reconciliation.cron_failed` / `cron.heartbeat.stale` | warning | stale >3h | next success | Check `/admin/users/merge` panel + Retry | **log + admin** now; provider alert pending |
+| Transactional email provider down | outbox retries/backlog growing | warning | sustained backlog growth | provider recovery auto-drains | Check Resend status; no app action needed | **admin** — backlog visible; no code alert |
+| Backup failure / absence | GCP backup job status | critical | any missed/failed scheduled backup | next successful backup | **Issue #60** owns backup monitoring; see DISASTER_RECOVERY | **provider** — GCP alerting, owned by #60 |
+| Security event burst | `security.*` structured events | warning | sustained burst, not singles | — | Investigate source; see "Security events" | **log** — optional log-based alert |
+| Deployment failure | Vercel deploy status | warning | any failed Production deploy | successful redeploy | Check Vercel build log | **provider** — Vercel notifications integration |
+
+### External configuration — operator actions (NOT yet configured)
+
+These steps require console access and government-controlled destinations.
+Until they are done and tested, **alerting is log-only + admin surfaces** —
+the signals exist, nothing pages anyone. Record each step's completion date
+and evidence here or in the handover checklist when performed.
+
+1. **Uptime check on `/api/health`** — point the provider's uptime monitor
+   (or GCP Cloud Monitoring uptime check) at
+   `https://<production-domain>/api/health`, interval 1–5 min, expect 200.
+   Optionally a second check on `/api/readiness` expecting 200 — alert only
+   on *sustained* failure (≥3 consecutive checks) to avoid transient blips.
+2. **Log-based alerts** — route ERROR-level structured events to the
+   operational channel. Minimum events: `cron.heartbeat.stale`,
+   `*.cron_failed`, `report.continuity.*_failed`, repeated
+   `security.*` bursts. On Vercel this is a Log Drain or the project's
+   observability integration; on GCP a log-based alert policy — whichever the
+   government platform team operates.
+3. **Sentry alert rules** (console — see "Error monitoring (Sentry)"): new
+   Production issue, regression, error-rate spike. **Recommended starting
+   thresholds:** new issue → notify once; regression → notify once; spike →
+   only when error volume exceeds ~5× the trailing-hour baseline sustained
+   15 min — tune after a few weeks of real traffic, do not alert per-event.
+4. **Backup alerting** — issue #60 scope: GCP alert on scheduled-backup
+   job failure/absence; integrate its notification channel with the same
+   government recipient model.
+5. **Deployment notifications** — Vercel project notifications (or
+   equivalent) for failed Production deployments.
+
+### Government-controlled recipients (required for #62 acceptance)
+
+Alerts must reach **government-controlled** contacts, not solely the
+developer. Configure in each provider's console (no addresses in this repo):
+
+- **Public Entity Saba IT — primary** (role-based mailbox or on-call contact)
+- **Public Entity Saba IT — secondary** (second contact or shared mailbox)
+- or **one agreed shared operational channel** both monitor
+
+The exact addresses/channels are chosen by the government team during
+handover (#56/#57/#61); enter them in the provider alert rules, never in the
+repository. **#62 cannot close until at least two government contacts or the
+agreed channel are configured and a controlled test (below) proves delivery.**
+
+### Controlled alert-delivery test
+
+Proves: signal → provider detects → rule fires → government recipient
+receives. Prefer provider-native test facilities; never corrupt data, take
+Production offline, or message residents:
+
+1. **Uptime check** — use the uptime monitor's "send test alert"/pause-check
+   feature, or temporarily point it at a deliberately-invalid path, confirm
+   the notification arrives at both government contacts, then restore.
+2. **Sentry rule** — use Sentry's alert-rule test/notification preview; do
+   not generate synthetic production exceptions.
+3. **Log-based alert** — most platforms offer "test notification"; if not,
+   agree with the platform team on a temporary low-severity test rule.
+4. Record the date, the recipient(s) who confirmed receipt, and the rule
+   tested — that record is the #62 acceptance evidence.
+
+### What is automated vs. manual
+
+**Automated (in code):** health/readiness endpoints, structured operational +
+security logs, Sentry exception capture, cron heartbeats + watchdog +
+`cron.heartbeat.stale`, admin visibility (`/admin/notifications`,
+`/admin/users/merge`), durable retry in the outbox and reconciliation sweep.
+
+**Manual/operator:** all external alert routing above, recipient
+configuration, the controlled delivery test, and periodic review of
+`/admin/notifications` until provider alerts are live.
+
+**Blocked by other issues:** government-controlled provider ownership and
+admin seats (#56 GCP/Firebase, #57 Vercel, #58 Resend, #61 admins/break-glass),
+backup alerting (#60), and final handover/recovery drill (#63); government
+staging acceptance is #83.

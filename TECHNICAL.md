@@ -3113,6 +3113,30 @@ Production from the first naturally occurring unexpected error — no
 deliberate production crash is ever generated; the checklist is in
 `DEPLOYMENT.md` "Error monitoring (Sentry)".
 
+## Scheduled-operation heartbeats (issue #62)
+
+A cron that is never invoked emits no error — failure logs only exist for
+runs that happen. `src/lib/monitoring/cronHeartbeat.ts` closes that gap:
+each cron route records a heartbeat document (`cronHeartbeats/{name}` —
+`lastAttemptAt`, `lastSuccessAt`, `lastStatus`, `consecutiveFailures`) at the
+end of its handler, after `CRON_SECRET` auth and inside a never-throwing
+wrapper so monitoring can never break the job it observes. The most frequent
+cron (the notification worker, every 10 minutes) doubles as the watchdog:
+`runCronWatchdog()` evaluates every registered cron in `CRON_EXPECTATIONS`
+against its staleness threshold and emits a deduplicated
+`cron.heartbeat.stale` ERROR (dedup via `lastStaleAlertAt`, ≤ one alert per
+4h while stale). The same evaluation feeds the `/admin/notifications`
+"Scheduled jobs" card and the read-only `scripts/check-cron-heartbeats.mjs`
+(`npm run check:heartbeats`), which reuses `integrity-target.mjs`'s
+fail-closed target resolution.
+
+Alert **delivery** remains provider-side by design — `cron.heartbeat.stale`
+is the signal an external log-based alert routes; nothing in-repo claims an
+external notification exists. Rationale and alternatives:
+[ADR 0020](docs/adr/0020-scheduled-operation-heartbeat-monitoring.md);
+operator-facing matrix and pending console steps: `docs/OPERATIONS.md`
+"Production monitoring and alerting".
+
 ---
 
 # Saba Operational Timezone

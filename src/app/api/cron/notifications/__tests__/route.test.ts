@@ -1,13 +1,19 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { processNotificationOutboxMock } = vi.hoisted(() => ({
+const { processNotificationOutboxMock, heartbeatMocks } = vi.hoisted(() => ({
   processNotificationOutboxMock: vi.fn(),
+  heartbeatMocks: {
+    recordCronHeartbeat: vi.fn(async () => undefined),
+    runCronWatchdog: vi.fn(async () => []),
+  },
 }));
 
 vi.mock("@/lib/monitoring/serverCapture", () => ({
   captureServerError: vi.fn(async () => undefined),
 }));
+
+vi.mock("@/lib/monitoring/cronHeartbeat", () => heartbeatMocks);
 
 vi.mock("@/lib/notifications/worker", () => ({
   processNotificationOutbox: processNotificationOutboxMock,
@@ -30,6 +36,8 @@ describe("GET /api/cron/notifications", () => {
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV, CRON_SECRET: "test-secret" };
     processNotificationOutboxMock.mockReset();
+    heartbeatMocks.recordCronHeartbeat.mockClear();
+    heartbeatMocks.runCronWatchdog.mockClear();
   });
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
@@ -76,6 +84,12 @@ describe("GET /api/cron/notifications", () => {
     expect(body.ok).toBe(true);
     expect(body.claimed).toBe(2);
     expect(processNotificationOutboxMock).toHaveBeenCalledTimes(1);
+    // Successful run records its own heartbeat and runs the staleness watchdog.
+    expect(heartbeatMocks.recordCronHeartbeat).toHaveBeenCalledWith(
+      "notifications",
+      "success",
+    );
+    expect(heartbeatMocks.runCronWatchdog).toHaveBeenCalledTimes(1);
     // The cron response must never leak notification contents or recipients —
     // only aggregate counts and the duration field may be present.
     for (const key of Object.keys(body)) {
@@ -100,5 +114,10 @@ describe("GET /api/cron/notifications", () => {
 
     expect(response.status).toBe(500);
     expect(body.ok).toBe(false);
+    expect(heartbeatMocks.recordCronHeartbeat).toHaveBeenCalledWith(
+      "notifications",
+      "failure",
+    );
+    expect(heartbeatMocks.runCronWatchdog).toHaveBeenCalledTimes(1);
   });
 });

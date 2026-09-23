@@ -9,6 +9,7 @@ import {
   serializeError,
 } from "@/lib/logging";
 import { withApiRoute } from "@/lib/http";
+import { recordCronHeartbeat } from "@/lib/monitoring/cronHeartbeat";
 import { renderContinuityReportPdf } from "@/lib/reports/continuityReportPdf";
 
 const log = getLogger("api.cron.continuity-report");
@@ -68,6 +69,7 @@ export const GET = withApiRoute(
           // Provider error string; redaction masks any embedded PII/URLs.
           providerError: result.error,
         });
+        await recordCronHeartbeat("continuity-report", "failure");
         return NextResponse.json(
           {
             ok: false,
@@ -85,6 +87,7 @@ export const GET = withApiRoute(
         assigned: data.assigned.length,
         durationMs: Date.now() - startedAt,
       });
+      await recordCronHeartbeat("continuity-report", "success");
       return NextResponse.json({
         ok: true,
         generatedAt: data.generatedAt,
@@ -96,6 +99,7 @@ export const GET = withApiRoute(
         durationMs: Date.now() - startedAt,
         error: serializeError(err),
       });
+      await recordCronHeartbeat("continuity-report", "failure");
       return NextResponse.json(
         { ok: false, error: "Report generation failed." },
         { status: 500 },
