@@ -7,6 +7,10 @@ import {
   serializeError,
 } from "@/lib/logging";
 import { withApiRoute } from "@/lib/http";
+import {
+  recordCronHeartbeat,
+  runCronWatchdog,
+} from "@/lib/monitoring/cronHeartbeat";
 import { processNotificationOutbox } from "@/lib/notifications/worker";
 
 const log = getLogger("api.cron.notifications");
@@ -52,6 +56,11 @@ export const GET = withApiRoute(
     const startedAt = Date.now();
     try {
       const result = await processNotificationOutbox();
+      // This is the most frequent cron (every 10 min) — it doubles as the
+      // scheduled-operation watchdog: record its own heartbeat, then check
+      // every registered cron's last-success for staleness (issue #62).
+      await recordCronHeartbeat("notifications", "success");
+      await runCronWatchdog();
       return NextResponse.json({
         ok: true,
         ...result,
@@ -62,6 +71,10 @@ export const GET = withApiRoute(
         durationMs: Date.now() - startedAt,
         error: serializeError(err),
       });
+      await recordCronHeartbeat("notifications", "failure");
+      // Still evaluate the other crons — this invocation proves the scheduler
+      // reached the app, so staleness checks remain valid.
+      await runCronWatchdog();
       return NextResponse.json(
         { ok: false, error: "Notification worker failed." },
         { status: 500 },

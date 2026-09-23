@@ -8,6 +8,7 @@ import {
 } from "@/lib/logging";
 import { withApiRoute } from "@/lib/http";
 import { processMergeAuthReconciliation } from "@/lib/domain/mergeReconciliation";
+import { recordCronHeartbeat } from "@/lib/monitoring/cronHeartbeat";
 
 const log = getLogger("api.cron.merge-auth-reconciliation");
 
@@ -52,6 +53,7 @@ export const GET = withApiRoute(
     const startedAt = Date.now();
     try {
       const result = await processMergeAuthReconciliation();
+      await recordCronHeartbeat("merge-auth-reconciliation", "success");
       return NextResponse.json({
         ok: true,
         ...result,
@@ -62,6 +64,7 @@ export const GET = withApiRoute(
         durationMs: Date.now() - startedAt,
         error: serializeError(err),
       });
+      await recordCronHeartbeat("merge-auth-reconciliation", "failure");
       return NextResponse.json(
         { ok: false, error: "Reconciliation worker failed." },
         { status: 500 },

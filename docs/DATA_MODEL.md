@@ -485,6 +485,41 @@ called by `removeRole` and by `mergeUserAccounts`
 bypasses rules, the transaction — not the rules — is the concurrency
 guarantee; the rule is defense in depth.
 
+## `cronHeartbeats/{cronName}`
+
+**Purpose:** scheduled-operation heartbeat records (issue #62;
+[ADR 0020](./adr/0020-scheduled-operation-heartbeat-monitoring.md)). One
+document per registered cron (`continuity-report`, `notifications`,
+`merge-auth-reconciliation`) so a scheduled job that is **never invoked**
+— which otherwise emits no error anywhere — becomes detectable as
+staleness. Written only by trusted cron route code via the Admin SDK;
+surfaced read-only on `/admin/notifications` and by
+`npm run check:heartbeats`. Monitoring metadata only — no business data,
+no PII, no request contents.
+
+**Fields:**
+
+- `cron` — the registered cron name (same as the document id).
+- `lastAttemptAt` — timestamp of the most recent completed invocation.
+- `lastSuccessAt` — timestamp of the most recent **successful** run; absent
+  until the first success (a doc without it reads as stale).
+- `lastStatus` — `"success"` | `"failure"` of the most recent run.
+- `consecutiveFailures` — reset to `0` on success, incremented on failure.
+- `lastStaleAlertAt` — when the watchdog last emitted `cron.heartbeat.stale`
+  for this cron; deduplicates re-alerts (≤ every 4h while stale).
+- `updatedAt` — last heartbeat write.
+
+**Lifecycle:** created lazily on the first cron invocation after deploy — no
+migration. Until then the cron reports "never recorded"/stale on the admin
+card and the checker, which is the intended pre-first-run signal.
+
+**Reads/writes:** deny-by-default in `firestore.rules` (Admin SDK only).
+Writes are `set(..., { merge: true })` from `recordCronHeartbeat` in
+`src/lib/monitoring/cronHeartbeat.ts`; reads come from the watchdog, the
+admin page, and the checker script. Staleness thresholds live in
+`CRON_EXPECTATIONS` in that module (mirrored in
+`scripts/check-cron-heartbeats.mjs`).
+
 ## Indexes
 
 Composite indexes are defined in `firestore.indexes.json`, the repository

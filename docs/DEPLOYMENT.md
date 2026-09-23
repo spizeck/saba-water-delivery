@@ -491,6 +491,15 @@ Firestore-dependent signal). They are **not** a replacement for the full
 application smoke test in docs/TESTING.md. The endpoints are intentionally **not**
 rate limited so probing stays reliable.
 
+**Scheduled-operation monitoring (issue #62).** Every cron records a
+heartbeat (`cronHeartbeats/{name}`) and the notification worker runs a
+staleness watchdog that emits `cron.heartbeat.stale` when a job misses its
+window; `/admin/notifications` shows the Fresh/Failing/Stale state and
+`npm run check:heartbeats` is the read-only CLI check. **Alert delivery is
+not configured by this repo** — the uptime check, log-based alerts, Sentry
+rules, and government recipients are operator console steps documented in
+`docs/OPERATIONS.md` "Production monitoring and alerting".
+
 ## Error monitoring (Sentry)
 
 Issue #115 adds privacy-safe error monitoring via `@sentry/nextjs` (error
