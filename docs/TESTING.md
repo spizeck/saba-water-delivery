@@ -127,6 +127,17 @@ event to Sentry**:
   bounded flush, and an SDK failure can never propagate.
 - `src/lib/http/__tests__/apiRoute.test.ts` — the boundary reports each
   unexpected 5xx once, and never reports 4xx or framework control flow.
+- `src/lib/monitoring/__tests__/instrumentationClientEnv.test.ts` (issue
+  #119) — a source-level guard that `src/instrumentation-client.ts` passes
+  the `NEXT_PUBLIC_SENTRY_*` values to `buildSentryInitOptions` as literal
+  `process.env.NAME` references. Runtime tests cannot cover this: Next.js
+  only inlines statically-analyzable references into the browser bundle, and
+  the env-injecting unit tests exercise a path vitest never bundles. This
+  test fails if the client entry regresses to indirect env access.
+- `src/app/admin/__tests__/sentryVerification.test.ts` (issue #119,
+  TEMPORARY — removed by the Stage B cleanup PR) — the admin verification
+  action's auth/environment/enabled gates, single fixed-message capture, and
+  per-instance cooldown, with `captureServerError` mocked.
 
 **Production-only gate.** `resolveSentryEnv().enabled` requires BOTH a DSN
 and `VERCEL_ENV === "production"` (or its inlined `NEXT_PUBLIC_` copy in the
@@ -137,9 +148,11 @@ likewise upload only on Production builds.
 telemetry test: the Vercel Preview must deploy, serve `/api/health` and
 `/api/readiness`, load the auth/session route, and render pages — with zero
 Sentry events produced (the gate makes ingestion impossible). Real event
-delivery and symbolication are verified post-deploy in Production from the
-first naturally occurring error — no deliberate production crash; the
-checklist is in `DEPLOYMENT.md` "Error monitoring (Sentry)".
+delivery and symbolication are verified post-deploy in Production — via a
+deliberate browser error plus the temporary admin "Send Sentry server test
+event" control (issue #119, removed by the Stage B cleanup PR), never via a
+deliberate production crash; the checklist is in `DEPLOYMENT.md` "Error
+monitoring (Sentry)".
 
 ### Notification outbox tests (issue #53)
 
