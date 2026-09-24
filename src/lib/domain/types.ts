@@ -394,6 +394,10 @@ export type WaterRequestEventType =
   | "preferred_driver_declined"
   | "request_opened"
   | "driver_claimed"
+  /** Driver explicitly released a delivery that had already been assigned
+   * to them (issue #123 assignment-on-visibility model), returning it to
+   * the dispatch queue. Counts as a decline for cooldown purposes. */
+  | "driver_released"
   | "marked_delivered"
   | "customer_confirmed"
   | "delivery_confirmed_by_dispatcher"
@@ -545,7 +549,7 @@ export interface DriverRegistryEntry {
   restrictedAt: string | null;
   restrictedBy: string | null;
 
-  /** Temporary dispatch-offer decline cooldown (future timestamp). */
+  /** Temporary dispatch-decline cooldown (future timestamp). */
   cooldownUntil: string | null;
 
   /**
@@ -641,23 +645,41 @@ export interface WaterLoadCollection {
 }
 
 // ---------------------------------------------------------------------------
-// Driver dispatch offers (one-request-at-a-time offer workflow)
+// Driver dispatch records (assignment-on-visibility workflow, issue #123)
 // ---------------------------------------------------------------------------
 
 /**
- * `null` means the offer is still pending — the driver has not yet
- * responded. "expired" means the offer was superseded (e.g. another driver
- * claimed the request first, or the request was cancelled/reassigned)
- * before this driver responded.
+ * `driverOffers` documents are the append-only dispatch-decision ledger —
+ * one record per dispatch decision about a (driver, request) pair.
+ *
+ * - `"assigned"`: the system selected the request for this driver and
+ *   atomically claimed it (`claimWaterRequest`). The record is created
+ *   already resolved — the assignment exists BEFORE the driver ever sees
+ *   the delivery details.
+ * - `"declined"`: the driver explicitly declined/released the assignment
+ *   (post-#123) or a pending offer (legacy). Counts toward the daily
+ *   decline limit and the re-offer exclusion window.
+ * - `"expired"`: a stale pending offer was resolved without any driver
+ *   action — e.g. the request was claimed by someone else first, or a
+ *   legacy pending offer was retired during post-#123 reconciliation.
+ * - `"accepted"`: legacy only — an explicit "Accept Delivery" button press
+ *   from before assignment-on-visibility. Never written by current code.
+ * - `null`: legacy only — a pending offer awaiting a response. Never
+ *   written by current code; surviving documents are expired on sight.
  */
-export type DriverOfferResponse = "accepted" | "declined" | "expired" | null;
+export type DriverOfferResponse =
+  "assigned" | "accepted" | "declined" | "expired" | null;
 
 export interface DriverOffer {
   id: string;
   requestId: string;
   driverId: string;
+  /** When the dispatch decision was recorded (field predates the
+   * assignment model — for `"assigned"` records it is the assignment
+   * time). */
   offeredAt: string;
   response: DriverOfferResponse;
+  /** When the decision resolved — set immediately for `"assigned"`. */
   respondedAt: string | null;
 }
 

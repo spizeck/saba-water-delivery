@@ -32,7 +32,7 @@ test.describe("driver collection and delivery", () => {
     await loginAs(page, "driver");
 
     await expect(
-      page.getByRole("heading", { name: "My deliveries (1)" }),
+      page.getByRole("heading", { name: "Assigned Deliveries (1)" }),
     ).toBeVisible();
     await expect(page.getByText("1 load (1,000 gallons)")).toBeVisible();
 

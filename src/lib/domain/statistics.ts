@@ -151,12 +151,17 @@ export interface DisputeMetrics {
   disputeRate: number | null; // percentage
 }
 
-export interface DispatchOfferMetrics {
-  offersSent: number;
-  accepted: number;
+export interface DispatchDecisionMetrics {
+  /** Total dispatch-decision ledger records in the period. */
+  decisions: number;
+  /** Automatic assignments made (includes legacy "accepted" records). */
+  assigned: number;
+  /** Driver declines/releases. */
   declined: number;
+  /** Records expired without driver action. */
   expired: number;
-  acceptanceRate: number | null; // percentage of responded offers accepted
+  /** Percentage of resolved records that were assignments. */
+  assignmentRate: number | null;
 }
 
 export interface FillStationMetrics {
@@ -185,7 +190,7 @@ export interface StatsData {
   drivers: DriverMetrics[];
   preferredDriver: PreferredDriverMetrics;
   disputes: DisputeMetrics;
-  dispatchOffers: DispatchOfferMetrics;
+  dispatchDecisions: DispatchDecisionMetrics;
   priorityTiming: PriorityTimingRow[];
   fillStations: FillStationMetrics[];
   meters: MeterMetrics[];
@@ -741,19 +746,20 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   };
 
   // ---------------------------------------------------------------------------
-  // Dispatch offer metrics (single-offer driver dispatch workflow)
+  // Dispatch decision metrics (assignment-on-visibility workflow, #123)
   // ---------------------------------------------------------------------------
   const offerAggregate = await getOfferAggregate(periodStart);
-  const responded = offerAggregate.accepted + offerAggregate.declined;
-  const dispatchOffers: DispatchOfferMetrics = {
-    offersSent: offerAggregate.offered,
-    accepted: offerAggregate.accepted,
+  // "assigned" is the current assignment outcome; "accepted" is the
+  // equivalent legacy outcome from the explicit-acceptance era.
+  const assignments = offerAggregate.assigned + offerAggregate.accepted;
+  const resolved = assignments + offerAggregate.declined;
+  const dispatchDecisions: DispatchDecisionMetrics = {
+    decisions: offerAggregate.offered,
+    assigned: assignments,
     declined: offerAggregate.declined,
     expired: offerAggregate.expired,
-    acceptanceRate:
-      responded > 0
-        ? Math.round((offerAggregate.accepted / responded) * 1000) / 10
-        : null,
+    assignmentRate:
+      resolved > 0 ? Math.round((assignments / resolved) * 1000) / 10 : null,
   };
 
   // ---------------------------------------------------------------------------
@@ -838,7 +844,7 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     drivers,
     preferredDriver,
     disputes,
-    dispatchOffers,
+    dispatchDecisions,
     priorityTiming,
     fillStations,
     meters,

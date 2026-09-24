@@ -200,16 +200,16 @@ driver to receive a run while offline or in cooldown. See
 
 ## Dispatch settings
 
-`/admin` includes dispatch-offer settings:
+`/admin` includes dispatch-decline settings:
 
-- **Maximum declines per day** — how many delivery offers a driver may
-  decline in one day before new offers pause for them. Default: 3.
+- **Maximum declines per day** — how many assigned deliveries a driver may
+  release in one day before new assignments pause for them. Default: 3.
 - **Decline cooldown hours** — how long that pause lasts once the
   limit is reached. Default: 1 hour.
 
 Reaching the cooldown never changes a driver's government eligibility
 and never affects a delivery they have already claimed — it only
-pauses new offers until the cooldown ends.
+pauses new assignments until the cooldown ends.
 
 The admin and dispatcher driver lists display each cooldown clearly as
 **"Cooldown until ..."** (if it ends later today) or **"Daily limit reached"**

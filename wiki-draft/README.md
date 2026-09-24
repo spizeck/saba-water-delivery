@@ -83,8 +83,9 @@ tracked in #59/#60/#62.
   [dispatchQueueCompare](https://github.com/spizeck/saba-water-delivery/blob/main/src/lib/domain/dispatchBatchSelection.ts)
   applies override rank only within those results. The
   [selector](https://github.com/spizeck/saba-water-delivery/blob/main/src/lib/domain/dispatchSelection.ts)
-  reuses valid pending offers, prioritizes a separately fetched hold
-  (query limit 1), and filters declines without fetching another page.
+  prioritizes a separately fetched hold (query limit 1) and filters
+  declines without fetching another page; assignment commits atomically
+  via `claimWaterRequest` before details are shown (issue #123).
   The escalation action sets rank 0 and releases a held request to available.
 - **Verification:** a synthetic, read-only experiment using the actual comparator
   and selector with the observed query order/limit modeled in memory produced

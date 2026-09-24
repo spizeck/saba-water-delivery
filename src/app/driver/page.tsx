@@ -4,14 +4,13 @@ import { PortalHeader } from "@/components/layout/PortalHeader";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
-import { getNextOfferForDriver } from "@/lib/domain/dispatch";
+import { assignNextDeliveryForDriver } from "@/lib/domain/dispatch";
 import {
   getDriverByLinkedUserId,
   getMeterAssignments,
   reconcileActiveRequestByUserId,
 } from "@/lib/domain/driverRegistry";
 import { getFillStations } from "@/lib/domain/fillStations";
-import type { WaterRequest } from "@/lib/domain/types";
 import { getUserProfile } from "@/lib/domain/users";
 import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
 import {
@@ -22,7 +21,6 @@ import {
 
 import { AvailabilityToggle } from "./AvailabilityToggle";
 import { ClaimedDeliveries } from "./ClaimedDeliveries";
-import { OfferCard } from "./OfferCard";
 
 export const metadata: Metadata = {
   title: "Driver — Saba Water Delivery",
@@ -33,28 +31,6 @@ function isCooldownActive(cooldownUntil: string | null, now: Date): boolean {
   return (
     cooldownUntil !== null && new Date(cooldownUntil).getTime() > now.getTime()
   );
-}
-
-/**
- * Resolves display info for the customer on a request. Prefers the
- * request's own customer snapshot (present on all new requests,
- * registered or unregistered) and only falls back to a live profile
- * lookup for legacy requests that predate the snapshot field.
- */
-function resolveCustomerInfo(
-  request: WaterRequest,
-  profileMap: Record<string, { displayName: string; phone: string | null }>,
-): { displayName: string; phone: string | null } | null {
-  if (request.customer) {
-    return {
-      displayName: request.customer.displayName,
-      phone: request.customer.phone,
-    };
-  }
-  if (request.customerId) {
-    return profileMap[request.customerId] ?? null;
-  }
-  return null;
 }
 
 export default async function DriverPortalPage() {
@@ -102,28 +78,31 @@ export default async function DriverPortalPage() {
   );
   const isDailyCooldown =
     cooldownUntil !== null && cooldownUntil.getTime() >= endOfToday.getTime();
-  const canReceiveOffers = isOnline && isEligible && !inCooldown;
+  const canReceiveAssignments = isOnline && isEligible && !inCooldown;
 
-  // Fetch the driver's active deliveries first; if they already have one,
-  // skip the offer query to avoid an unnecessary read. getNextOfferForDriver
-  // still enforces the same rule independently.
+  // Assignment-on-visibility (issue #123): for an eligible, online driver
+  // the next delivery is CLAIMED atomically before anything renders — the
+  // request stops being dispatchable the moment its details can reach the
+  // page. `assignNextDeliveryForDriver` is idempotent (an existing
+  // assignment is returned unchanged) and re-checks eligibility, online
+  // state, cooldown, and the active-delivery lock transactionally.
   const [claimedDeliveries, fillStations, driverMeters] = await Promise.all([
     getClaimedRequestsForDriver(uid),
     getFillStations(),
     getMeterAssignments(driverEntry.id),
   ]);
-  const nextOffer =
-    canReceiveOffers && claimedDeliveries.length === 0
-      ? await getNextOfferForDriver(uid)
-      : null;
+  const deliveries = [...claimedDeliveries];
+  if (canReceiveAssignments && deliveries.length === 0) {
+    const assigned = await assignNextDeliveryForDriver(uid);
+    if (assigned) deliveries.push(assigned);
+  }
 
   // Fetch customer info for legacy requests only (those without a
   // customer snapshot). Unregistered customers have no `users/{uid}`
   // document and always carry a snapshot, so they never need this.
-  const requestsNeedingLookup = [
-    ...claimedDeliveries,
-    ...(nextOffer ? [nextOffer.request] : []),
-  ].filter((r) => !r.customer && r.customerId);
+  const requestsNeedingLookup = deliveries.filter(
+    (r) => !r.customer && r.customerId,
+  );
   const legacyCustomerIds = [
     ...new Set(requestsNeedingLookup.map((r) => r.customerId as string)),
   ];
@@ -167,7 +146,7 @@ export default async function DriverPortalPage() {
                   {isEligible &&
                     !inCooldown &&
                     isOnline &&
-                    "You are online and receiving offers."}
+                    "You are online. The next delivery may be assigned to you immediately."}
                   {isEligible && !inCooldown && !isOnline && "You are offline."}
                 </p>
               </div>
@@ -227,33 +206,22 @@ export default async function DriverPortalPage() {
                 </p>
                 <p className="mt-1 text-sm text-amber-800">
                   {isDailyCooldown
-                    ? `You have reached today’s decline limit and are offline for the rest of the day. You can receive offers again on ${formatSabaDate(cooldownUntil)}.`
+                    ? `You have reached today’s decline limit and are offline for the rest of the day. You can receive deliveries again on ${formatSabaDate(cooldownUntil)}.`
                     : `You have reached the decline limit. You are offline until ${formatSabaTime(cooldownUntil)}.`}
                 </p>
               </div>
             )}
           </Card>
 
-          {/* Claimed deliveries (always shown if any exist) */}
+          {/* Assigned deliveries (always shown if any exist) */}
           <ClaimedDeliveries
-            deliveries={claimedDeliveries}
+            deliveries={deliveries}
             customerInfo={customerInfoMap}
             stations={fillStations}
             meters={driverMeters}
           />
 
-          {/* Current dispatch offer (only when eligible, online, and not in cooldown) */}
-          {canReceiveOffers && nextOffer && (
-            <OfferCard
-              key={nextOffer.offer.id}
-              offer={nextOffer.offer}
-              request={nextOffer.request}
-              customer={resolveCustomerInfo(nextOffer.request, customerInfoMap)}
-              driverId={uid}
-            />
-          )}
-
-          {canReceiveOffers && !nextOffer && claimedDeliveries.length > 0 && (
+          {canReceiveAssignments && deliveries.length > 0 && (
             <Card>
               <h2 className="text-lg font-bold text-slate-900">
                 Next Delivery
@@ -264,7 +232,7 @@ export default async function DriverPortalPage() {
             </Card>
           )}
 
-          {canReceiveOffers && !nextOffer && claimedDeliveries.length === 0 && (
+          {canReceiveAssignments && deliveries.length === 0 && (
             <Card>
               <h2 className="text-lg font-bold text-slate-900">
                 Next Delivery
@@ -278,7 +246,7 @@ export default async function DriverPortalPage() {
           {isEligible && !isOnline && !inCooldown && (
             <Card>
               <p className="text-sm text-slate-600">
-                You are offline. Go online to receive delivery offers.
+                You are offline. Go online to receive a delivery assignment.
               </p>
             </Card>
           )}

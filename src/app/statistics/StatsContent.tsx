@@ -160,25 +160,26 @@ export function StatsContent({ stats }: StatsContentProps) {
       {/* Preferred driver */}
       <PreferredDriverSection metrics={stats.preferredDriver} />
 
-      {/* Dispatch offers */}
+      {/* Dispatch decisions */}
       <Card>
-        <h2 className="text-lg font-bold text-slate-900">Dispatch Offers</h2>
+        <h2 className="text-lg font-bold text-slate-900">Dispatch Decisions</h2>
         <p className="mt-1 text-xs text-slate-500">
-          One-request-at-a-time driver offers, accept/decline outcomes
+          One-request-at-a-time automatic driver assignments and driver
+          declines/releases
         </p>
         <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatItem
-            label="Offers Sent"
-            value={stats.dispatchOffers.offersSent}
+            label="Decisions"
+            value={stats.dispatchDecisions.decisions}
           />
-          <StatItem label="Accepted" value={stats.dispatchOffers.accepted} />
-          <StatItem label="Declined" value={stats.dispatchOffers.declined} />
+          <StatItem label="Assigned" value={stats.dispatchDecisions.assigned} />
+          <StatItem label="Declined" value={stats.dispatchDecisions.declined} />
           <StatItem
-            label="Acceptance Rate"
+            label="Assignment Rate"
             value={
-              stats.dispatchOffers.acceptanceRate === null
+              stats.dispatchDecisions.assignmentRate === null
                 ? "—"
-                : `${stats.dispatchOffers.acceptanceRate}%`
+                : `${stats.dispatchDecisions.assignmentRate}%`
             }
           />
         </div>

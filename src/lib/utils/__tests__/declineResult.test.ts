@@ -12,7 +12,7 @@ describe("decline result messaging", () => {
       cooldownUntil: null,
     });
     expect(message).toBe(
-      "Load declined. Another offer will appear when available.",
+      "Delivery released. It has been returned to dispatch for another driver.",
     );
   });
 

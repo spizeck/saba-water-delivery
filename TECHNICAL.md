@@ -352,14 +352,14 @@ deliberate:
 
 - **`driverRegistry` document ID** — identifies the driver as a
   government entity, for admin/meter/eligibility management. Never
-  stored on a water request or offer.
+  stored on a water request or dispatch record.
 - **Firebase uid of the linked account** — identifies the driver as an
   authenticated actor. This is what `waterRequests.assignedDriverId`,
   `waterRequests.preferredDriverId`, and `driverOffers.driverId` store,
   unchanged from before the registry existed.
 
-Rationale: every operational action (receiving an offer, accepting,
-declining, claiming, marking delivered) inherently requires an
+Rationale: every operational action (receiving an assignment, releasing,
+claiming, marking delivered) inherently requires an
 authenticated session, so the uid is the only identifier available at
 that point anyway. Introducing the registry ID as a second, competing
 identifier for the same operational fields would require a lookup table
@@ -545,20 +545,26 @@ photos for a request. Multiple photos per request are supported.
   driverId: string
 
   offeredAt: Timestamp
-  response: "accepted" | "declined" | "expired" | null
+  response: "assigned" | "accepted" | "declined" | "expired" | null
   respondedAt: Timestamp | null
 }
 ```
 
-Records one instance of a single request being offered to a single
-driver as part of the one-request-at-a-time dispatch workflow (see
-"Dispatch Offers" below). Documents are append-only — a decline or
-expiration is never overwritten, so full offer history is preserved for
-auditing and statistics.
+The append-only dispatch-decision ledger — one record per dispatch
+decision about a (driver, request) pair in the one-request-at-a-time
+workflow (see "Dispatch Assignment" below). A decline or expiration is
+never overwritten, so full decision history is preserved for auditing
+and statistics.
 
-`response: null` means the offer is still pending. `"expired"` means the
-offer was superseded before the driver responded (e.g. another driver
-claimed the request first, or it was cancelled/reassigned).
+Since issue #123 (assignment-on-visibility) there are no pending records:
+`"assigned"` is written already resolved inside the `claimWaterRequest()`
+transaction — the assignment exists before the driver can see the
+delivery. `"declined"` records a driver releasing an assignment
+(`releaseAssignedDelivery()`). `"expired"` means the record was resolved
+without any driver action — e.g. a legacy pending offer retired during
+post-#123 reconciliation. `"accepted"` and `null` (pending) are legacy
+states only — never written by current code; surviving `null` documents
+are expired on sight by `expirePendingOffersForDriver()`.
 
 ## config/dispatchSettings
 
@@ -571,7 +577,7 @@ claimed the request first, or it was cancelled/reassigned).
 }
 ```
 
-Admin-editable dispatch settings (see "Dispatch Offers" below). If this
+Admin-editable dispatch settings (see "Dispatch Assignment" below). If this
 document does not exist yet, the application falls back to
 `appConfig.defaultMaxDeclinesPerDay` / `defaultDeclineCooldownHours`
 (`src/lib/domain/config.ts`) without writing anything — the document is
@@ -611,6 +617,7 @@ preferred_driver_expired
 preferred_driver_declined
 request_opened
 driver_claimed
+driver_released
 driver_reassigned
 marked_delivered
 customer_confirmed
@@ -633,7 +640,7 @@ never disguise a staff-initiated action as the customer's own (see
 
 Driver events (`driverRegistry/{driverId}/events/{eventId}`) additionally
 include `driver_cooldown_started`, recorded when a driver reaches the daily
-decline limit (see "Dispatch Offers" below).
+decline limit (see "Dispatch Assignment" below).
 
 Preserve events for auditing and statistics.
 
@@ -678,10 +685,11 @@ the claim. This single-document lock serializes all assignment and release
 operations for a driver.
 
 `claimWaterRequest()` remains the single source of atomic-claim
-correctness. The dispatch offer workflow below is a UI/bookkeeping layer
-built on top of it, not a replacement for it — an offer never reserves a
-request, so `claimWaterRequest()` must still validate live request state
-at accept time.
+correctness. The dispatch-assignment workflow below (`dispatch.ts`) calls
+it directly — since issue #123 there is no separate "offer" step at all:
+the claim transaction runs before a driver can ever see the request's
+details, and the `driverOffers` ledger record is written inside the same
+transaction via `additionalWrites`.
 
 ## Stale activeRequestId reconciliation
 
@@ -705,8 +713,7 @@ Pure validation logic is in `src/lib/domain/activeRequestValidation.ts`
 
 **Call sites** — reconciliation runs before:
 - Rendering the driver portal (`src/app/driver/page.tsx`)
-- Selecting the next offer (`getNextOfferForDriver` in `dispatch.ts`)
-- Accepting an offer (`acceptOffer` in `src/app/driver/actions.ts`)
+- Automatic assignment (`assignNextDeliveryForDriver` in `dispatch.ts`)
 - Dispatcher assignment (`assignRequest` / `reassignRequest` in
   `src/app/dispatcher/actions.ts`)
 - Determining driver immediate availability (`isDriverImmediatelyAvailable`)
@@ -718,63 +725,95 @@ self-healing is required regardless; the script is for one-time cleanup.
 
 ---
 
-# Dispatch Offers
+# Dispatch Assignment
 
-Drivers do not browse a list of open requests. Instead, an eligible,
-online driver is shown at most one claimable offer at a time
-(`src/lib/domain/dispatch.ts`, `getNextOfferForDriver()`). This reduces
-cherry-picking (see PRODUCT.md "Dispatch Offers").
+Drivers do not browse a list of open requests, and they are never shown a
+delivery before it belongs to them. Instead, an eligible, online driver
+receives at most one **automatic assignment** at a time
+(`src/lib/domain/dispatch.ts`, `assignNextDeliveryForDriver()`), which
+reduces cherry-picking (see PRODUCT.md "Dispatch Assignment").
 
-## Selection algorithm
+**Assignment-on-visibility (issue #123):** selecting the next request and
+claiming it are the same operation. The canonical trigger is the driver
+portal render (`/driver`) — `assignNextDeliveryForDriver()` runs during
+the server render for a linked, eligible, online, non-cooldown driver and
+returns only a request that `claimWaterRequest()` has already claimed
+atomically. A driver who can see a delivery's full details therefore
+ALWAYS owns it: the request left `available` before the details were ever
+rendered. There is no "Accept" step and no offer lease, and **closing the
+app never releases an assignment** — only `releaseAssignedDelivery()`,
+a staff workflow, or completing the delivery can end it. This replaces
+the earlier pending-offer model, in which full details were displayed
+while the request was still `available` — the mechanism behind real
+double deliveries.
 
-1. If the driver already has a request in `claimed` status, return no
-   offer. They are online but temporarily unavailable for a second
-   delivery until the current one is marked delivered.
-2. If the driver has a pending (unanswered) offer whose underlying
-   request is still valid to offer to them, reuse it — reloading the
-   driver portal must not manufacture a new offer while one is pending.
-   Otherwise mark the stale offer `"expired"`.
-3. Opportunistically expire any preferred-driver holds whose window has
-   passed (mirrors the previous lazy-expiration behavior, so the general
-   queue stays healthy without a scheduled job).
-4. Select a candidate:
-   - A `preferred_driver_hold` addressed to this driver, if not expired.
-   - Otherwise, the first eligible `available` request in canonical order
-     from the paginated candidate scan described below, skipping recently
-     declined requests.
-5. Create a `driverOffers` document for the candidate and return it.
+## Assignment algorithm
 
-## Accept / decline
+`assignNextDeliveryForDriver(driverId)`:
 
-- **Accept** (`acceptDriverOffer()`) delegates to `claimWaterRequest()`.
-  On success the offer is recorded `"accepted"`. On failure (someone else
-  claimed it first, hold expired, etc.) the offer is recorded `"expired"`
-  — not `"declined"` — since this was not the driver's choice, and the
-  original error propagates to the caller.
-- **Decline** (`declineDriverOffer()`) records `"declined"` and does
-  **not** claim the request; it remains available at its original
-  `requestedAt` for another driver. If the declined offer was a
-  preferred-driver hold addressed to this driver, the hold ends
-  immediately (transitions to `available`, preserving `requestedAt`) and
-  a `preferred_driver_declined` event is recorded, rather than waiting
-  for the hold window to expire.
+1. Returns early unless the driver's registry entry is linked, not
+   archived, `eligible`, `online`, and not in cooldown. `claimWaterRequest()`
+   re-enforces eligibility/online/cooldown transactionally.
+2. Reconciles a stale `activeRequestId` lock.
+3. Expires any legacy pending (`response == null`) `driverOffers`
+   records for the driver — the deployment reconciliation for pre-#123
+   offers; idempotent and touches only ledger records.
+4. If the driver already holds claimed work, returns the existing
+   non-delivery-run assignment (idempotent refresh/reopen), or null when
+   only delivery-run loads are claimed — a driver is never auto-assigned
+   a second delivery on top of a run.
+5. Otherwise, in a bounded loop (`MAX_ASSIGNMENT_ATTEMPTS = 5`):
+   - selects the next candidate in canonical order (see below),
+   - calls `claimWaterRequest()` with `additionalWrites` that create the
+     `driverOffers` `"assigned"` ledger record inside the SAME
+     transaction, plus `assignmentMode: "automatic"` on the
+     `driver_claimed` audit event,
+   - on a lost race (`ALREADY_CLAIMED`, `REQUEST_NOT_CLAIMABLE`,
+     `HOLD_EXPIRED`, `PREFERRED_DRIVER_RESTRICTION`, `REQUEST_NOT_FOUND`)
+     re-scans committed state and tries the NEXT candidate — a lost race
+     never returns "nothing available" while other work remains,
+   - on a driver-state failure (`DRIVER_*`) stops and returns whatever
+     assignment committed in the meantime, if any.
+6. Before candidate selection, opportunistically expires any
+   preferred-driver holds whose window has passed (lazy-expiration, so
+   the general queue stays healthy without a scheduled job).
 
-## Decline limit and cooldown
+Candidate order (unchanged from the offer model): a `preferred_driver_hold`
+addressed to this driver, if not expired; otherwise the first eligible
+`available` request in canonical order from the paginated candidate scan
+described below, skipping requests the driver recently declined/released.
 
-The decline path uses a single Firestore transaction in `declineDriverOffer()`:
-it records the offer as `"declined"`, expires any duplicate pending offers
-for the same request, releases an active preferred-driver hold if
-applicable, counts the driver's declines for the current local day, and,
-if the configured `config/dispatchSettings.maxDeclinesPerDay` (default 3) is
-reached, updates `driverRegistry/{driverId}.cooldownUntil` to
-`now + declineCooldownHours` (default 1 hour) and records a
-`driver_cooldown_started` driver event.
+## Release (decline)
 
-`declineDriverOffer()` returns a `DeclineDriverOfferResult`:
+**Release** (`releaseAssignedDelivery({requestId, driverId})`) is the
+driver's explicit "I will not make this delivery" action — the post-#123
+successor to declining a pending offer. A single Firestore transaction:
+
+1. Verifies the request is still `claimed`, still assigned to the caller,
+   not part of a delivery run (`DELIVERY_RUN_MANAGED`), and has no
+   recorded water collection (`REQUEST_HAS_COLLECTIONS`) — a stale
+   browser can never release delivered, cancelled, or reassigned work.
+2. Returns the request to `available`, clearing `assignedDriverId`,
+   `claimedAt`, and the preferred-driver fields (same as the staff
+   return-to-queue path), while preserving `requestedAt` and
+   `dispatchPriority`/`dispatchOverrideRank` — the customer keeps their
+   queue position and priority.
+3. Clears `driverRegistry.activeRequestId` only when it still points at
+   this request.
+4. Appends a `"declined"` ledger record and expires any leftover pending
+   records for the pair.
+5. Records a `driver_released` request event (`actorRole: "driver"`).
+6. Applies the decline policy exactly once: counts today's declines and,
+   if `config/dispatchSettings.maxDeclinesPerDay` (default 3) is reached,
+   sets `driverRegistry/{driverId}.cooldownUntil` to
+   `now + declineCooldownHours` (default 1 hour) and records a
+   `driver_cooldown_started` driver event.
+
+`releaseAssignedDelivery()` returns a `ReleaseAssignedDeliveryResult`:
 
 ```text
 {
-  declined: true,
+  released: true,
   availabilityStatus: "available" | "cooldown" | "daily_limit",
   cooldownUntil: string | null,
   declineCount: number,
@@ -787,7 +826,7 @@ to the end of the current Saba-local day: if it extends past the end of the
 day, it is `"daily_limit"`; otherwise it is `"cooldown"`. This lets the UI
 show the correct message without hard-coding "1 hour" or "tomorrow".
 `countDeclinesToday()` exists in `driverOffers.ts` for read-only queries, but
-the authoritative counting is performed inside the decline transaction.
+the authoritative counting is performed inside the release transaction.
 
 Both count the same way — `driverId ==`, `response == "declined"`,
 `respondedAt >= lookback` — and both run with **no explicit `orderBy`**.
@@ -802,10 +841,11 @@ by the index contract test.
 `cooldownUntil` is intentionally separate from `eligibilityStatus`
 (government authorization) and `availabilityStatus` (the driver's own
 online/offline preference) — see PRODUCT.md "Driver Availability" and
-"Dispatch Offers". While in cooldown:
+"Dispatch Assignment". While in cooldown:
 
-- The driver receives no new offers (`getNextOfferForDriver()` prerequisite,
-  enforced by the caller in `src/app/driver/page.tsx`).
+- The driver receives no new assignments (`assignNextDeliveryForDriver()`
+  returns early, and `claimWaterRequest()` also rejects with
+  `DRIVER_IN_COOLDOWN` if a cooldown begins mid-pass).
 - `setAvailabilityByLinkedUser()` rejects a transition to `"online"` with
   `DRIVER_IN_COOLDOWN` and includes the `cooldownUntil` ISO timestamp and a
   boolean `isDailyLimit` flag. The action maps this to a driver-facing
@@ -829,12 +869,12 @@ This avoids having to compute an exact UTC instant for local midnight and
 remains correct even if the timezone ever changes to one that observes
 DST.
 
-## Avoiding re-offer loops
+## Avoiding re-assignment loops
 
 `getDeclinedRequestIdsForDriver()` excludes requests a driver has already
-declined from being selected as their next offer again, bounded to a
-recent window of their own decline history — enough to prevent obvious
-loops without an unbounded read.
+released from being assigned to them again, bounded to a recent window of
+their own decline history — enough to prevent obvious loops without an
+unbounded read.
 
 ---
 
@@ -890,10 +930,10 @@ side initiated the cancellation. Metadata carries only
 No extra cleanup is needed downstream: a resident-cancellable request
 has no assigned driver (so no `activeRequestId` lock to clear) and no
 run membership by definition, and every downstream consumer already
-filters on status — offer selection queries `available` /
-`preferred_driver_hold` only (a stale pending offer for the cancelled
-request is lazily expired by `getNextOfferForDriver()`), batch
-eligibility is `BATCH_ELIGIBLE_STATUSES`, and `ACTIVE_STATUSES`
+filters on status — assignment selection queries `available` /
+`preferred_driver_hold` only (a stale pending ledger record for the
+cancelled request is lazily expired by `assignNextDeliveryForDriver()`),
+batch eligibility is `BATCH_ELIGIBLE_STATUSES`, and `ACTIVE_STATUSES`
 excludes `cancelled`, freeing the resident's one-active-request slot
 immediately.
 
@@ -1026,10 +1066,10 @@ untouched too). This works cleanly with the EXISTING code, unmodified:
   or being singly-assigned a second request whenever they hold ANY
   claimed request, batch-assigned or not — with zero changes needed to
   those functions.
-- `getNextOfferForDriver()` (`dispatch.ts`) calls
+- `assignNextDeliveryForDriver()` (`dispatch.ts`) calls
   `getClaimedRequestsForDriver()`, which queries `assignedDriverId +
   status == "claimed"` directly — not `activeRequestId` — so a driver
-  holding batch-assigned claimed loads is already correctly offered
+  holding batch-assigned claimed loads is already correctly assigned
   nothing further, again with zero changes needed.
 
 The one thing that DID need to change: several functions previously
@@ -1303,28 +1343,32 @@ numeric `priorityRank` (`priorityRankFor()` in `priority.ts`: critical =
 written (`createWaterRequest()`, `changeRequestPriority()`). The batch
 candidate query `orderBy("priorityRank", "asc")` first, then
 `orderBy("requestedAt", "asc")` — see `firestore.indexes.json` for the
-composite indexes this requires. Driver-offer selection deliberately does
+composite indexes this requires. Automatic-assignment selection
+deliberately does
 **not** trust `priorityRank`: `dispatchQueueCompare` buckets by
 `priorityRankFor(request.dispatchPriority)`, so the candidate scan keys
 its priority buckets on `dispatchPriority` itself and treats a missing or
 stale `priorityRank` as irrelevant (see "Canonical candidate scan").
 
-## Dispatch offer selection
+## Dispatch assignment selection
 
 The canonical queue comparator, `dispatchQueueCompare`, orders by
 priority category, then `dispatchOverrideRank` (lower first, null last), then
-original `requestedAt`. The offer-selection query path applies that same order
-over the **complete** eligible queue — not a bounded pre-filter window.
+original `requestedAt`. The assignment-selection query path applies that same
+order over the **complete** eligible queue — not a bounded pre-filter window.
 
-`getNextOfferForDriver()` (`src/lib/domain/dispatch.ts`) currently:
+`assignNextDeliveryForDriver()` (`src/lib/domain/dispatch.ts`) currently:
 
-1. Rejects new work while claimed work exists and retains a still-valid pending
-   offer (subject to decline exclusion); pending offers are not preempted by
-   later escalation, and no queue reads happen while one is reusable.
+1. Returns the driver's existing assignment immediately when claimed work
+   exists — an idempotent refresh never manufactures a second assignment,
+   and legacy pending ledger records are expired on every pass.
 2. Scans holds addressed to the driver in canonical order and takes the first
-   offerable one.
+   assignable one.
 3. Otherwise scans `status == available` in canonical order and takes the first
-   candidate that is offerable and not recently declined by this driver.
+   candidate that is assignable and not recently declined by this driver.
+4. Claims the selected candidate atomically via `claimWaterRequest()`; a
+   lost race re-enters selection for the next candidate (bounded by
+   `MAX_ASSIGNMENT_ATTEMPTS`).
 
 ## Canonical candidate scan (issue #66)
 
@@ -1362,7 +1406,7 @@ Pagination uses `startAfter(document)` cursors (no offsets, no duplicates or
 skips within a stream). Reads are lazy — only as many pages as the scan
 consumes — and bounded by `MAX_CANDIDATE_DOCS` (1000) documents per selection
 attempt across all streams. If the bound is reached with candidates still
-unread, selection returns no offer **and** logs a `warn`-level
+unread, selection returns no assignment **and** logs a `warn`-level
 `dispatch.candidate_scan_exhausted` structured event (counts only — no request
 IDs or customer data), so an inconclusive result is observable rather than
 silent. The bound is a safety stop for pathological queues, far beyond Saba's
@@ -1379,9 +1423,11 @@ Delivery Run selection is a separate path: `getBatchEligibleRequests()` has no
 candidate-window limit, and the new-run page sorts its fetched eligible
 list with `sortForBatchSelection`.
 
-Selection remains advisory: offers are non-reservations, and the atomic claim
-transaction in `claimWaterRequest()` is still the sole authority on claim
-correctness under concurrent acceptance.
+Selection remains advisory: a scanned candidate is NOT a reservation, and
+the atomic claim transaction in `claimWaterRequest()` is the sole
+authority on assignment correctness under concurrent assignment attempts
+(issue #123 — a driver only ever sees a request after that transaction
+has committed).
 
 ## Preferred driver vs. priority
 
@@ -1407,9 +1453,10 @@ the single check used everywhere this distinction matters:
   hold is left alone (not delaying anything). If not,
   `preferred_driver_hold_released_for_priority` transitions the request
   straight to `"available"`, preserving `requestedAt`.
-- **Decline** (existing behavior, unchanged): `declineDriverOffer()`
-  still ends a hold immediately regardless of priority — an active
-  decline is always decisive.
+- **Release** (issue #123): `releaseAssignedDelivery()` ends a hold's
+  assignment immediately regardless of priority — a driver release is
+  always decisive. The request returns to `available` with the preferred
+  fields cleared, matching the staff return-to-queue behavior.
 
 ## Dispatcher priority override
 
@@ -1432,8 +1479,8 @@ behind the "Change priority" panel on `/dispatcher/[requestId]`
 ## Privacy
 
 Drivers only ever see the priority LEVEL (e.g. an "Urgent
-delivery"/"Critical delivery" badge in `OfferCard.tsx` /
-`ClaimedDeliveries.tsx`), never the underlying `waterSituation` detail —
+delivery"/"Critical delivery" badge in `ClaimedDeliveries.tsx`),
+never the underlying `waterSituation` detail —
 see PRODUCT.md "Water Situation Privacy". `/viewer` includes
 `dispatchPriority` in its reduced projection (operational, not
 sensitive) but not `waterSituation`. Dispatcher/admin see the full
@@ -1532,8 +1579,8 @@ over a live profile lookup.
 
 A dispatcher-created request is a normal `waterRequests` document like
 any other — preferred-driver hold/decline, the canonical candidate scan
-described in [Dispatch offer selection](#dispatch-offer-selection),
-one-offer-at-a-time driver dispatch, atomic claiming, delivery, dispute,
+described in [Dispatch assignment selection](#dispatch-assignment-selection),
+one-assignment-at-a-time driver dispatch, atomic claiming, delivery, dispute,
 reassignment, cancellation, and statistics all operate on it identically.
 No driver-facing code branches on `source`.
 
@@ -1942,7 +1989,7 @@ These are deliberately independent concerns:
   request `delivered`. `markWaterDelivered()` clears
   `driverRegistry.activeRequestId` in the same transaction that sets
   `status: "delivered"`, so the driver can immediately receive another
-  offer (see "Request Claiming" above and "Dispatch Offers").
+  assignment (see "Request Claiming" above and "Dispatch Assignment").
 - **Customer confirmation** — a separate, resident-facing 24-hour
   window (`appConfig.deliveryConfirmationWindowHours`,
   `src/lib/domain/config.ts`) during which the resident may confirm or
@@ -2202,9 +2249,8 @@ disputeWaterDelivery()
 checkDeliveryConfirmationTimeout()
 cancelWaterRequest()
 expirePreferredDriverHold()
-getNextOfferForDriver()
-acceptDriverOffer()
-declineDriverOffer()
+assignNextDeliveryForDriver()
+releaseAssignedDelivery()
 getDispatchSettings()
 updateDispatchSettings()
 findActiveRequestsByPhone()
@@ -2302,10 +2348,10 @@ Residents should only access appropriate customer-facing data, primarily their o
 
 Drivers should only access data necessary for:
 
-- Their currently offered request (dispatch offer), not a browsable list
+- Their currently assigned delivery, not a browsable list
   of all open requests
 - Their claimed deliveries
-- Their own driver profile/history and offer history
+- Their own driver profile/history and dispatch-decision history
 
 Dispatchers should have operational access.
 
@@ -3728,8 +3774,8 @@ HELP
 
 Do not implement these until explicitly requested. As with resident
 ordering, they must call the exact same domain functions as the driver
-web portal (`getNextOfferForDriver`, `acceptDriverOffer`,
-`declineDriverOffer`, `markWaterDelivered`, etc.) — never a parallel
+web portal (`assignNextDeliveryForDriver`, `releaseAssignedDelivery`,
+`markWaterDelivered`, etc.) — never a parallel
 implementation. Continue to never store authoritative application state
 inside a WhatsApp conversation session; `whatsappSessions` remains
 conversation scratch state only.

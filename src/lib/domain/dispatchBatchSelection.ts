@@ -44,7 +44,7 @@ export const BATCH_ELIGIBLE_STATUSES: WaterRequestStatus[] = [
  * Sort key for the dispatch queue. Lower `dispatchOverrideRank` values
  * sort ahead of higher ones (and ahead of nulls) within the same
  * dispatch priority, while `requestedAt` is never modified. This is
- * the same ordering used by `getNextOfferForDriver` so batch selection
+ * the same ordering used by `assignNextDeliveryForDriver` so batch selection
  * and normal dispatch stay aligned.
  */
 export function dispatchQueueCompare(a: WaterRequest, b: WaterRequest): number {

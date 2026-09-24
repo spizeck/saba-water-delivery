@@ -12,5 +12,8 @@ export default defineConfig({
     // not contend with the rules tests on the shared emulator and cause
     // spurious timeouts.
     fileParallelism: false,
+    // The emulator serializes transactions pessimistically; concurrent tests
+    // routinely exceed the 10s default under lock contention.
+    testTimeout: 30_000,
   },
 });

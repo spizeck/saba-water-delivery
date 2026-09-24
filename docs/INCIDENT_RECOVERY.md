@@ -128,7 +128,8 @@ offers or being assigned by a dispatcher.
 
 **Runtime self-healing:** The application automatically detects and
 clears stale locks before rendering the driver portal, selecting an
-offer, accepting a delivery, and processing a dispatcher assignment.
+assignment candidate, claiming a delivery, and processing a dispatcher
+assignment.
 When a stale lock is cleared, a `stale_active_request_cleared` event is
 recorded on the driver registry with the stale request ID and reason.
 

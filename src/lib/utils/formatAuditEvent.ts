@@ -80,6 +80,7 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
   preferred_driver_declined: "Preferred driver declined",
   request_opened: "Opened to queue",
   driver_claimed: "Driver claimed",
+  driver_released: "Delivery released by driver",
   marked_delivered: "Marked delivered",
   customer_confirmed: "Customer confirmed",
   delivery_confirmed_by_dispatcher: "Delivery confirmed by staff",
@@ -282,13 +283,25 @@ const REQUEST_EVENT_FORMATTERS: Record<
   request_opened: () => "",
 
   driver_claimed: (m, o) => {
+    const parts: (string | null)[] = [];
+    if (m.assignmentMode === "automatic") {
+      parts.push("Assigned automatically on driver portal load");
+    }
     // The actor line already shows who claimed, but if there's a specific
     // driverId in metadata that differs from actorId, show it
     if (m.driverId && m.driverId !== o.actorId) {
       const name = resolveName(m.driverId, o);
-      if (name) return `Driver: ${name}`;
+      if (name) parts.push(`Driver: ${name}`);
     }
-    return "";
+    return join(parts);
+  },
+
+  driver_released: (m) => {
+    const parts: (string | null)[] = [];
+    if (m.previousStatus)
+      parts.push(`Previous status: ${capitalize(String(m.previousStatus))}`);
+    parts.push("Returned to dispatch queue");
+    return join(parts);
   },
 
   marked_delivered: () => "",

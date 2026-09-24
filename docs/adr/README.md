@@ -98,6 +98,7 @@ original date is uncertain the ADR says so.
 | [0018](./0018-account-merge-auth-reconciliation.md)          | Durable account-merge Firebase Auth reconciliation                 | Accepted |
 | [0019](./0019-production-error-monitoring-sentry.md)         | Production exception monitoring via Sentry                         | Accepted |
 | [0020](./0020-scheduled-operation-heartbeat-monitoring.md)   | Scheduled-operation heartbeat monitoring                           | Accepted |
+| [0021](./0021-assignment-on-visibility-dispatch.md)          | Assignment-on-visibility dispatch (issue #123)                     | Accepted |
 
 ## Especially dangerous assumptions preserved here
 
@@ -110,6 +111,9 @@ linked ADR first:
 - **Deny-all client rules are not a production server write freeze** ([0003](./0003-server-authoritative-mutation-model.md)).
 - **Delivery Runs intentionally break** the "every claimed request equals the
   driver's `activeRequestId`" assumption ([0008](./0008-delivery-runs-batch-dispatch-exception.md)).
+- **A driver never sees delivery details before the claim commits** — there is
+  no pending-offer or displayed-but-unclaimed state; do not reintroduce one
+  ([0021](./0021-assignment-on-visibility-dispatch.md)).
 - A **`delivered` request awaiting resident confirmation is not active physical
   driver work** ([0009](./0009-delivery-completion-and-resident-confirmation.md)).
 - **Email/WhatsApp failures must not reverse committed delivery state** ([0011](./0011-external-integration-failure-model.md)).
