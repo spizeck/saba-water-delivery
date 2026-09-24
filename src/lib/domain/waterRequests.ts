@@ -28,6 +28,7 @@ import {
   isDriverImmediatelyAvailable,
   getMeterAssignments,
 } from "./driverRegistry";
+import { isValidEmail } from "./identityMatching";
 import { determineInitialDispatchPriority, priorityRankFor } from "./priority";
 import {
   normalizeRequestNotes,
@@ -1215,7 +1216,7 @@ export async function editWaterRequest(
 ): Promise<WaterRequest> {
   const { requestId, actorId } = input;
   const submittedEmail = input.customerEmail?.trim();
-  if (submittedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submittedEmail)) {
+  if (submittedEmail && !isValidEmail(submittedEmail)) {
     throw new Error("INVALID_CUSTOMER_EMAIL");
   }
   const db = getAdminDb();
