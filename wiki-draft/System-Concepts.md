@@ -12,9 +12,9 @@ Requests enter the queue, may spend time on a preferred-driver hold, become avai
 
 The canonical queue comparator considers Critical before Urgent before Normal. Within a category, explicit staff escalation ordering takes precedence; original request age resolves remaining ties and orders requests without overrides. A priority override changes the category. An escalation records a within-category rank. Neither rewrites the submitted time. This comparator is applied only to the candidates supplied to it: automatic offers first fetch up to 100 available requests by priority and original age. An escalation outside that set may therefore be missed in favor of older same-priority work. Existing valid offers and preferred-driver holds are handled separately. See [Known Limitations](Known-Limitations-and-Roadmap.md) for the follow-up.
 
-A preferred driver gets limited first access, normally up to 24 hours. For Urgent/Critical requests, the driver must be immediately available or the request opens to general dispatch. Decline or expiry releases the hold without resetting request age. A preference does not guarantee a particular driver or arrival time.
+A preferred driver gets limited first access, normally up to 24 hours. For Urgent/Critical requests, the driver must be immediately available or the request opens to general dispatch. Release or expiry ends the hold without resetting request age. A preference does not guarantee a particular driver or arrival time.
 
-Normal dispatch gives drivers one offer at a time, discouraging selection of only easy deliveries. An offer is not a reservation: acceptance checks whether the work is still available. Eligibility, chosen availability, and temporary decline cooldown are different conditions.
+Normal dispatch assigns drivers one delivery at a time, discouraging selection of only easy deliveries. The delivery shown to a driver is already atomically assigned to them (assignment-on-visibility, issue #123): there is no accept step, and closing the app does not release it. A driver who will not serve an assignment explicitly releases it. Eligibility, chosen availability, and temporary decline cooldown are different conditions.
 
 ## Delivery Runs and physical work
 

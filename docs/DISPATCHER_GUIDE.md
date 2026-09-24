@@ -24,9 +24,9 @@ drivers currently marked ineligible.
 The driver list shows each driver's current operational state so you can
 see who is available and who is working at a glance:
 
-- **Offline** — the driver is not currently available to receive offers.
+- **Offline** — the driver is not currently available to receive assignments.
 - **Online · Available** — the driver is online and has no active physical work.
-- **Online · Delivering** — the driver has a single, individually claimed delivery.
+- **Online · Delivering** — the driver has a single, assigned delivery.
   Click **View Request** to open the request detail page.
 - **Online · Delivery Run** — the driver has an active Delivery Run. The remaining
   deliveries and loads are shown (e.g. "3 deliveries remaining · 6 loads remaining").
@@ -129,8 +129,8 @@ claim the request for a limited window (24 hours by default). This is
 a preference, not a guarantee: if the preferred driver is offline,
 ineligible, in cooldown, or already on another delivery, an
 Urgent/Critical request skips the hold entirely and goes straight to
-the general queue rather than waiting. If the preferred driver
-declines, the hold ends immediately either way.
+the general queue rather than waiting. If the preferred driver releases
+the assigned request, the hold ends immediately either way.
 
 ## Escalating a request
 
@@ -141,10 +141,10 @@ override rank, then age. The current action sets rank 0, so included rank-0
 requests remain oldest-first among themselves; escalation never outranks a
 higher priority category.
 
-Automatic offers now apply the full queue ordering — escalation cannot be
+Automatic assignments now apply the full queue ordering — escalation cannot be
 hidden behind older non-escalated work no matter how large the backlog
 ([#66](https://github.com/spizeck/saba-water-delivery/issues/66)). An existing
-valid offer is still retained until resolved; escalation does not replace it.
+assignment is still retained until resolved; escalation does not replace it.
 
 ## Assignment and reassignment
 
@@ -203,7 +203,7 @@ phone or data connection is unreliable, or for a planned delivery
 route. The driver can use the app, or you can print a run sheet for
 them. This is a separate, deliberate tool from the normal driver
 dispatch flow; it does not change how individual drivers normally
-receive one offer at a time.
+receive one assignment at a time.
 
 ### Creating a delivery run
 
@@ -211,13 +211,13 @@ receive one offer at a time.
 2. **Choose a driver.** Only eligible, account-linked drivers appear.
    The driver does not need to be online, and being in a decline
    cooldown does not stop you from assigning them a run — this is a
-   deliberate override of the normal offer flow. Their online/offline
+   deliberate override of the normal assignment flow. Their online/offline
    and cooldown status, and whether they already have an active
    delivery, are shown so you can decide with full information.
 3. **Choose requests.** The list shows every outstanding request not yet
    claimed by anyone, in canonical comparator order (priority, then staff
    override rank, then original request age). This list does not share the
-   automatic-offer query's 100-request limit. Check as many as you need —
+   automatic-assignment query's 100-request limit. Check as many as you need —
    there is a generous maximum per run, shown on screen. Each request
    displays its quantity (e.g., 2 loads / 2,000 gallons) as one entry.
 4. If a request is held for a **different** resident's preferred driver,

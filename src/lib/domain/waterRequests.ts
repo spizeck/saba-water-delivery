@@ -360,12 +360,14 @@ export async function findActiveRequestsByPhone(
 // Queries — Driver dispatch
 // ---------------------------------------------------------------------------
 //
-// NOTE: Drivers no longer browse a list of open requests. The driver
-// portal shows at most one claimable offer at a time — see
-// src/lib/domain/dispatch.ts (`getNextOfferForDriver`), which selects a
-// single candidate request and records it as a `driverOffers` document.
-// This module only exposes the low-level request lookup/claim primitives
-// that the dispatch layer builds on.
+// NOTE: Drivers no longer browse a list of open requests, and (since
+// issue #123) are never shown a delivery before it is assigned to them.
+// The driver portal assigns at most one request at a time — see
+// src/lib/domain/dispatch.ts (`assignNextDeliveryForDriver`), which
+// selects a single candidate request and claims it atomically via
+// `claimWaterRequest` before any details are rendered. This module only
+// exposes the low-level request lookup/claim primitives that the
+// dispatch layer builds on.
 
 /**
  * Fetches a single water request by ID, or null if it does not exist.
@@ -775,6 +777,19 @@ export interface ClaimWaterRequestInput {
   driverId: string;
 }
 
+export interface ClaimWaterRequestOptions {
+  /** Extra metadata merged into the `driver_claimed` audit event (e.g.
+   * how the claim was initiated). */
+  claimEventMetadata?: Record<string, unknown>;
+  /**
+   * Extra writes committed atomically inside the claim transaction —
+   * e.g. the `driverOffers` dispatch record that automatic assignment
+   * creates (issue #123). Write-only: all transaction reads must already
+   * be staged, since Firestore requires reads before writes.
+   */
+  additionalWrites?: (txn: FirebaseFirestore.Transaction) => void;
+}
+
 /**
  * Atomically claims a water request for a driver.
  *
@@ -786,13 +801,18 @@ export interface ClaimWaterRequestInput {
  *
  * On success:
  *   - Sets assignedDriverId, status → "claimed", claimedAt, updatedAt.
+ *   - Sets the driver's `activeRequestId` lock.
  *   - Creates a "driver_claimed" audit event.
+ *   - Commits any `options.additionalWrites` (e.g. the dispatch record)
+ *     in the same transaction — the assignment and its bookkeeping can
+ *     never be torn apart.
  *
  * Only one concurrent driver may succeed — the others receive a clean
- * error (CLAIM_FAILED).
+ * error (ALREADY_CLAIMED / REQUEST_NOT_CLAIMABLE / etc.).
  */
 export async function claimWaterRequest(
   input: ClaimWaterRequestInput,
+  options?: ClaimWaterRequestOptions,
 ): Promise<WaterRequest> {
   const { requestId, driverId } = input;
   const db = getAdminDb();
@@ -849,6 +869,14 @@ export async function claimWaterRequest(
     }
     if (drvData.availabilityStatus !== "online") {
       throw new Error("DRIVER_OFFLINE");
+    }
+    // Decline cooldown is a claim condition (issue #123): the caller-side
+    // gate in `assignNextDeliveryForDriver` reads the same field, but a
+    // cooldown that starts between that read and this transaction must
+    // still block the assignment.
+    const cooldownUntil = drvData.cooldownUntil?.toDate?.();
+    if (cooldownUntil instanceof Date && cooldownUntil > new Date()) {
+      throw new Error("DRIVER_IN_COOLDOWN");
     }
 
     // One-active-delivery invariant: a driver may only claim another request
@@ -916,8 +944,13 @@ export async function claimWaterRequest(
       createdAt: now,
       metadata: {
         previousStatus: status,
+        ...(options?.claimEventMetadata ?? {}),
       },
     });
+
+    // Caller-supplied atomic writes (e.g. the dispatch ledger record for
+    // automatic assignment) — committed with the claim or not at all.
+    options?.additionalWrites?.(txn);
   });
 
   const claimed = await requestRef.get();
@@ -991,9 +1024,9 @@ export async function expirePreferredDriverHold(
 
 /**
  * Releases every hold whose configured 24-hour window has elapsed.
- * This is intentionally called from both driver-offer selection and the
+ * This is intentionally called from both driver assignment selection and the
  * dispatcher operational read so stored status cannot remain visibly stale
- * just because no driver requested another offer after the expiry instant.
+ * just because no driver triggered an assignment after the expiry instant.
  */
 export async function expirePreferredDriverHolds(
   now = new Date(),
@@ -2319,7 +2352,7 @@ export interface CancelOwnWaterRequestInput {
  *
  * Deliberately does NOT clear `preferredDriverId`/
  * `preferredDriverExpiresAt`: they stay on the cancelled document as
- * historical fact, and every consumer (offer selection, hold expiry,
+ * historical fact, and every consumer (assignment selection, hold expiry,
  * batch eligibility, the dispatcher queue) already filters on status,
  * so a `cancelled` request can never resurface as driver work. See
  * `isResidentCancellableRequest` for why no batch/registry cleanup is

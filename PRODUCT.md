@@ -157,7 +157,7 @@ An admin can also **unlink** an account later. Unlinking:
 - **Availability** — `online` / `offline` (driver-controlled).
 - **Cooldown** — temporary dispatch pause from the decline-limit policy.
 
-A driver can receive a new delivery offer only when all of: registry
+A driver can receive a new delivery assignment only when all of: registry
 entry exists, account is linked, the account has the `driver` role, they
 are eligible, they are online, and they are not in cooldown.
 
@@ -195,8 +195,9 @@ Drivers can:
 
 - Log in.
 - Set themselves online or offline.
-- Receive one delivery offer at a time and accept or decline it.
-- Claim (by accepting) an offered delivery.
+- Receive one assigned delivery at a time — the assignment happens
+  automatically when they open or refresh the portal.
+- Decline/release an assigned delivery they cannot or will not serve.
 - View their claimed deliveries.
 - Access customer delivery information.
 - Mark a delivery as delivered.
@@ -208,8 +209,8 @@ Government staff may restrict a driver's delivery access.
 An ineligible driver cannot claim new deliveries regardless of their online/offline preference.
 
 Drivers do **not** browse a list of open requests. To reduce cherry-picking
-and support equal access to water, the driver portal shows at most one
-claimable offer at a time — see "Dispatch Offers" below.
+and support equal access to water, the driver portal assigns at most one
+delivery at a time — see "Dispatch Assignment" below.
 
 **Important:** Having the `driver` role does NOT make someone eligible to deliver
 water. Role membership (`roles` includes `"driver"`) grants access to driver
@@ -240,7 +241,7 @@ Administrators have dispatcher capabilities plus system-management capabilities:
 - Adding/removing manually assignable roles (`viewer`, `dispatcher`, `admin`).
 - Managing driver linking/unlinking and eligibility in the Driver Registry.
 - Managing application settings, including the driver decline limit and
-  cooldown hours used by the dispatch offer workflow.
+  cooldown hours used by the dispatch assignment workflow.
 
 Role management safeguards:
 
@@ -455,15 +456,16 @@ priority, staff escalation rank precedes original request age. Equal ranks and
 unranked requests remain oldest-first. Decline, hold expiration, and
 reassignment preserve the original request time.
 
-Automatic offers apply that ordering across the complete eligible queue: the
-selection path pages through candidates in canonical order rather than reading
-a fixed-size window, so an escalated request cannot be delayed behind older
-same-priority work regardless of backlog size. Valid pending offers are still
-retained, and preferred-driver holds are selected separately. See
-[TECHNICAL.md](./TECHNICAL.md#dispatch-offer-selection) for the implementation
-boundary.
+Automatic assignments apply that ordering across the complete eligible queue:
+the selection path pages through candidates in canonical order rather than
+reading a fixed-size window, so an escalated request cannot be delayed behind
+older same-priority work regardless of backlog size. An existing assignment is
+always retained and returned idempotently, and preferred-driver holds are
+selected separately. See
+[TECHNICAL.md](./TECHNICAL.md#dispatch-assignment-selection) for the
+implementation boundary.
 
-Drivers still receive only ONE offer at a time — priority changes which
+Drivers still receive only ONE assignment at a time — priority changes which
 request that is, never how many they see.
 
 ## Statistics and privacy
@@ -487,7 +489,7 @@ a resident-created one:
 
 - The same preferred-driver hold behavior.
 - The same oldest-request-first fairness.
-- The same one-offer-at-a-time driver dispatch, accept/decline, and
+- The same one-assignment-at-a-time driver dispatch, decline/release, and
   decline/cooldown rules.
 - The same atomic claiming guarantee.
 - The same delivery, dispute, reassignment, cancellation, and statistics
@@ -591,10 +593,10 @@ This value should be easy for administrators to change later.
 
 A resident choosing a preferred driver must not cause their water request to become permanently dependent on that driver.
 
-If the preferred driver actively declines their offer, the hold ends
+If the preferred driver actively releases their assignment, the hold ends
 immediately (rather than waiting for the window to expire) and the
 request opens to the general queue at its original request time. See
-"Dispatch Offers" below.
+"Dispatch Assignment" below.
 
 ## A preference, never a guarantee
 
@@ -609,11 +611,11 @@ water emergency. Concretely:
 - **Urgent/Critical request**: the preference does not get to create an
   unreasonable delay. If the preferred driver is immediately eligible,
   linked, online, not in cooldown, and has no active claimed delivery,
-  they still get first offer. If they are offline, ineligible, unlinked,
+  they still get first assignment. If they are offline, ineligible, unlinked,
   in cooldown, or already servicing another delivery, the hold is skipped
   entirely and the request goes straight to the general queue — it is never
   trapped waiting for that specific driver.
-- **Preferred driver declines**: the preference ends immediately and
+- **Preferred driver releases**: the preference ends immediately and
   the request opens to the general queue, regardless of priority.
 - **Priority escalated while held** (e.g. dispatcher changes Normal to
   Critical while the resident's preferred driver is offline): the hold
@@ -636,12 +638,13 @@ Government controls whether the driver is:
 - `eligible`
 - `ineligible`
 
-An eligible, online driver can claim eligible requests, but only if they do
-not already have an active claimed delivery. "Online" is the driver's chosen
-availability; "immediately available for another delivery" adds the additional
-requirement that they currently have no claimed request. Accepting a delivery
-keeps the driver online but makes them temporarily unavailable for new
-assignments until the current delivery is marked delivered.
+An eligible, online driver can be assigned eligible requests, but only if they
+do not already have an active claimed delivery. "Online" is the driver's chosen
+availability — and means the driver is ready to receive an immediate delivery
+assignment; "immediately available for another delivery" adds the additional
+requirement that they currently have no claimed request. Receiving an
+assignment keeps the driver online but makes them temporarily unavailable for
+new assignments until the current delivery is marked delivered or released.
 
 An eligible, offline driver receives no new work.
 
@@ -655,21 +658,27 @@ Restricting and restoring delivery access should be manually controlled by autho
 
 ---
 
-# Dispatch Offers (One Request at a Time)
+# Dispatch Assignment (One Request at a Time)
 
 Rather than browsing a list of open requests, an eligible, online driver is
-offered exactly **one** claimable request at a time — similar to
-delivery-driver platforms. This reduces cherry-picking and supports equal
-access to water.
+automatically **assigned** exactly **one** request at a time — similar to
+delivery-driver platforms, except there is no accept step. This reduces
+cherry-picking and supports equal access to water.
+
+**Assignment-on-visibility (issue #123):** the delivery shown to a driver is
+always already assigned to them. Seeing a delivery and being assigned it are
+the same atomic event — there is no separate "Accept" action, and closing
+the app does NOT release the assignment. This guarantees the application
+state always matches what the driver sees: a delivery that is displayed is a
+delivery that is no longer available to any other driver.
 
 A driver may have at most **one active claimed delivery** at any time. If a
-driver already has a request in `claimed` status, the system must not issue
-another offer and must not allow them to claim another request. They remain
-online and eligible; they simply cannot take on a second delivery until the
-current one is marked delivered. This rule is enforced server-side, not only
-by the UI.
+driver already has a request in `claimed` status, the system must not assign
+another request to them. They remain online and eligible; they simply cannot
+take on a second delivery until the current one is marked delivered or
+released. This rule is enforced server-side, not only by the UI.
 
-The driver sees:
+The assigned delivery shows:
 
 - Customer name
 - Village
@@ -680,28 +689,29 @@ The driver sees:
 
 The driver may:
 
-- **Accept** — claims the delivery. Claiming remains atomic: it is
-  impossible for two drivers to successfully claim the same request, even
-  if both were offered it (see "Request Claiming" in TECHNICAL.md).
-- **Decline** — the request is not claimed and remains available, at its
-  original request time, for another eligible driver. Declining does not
-  move the customer to the back of the queue.
+- **Deliver it** — the normal path: record water collection for each load,
+  then mark it delivered.
+- **Decline / Release Delivery** — explicitly returns the assignment to
+  dispatch, at its original request time, for another eligible driver.
+  Releasing does not move the customer to the back of the queue. This
+  requires a confirmation step, and counts as a decline for the
+  cooldown/daily-limit policy below.
 
 ## Selection order
 
-For normal open requests, the oldest eligible request is offered first
-(fairness by age). A preferred-driver hold is only ever offered to the
-preferred driver during the hold window; other drivers do not see it. If
-that driver declines, the hold ends immediately and the request opens to
-the general queue.
+For normal open requests, the oldest eligible request is assigned first
+(fairness by age). A preferred-driver hold is only ever assigned to the
+preferred driver during the hold window; other drivers do not receive it. If
+that driver releases the assignment, the hold ends immediately and the
+request opens to the general queue.
 
-A driver is not immediately re-offered a request they just declined.
+A driver is not immediately re-assigned a request they just released.
 
 ## Decline limit and cooldown
 
-To discourage indiscriminate declining, a driver may decline only a
-limited number of offers per local day before new offers are paused for
-them for a cooldown period. Both values are configurable by an
+To discourage indiscriminate releasing, a driver may release only a
+limited number of assigned deliveries per local day before new assignments
+are paused for them for a cooldown period. Both values are configurable by an
 administrator (see "Administrator" above):
 
 - Maximum declines per day — default **3**
@@ -709,16 +719,17 @@ administrator (see "Administrator" above):
 
 Reaching the cooldown does **not** change the driver's government
 eligibility and does not affect their existing claimed deliveries — it
-only pauses new offers until the cooldown expires. A driver cannot bypass
+only pauses new assignments until the cooldown expires. A driver cannot bypass
 the cooldown by toggling online/offline; it is enforced using server time.
 
 The app now distinguishes three decline outcomes:
 
-- **Still eligible**: "Load declined. Another offer will appear when available."
+- **Still eligible**: "Delivery released. It has been returned to dispatch
+  for another driver."
 - **Temporary cooldown**: "You have reached the decline limit. You are offline
   until 3:42 PM." (uses the actual configured cooldown hours and Saba-local time).
 - **Daily limit reached**: "You have reached today's decline limit and are offline
-  for the rest of the day. You can receive offers again on the Saba-local date
+  for the rest of the day. You can receive deliveries again on the Saba-local date
   shown." (when the computed cooldown would extend past the end of the current
   Saba day; the exact date and time come from the configured cooldown hours).
 
@@ -726,7 +737,7 @@ The driver portal reflects the enforced state clearly ("Offline until ...",
 "Offline for the rest of today", or "Daily limit reached"), and the online
 switch is disabled while a cooldown is active. Dispatcher and admin driver
 lists show the same reason so staff do not have to guess why a driver is not
-receiving offers.
+receiving assignments.
 
 ---
 
@@ -737,26 +748,26 @@ receiving offers.
 > Firestore field names (`dispatchBatchId`, `dispatchBatches` collection)
 > are unchanged.
 
-The normal driver workflow above — one offer at a time, one active
-self-claimed delivery — remains unchanged and is the default for every
+The normal driver workflow above — one automatic assignment at a time,
+one active delivery — remains unchanged and is the default for every
 driver, every day. **Batch Dispatch is a separate, explicit
 dispatcher-controlled exception** for situations where government
 staff need to preassign several loads to one driver at once, most
 importantly for a driver whose phone or data connection is unreliable
-and who cannot be expected to receive and respond to individual offers
+and who cannot be expected to receive and act on individual assignments
 throughout the day.
 
 Do not blur the two modes:
 
 ```text
 Normal driver dispatch          Dispatcher batch dispatch
-one offer at a time             staff deliberately assigns a
-one active self-claimed         defined group of loads
+one automatic assignment        staff deliberately assigns a
+at a time, one active           defined group of loads
 delivery                        printable driver run sheet
 ```
 
-Batch Dispatch never weakens the normal one-offer-at-a-time fairness
-model for any driver's ordinary self-claimed work — see TECHNICAL.md
+Batch Dispatch never weakens the normal one-assignment-at-a-time fairness
+model for any driver's ordinary work — see TECHNICAL.md
 "Batch Dispatch" for how this is enforced.
 
 ## Who can use it
@@ -775,7 +786,7 @@ anything.
    an account, and be marked eligible — the same baseline required for
    any assignment. The driver does **not** need to be online, and being
    in a decline cooldown does not block a batch assignment either —
-   this is a deliberate staff decision, not a normal offer, and the
+   this is a deliberate staff decision, not a normal assignment, and the
    whole point may be preparing a printed run sheet for a driver who
    cannot reliably use the app. Their online/offline and cooldown
    status is shown to the dispatcher so the decision is informed, never
@@ -783,7 +794,7 @@ anything.
 3. The dispatcher sees every outstanding request still waiting for a
    driver (not yet claimed by anyone), by default in the same
    canonical comparator order — priority, then staff override rank, then
-   original age. Unlike automatic offers, this selection fetch has no
+   original age. Unlike automatic assignment, this selection fetch has no
    corresponding 100-request candidate limit. The dispatcher may select any
    subset, in any order, for genuine operational reasons.
 4. If a selected request is currently held for a **different**
@@ -907,7 +918,7 @@ assignment.
 A cancelled request stays in the resident's history and in the
 operational record (it is never deleted), stops counting as an active
 request so the resident can request again immediately, and is removed
-from driver offers, the dispatch queue, and delivery-run eligibility.
+from the dispatch queue and delivery-run eligibility.
 Unregistered (dispatcher-created) customers have no portal account, so
 they cannot use this self-service path — staff cancel for them as
 before.
@@ -939,7 +950,7 @@ critical explanation.
 Residents and dispatchers see Notes / Comments during request review.
 Dispatchers can edit them through the existing Edit Request workflow, with the
 change included in the `request_edited` audit metadata. Notes appear
-subordinately in resident/request detail and driver offer/assigned-delivery
+subordinately in resident/request detail and driver assigned-delivery
 views. Because they may contain access or timing information needed to complete
 a delivery, compact notes also appear in the continuity report and delivery-run
 sheet; print output truncates notes beyond 240 characters to preserve layout.
@@ -951,7 +962,7 @@ sheet; print output truncates notes beyond 240 characters to preserve layout.
 After delivering water, the driver marks the request as delivered. At
 that moment the driver's assignment is complete: the driver stays
 online and eligible, receives no cooldown from this, and can
-immediately be offered another request — see "Dispatch Offers (One
+immediately receive another assignment — see "Dispatch Assignment (One
 Request at a Time)" above. **Customer confirmation never affects driver
 availability.**
 
@@ -1154,7 +1165,7 @@ vulnerable-person circumstances, the required Critical explanation, and
 anything medical-related. Apply least privilege:
 
 - **Drivers** may need to know a delivery is Urgent/Critical to
-  understand why it was offered ahead of others, but do NOT need — and
+  understand why it was assigned ahead of others, but do NOT need — and
   are never shown — the underlying vulnerable-circumstance details,
   persons-affected count, available-storage figures, or the resident's
   Critical explanation.
@@ -1310,7 +1321,8 @@ The underlying data must support at minimum:
 - Requests currently awaiting customer confirmation (delivered, within
   the confirmation window)
 - Driver online/offline activity where useful
-- Dispatch offers sent, accepted, and declined, and acceptance rate
+- Dispatch assignments made, released/declined, and legacy accepted/expired
+  counts
 - Requests by source (submitted online vs entered by staff)
 - Requests by dispatch priority (Normal / Urgent / Critical)
 - Average delivery time by dispatch priority
@@ -1350,9 +1362,9 @@ workflow. If a WhatsApp-created request ever behaved differently after
 creation from a website request, that would be a design error.
 
 This phase covers **resident ordering only**. Driver WhatsApp
-functionality (going online/offline, offers, ACCEPT/DECLINE, DELIVERED)
-is intentionally not built yet — see TECHNICAL.md "Future WhatsApp
-Integration" for what remains for a later phase.
+functionality (going online/offline, automatic assignments,
+RELEASE, DELIVERED) is intentionally not built yet — see TECHNICAL.md
+"Future WhatsApp Integration" for what remains for a later phase.
 
 ## Deterministic, not AI
 
@@ -1530,8 +1542,8 @@ names are never sent to a resident over WhatsApp.
 
 ## Not yet implemented
 
-- Driver WhatsApp workflow (online/offline, offers, accept/decline,
-  delivered) — see TECHNICAL.md "Future WhatsApp Integration".
+- Driver WhatsApp workflow (online/offline, automatic assignments,
+  release, delivered) — see TECHNICAL.md "Future WhatsApp Integration".
 - WhatsApp message templates / proactive outbound notifications outside
   the resident-initiated conversation window.
 - Explicit WhatsApp-number-to-account linking/verification (see "Future

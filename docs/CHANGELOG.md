@@ -24,6 +24,21 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+- Assignment-on-visibility dispatch (issue #123): the driver portal no
+  longer shows a pending "offer" that the driver must explicitly accept.
+  When an eligible online driver opens or refreshes the portal, the next
+  eligible request is **atomically assigned** to them before any delivery
+  details are shown — the displayed delivery is already theirs, and
+  closing the app does not release it. This eliminates the double-delivery
+  window where a driver could physically deliver a request another driver
+  later accepted. The "Accept Delivery" button is replaced by a
+  confirmation-gated **Decline / Release Delivery** action that returns
+  the assignment to dispatch and applies the existing decline
+  cooldown/daily-limit policy. `driverOffers` is now an append-only
+  dispatch-decision ledger (`assigned`/`declined`/`expired`; legacy
+  `accepted` records are preserved), legacy pending offers are expired
+  automatically and never reopened, and statistics report assignment and
+  release counts instead of an acceptance rate.
 - Scheduled-operation monitoring (issue #62): every cron now records a
   heartbeat (`cronHeartbeats/{name}`) and the every-10-minute notification
   worker runs a watchdog that logs a deduplicated `cron.heartbeat.stale`

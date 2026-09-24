@@ -73,6 +73,18 @@ run entirely locally against a throwaway test project id. The rules suite
 includes a check that the durable notification outbox (`notificationOutbox`,
 issue #53) is deny-by-default to every client, including an admin.
 
+If the rules suite flakes with scattered `REQUEST_NOT_FOUND`/transaction
+failures across unrelated files, the Firestore emulator JVM is usually
+starved — its pessimistic transaction lock manager times out under load
+and corrupts in-flight transaction state. Check `firestore-debug.log` for
+`Transaction lock timeout` / `EmulatorTransactionManager` NPEs, kill stale
+emulator processes holding ports 8080/9199/4400, and give the JVM more
+heap:
+
+```bash
+JAVA_TOOL_OPTIONS="-Xmx4g -Xms1g" npm run test:rules
+```
+
 ### Firestore index contract (issue #113)
 
 `firestore.indexes.json` is the repository source of truth for composite
@@ -452,8 +464,8 @@ Vitest covers the pure domain logic extensively, including:
   (`dispatchBatchPdfData.ts`, `dispatchBatchPdfFilename.ts`).
 - Preferred-driver hold creation, expiration, and re-evaluation on
   priority change.
-- Dispatch offer selection, decline/cooldown behavior, and avoiding
-  re-offer loops.
+- Dispatch assignment selection, release/cooldown behavior, and avoiding
+  re-assignment loops.
 - Delivery confirmation timeout and auto-confirmation logic.
 - Resident self-service cancellation (issue #23): the pure pre-dispatch
   eligibility predicate (`residentCancellation.ts`), and the emulator-backed
@@ -463,7 +475,7 @@ Vitest covers the pure domain logic extensively, including:
   (assigned driver / delivery-run membership), the claim-vs-cancel and
   cancel-vs-cancel races, atomic audit-event commit, and the downstream
   effects (active slot freed for a new request, excluded from driver
-  offers and delivery-run eligibility).
+  dispatch and delivery-run eligibility).
 - Staff-recorded dispute for unregistered customers (issue #50): the
   emulator-backed `staffRecordedDispute.emulator.test.ts` (run by
   `npm run test:rules`) covering the committed-state eligibility guard
@@ -731,27 +743,33 @@ probes only; no operational mutations).
 ### Driver
 
 - Go online.
-- Receive an offer; confirm only one offer is shown at a time.
-- Accept a delivery; confirm a second offer is not made until it is
-  marked delivered.
-- Decline enough offers to trigger the cooldown; confirm new offers
-  pause.
+- Open or refresh the driver portal; confirm a delivery is automatically
+  assigned (banner: "This delivery is assigned to you. Closing the app
+  does not release it.") and only one assignment is shown at a time.
+- Refresh repeatedly; confirm the same assignment is shown, no new
+  assignment is made, and no duplicate dispatch history is written.
+- Confirm there is no "Accept Delivery" button — the shown delivery is
+  already assigned.
+- Release enough deliveries to trigger the cooldown; confirm new
+  assignments pause and the release requires confirmation.
+- Confirm a second assignment is not made until the first is marked
+  delivered or released.
 - Confirm request Notes / Comments appear below the structured delivery
   directions when present and no empty notes section appears when absent.
 - Mark a delivery complete; confirm the resident email is triggered and the
-  next offer becomes available
+  next assignment becomes available
   immediately, without waiting for resident confirmation.
 - Have a Batch Dispatch batch assigned to this driver; confirm each
   load appears as its own claimed delivery with a "Batch assignment"
-  label, and that no new normal offer is made while any batch load
-  remains claimed.
+  label, the release action is hidden for batch members, and no new
+  normal assignment is made while any batch load remains claimed.
 - If a driver has a stale `activeRequestId` (pointing to a deleted or
   completed request), load the driver portal and confirm the stale
   lock is automatically cleared and the driver can receive the next
-  offer normally.
-- Accept an offer after stale-lock repair and confirm the request is
+  assignment normally.
+- Receive an assignment after stale-lock repair and confirm the request is
   claimed with a valid `activeRequestId`.
-- Decline an offer after stale-lock repair and confirm the decline is
+- Release an assignment after stale-lock repair and confirm the decline is
   recorded normally without a stale-active-delivery warning.
 
 ### Dispatcher

@@ -174,9 +174,8 @@ markWaterDelivered
 confirmWaterDelivery
 disputeWaterDelivery
 cancelWaterRequest
-getNextOfferForDriver
-acceptDriverOffer
-declineDriverOffer
+assignNextDeliveryForDriver
+releaseAssignedDelivery
 confirmDeliveryByStaff
 changeRequestPriority
 getMostRecentConfirmedRequest
@@ -286,18 +285,23 @@ Optimize for phone use.
 
 Primary driver workflow:
 
-1. Go online.
-2. Receive one delivery offer at a time (customer name, village, quantity
-   in loads and gallons, age, directions).
-3. Accept or decline the offer.
-4. View customer/location details for an accepted delivery.
-5. Deliver water.
-6. Mark delivered.
-7. Receive the next offer when available.
+1. Go online (means: ready to receive an immediate assignment).
+2. Open/refresh the portal → one request is atomically assigned, and the
+   driver sees its full details (customer name, village, quantity in
+   loads and gallons, age, directions). There is no Accept step — the
+   shown delivery is already claimed; closing the app does not release it.
+3. Deliver water.
+4. Mark delivered.
+5. Receive the next assignment when available.
+
+A driver who will not serve an assigned delivery uses Decline / Release
+Delivery — it returns the request to the queue and applies the
+decline/cooldown policy.
 
 A driver may have only one active claimed delivery at a time. The system
-enforces this server-side: an already-claimed request prevents new offers
-and blocks a second claim, even through stale browser tabs or direct
+enforces this server-side: an already-claimed request prevents new
+assignments and blocks a second claim, even through stale browser tabs or
+direct
 server-action calls. The driver stays online and remains eligible;
 accepting a delivery only makes them temporarily unavailable for another
 assignment until the current one is marked delivered — at that exact
@@ -372,7 +376,7 @@ Initial preferred-driver window:
 24 hours
 ```
 
-Dispatch-offer decline policy is centralized similarly, but is admin-
+Dispatch decline policy is centralized similarly, but is admin-
 editable at runtime (Firestore `config/dispatchSettings`) rather than a
 code constant, since staff need to tune it without a deploy:
 
@@ -384,7 +388,7 @@ declineCooldownHours = 1
 Code-level defaults live in `appConfig.defaultMaxDeclinesPerDay` /
 `defaultDeclineCooldownHours` and are only used as a fallback until an
 admin saves settings for the first time. See
-`src/lib/domain/dispatchSettings.ts` and TECHNICAL.md "Dispatch Offers".
+`src/lib/domain/dispatchSettings.ts` and TECHNICAL.md "Dispatch Assignment".
 
 ## Operational timezone
 
@@ -401,7 +405,7 @@ Operational Timezone".
 
 Resident WhatsApp ordering is implemented — see PRODUCT.md /
 TECHNICAL.md "WhatsApp Resident Ordering". Driver WhatsApp
-functionality (online/offline, offers, ACCEPT/DECLINE, DELIVERED) is
+functionality (online/offline, automatic assignments, RELEASE, DELIVERED) is
 **not** implemented yet — see TECHNICAL.md "Future WhatsApp
 Integration (driver side)". Do not start it without being explicitly
 asked.
@@ -592,7 +596,7 @@ The `/admin` portal provides user and role management. Only users with the
 - User detail view with profile info, role management, and history
 - Add/remove operational roles (driver, dispatcher, admin, viewer)
 - Driver Registry management (`/admin/drivers`) — see below
-- Dispatch offer settings: maximum driver declines per day and decline
+- Dispatch decline settings: maximum driver declines per day and decline
   cooldown hours (`config/dispatchSettings`, admin-only, audited)
 - Role-change audit trail (`users/{uid}/roleEvents` subcollection)
 
@@ -708,8 +712,8 @@ staff. Accessible via "View Statistics" links in both portals.
 - **Village demand:** Table sorted by highest demand, uses request village snapshot.
 - **Driver operations:** Table with loads/deliveries/times/status per driver.
 - **Preferred driver:** Usage rate, claimed by preferred, expired to queue, comparative timing.
-- **Dispatch offers:** Offers sent, accepted, declined, acceptance rate
-  (from `driverOffers`).
+- **Dispatch assignments:** assignments, releases/declines, and legacy
+  accepted/expired counts (from `driverOffers`).
 - **Disputes:** Total, unresolved, resolved breakdown, dispute rate.
 
 ## Key methodology

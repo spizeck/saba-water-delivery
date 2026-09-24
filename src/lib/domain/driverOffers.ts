@@ -1,86 +1,67 @@
 import "server-only";
 
-import { type DocumentData, FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import { sabaCalendarDateKey } from "@/lib/utils/datetime";
 
-import type { DriverOffer, DriverOfferResponse } from "./types";
+import type { DriverOfferResponse } from "./types";
 
 /**
- * Domain/service layer for driver dispatch offers.
+ * Domain/service layer for the driver dispatch-decision ledger
+ * (`driverOffers` collection).
  *
- * A `driverOffers/{offerId}` document records one instance of a single
- * request being offered to a single driver. Offers are append-only: a
- * decline or expiration never overwrites or deletes a prior offer, it is
- * always a fresh document. This preserves full offer/decline history for
- * auditing and future statistics (see TECHNICAL.md "Dispatch Offers").
+ * A `driverOffers/{offerId}` document records one dispatch decision about
+ * a single (request, driver) pair. Records are append-only: a decline or
+ * expiration never overwrites or deletes a prior record, it is always a
+ * fresh document. This preserves full assignment/decline history for
+ * auditing and statistics (see TECHNICAL.md "Dispatch Assignment").
  *
- * Offer records are advisory bookkeeping for the one-offer-at-a-time UX
- * and the decline/cooldown policy. They do NOT replace the atomic
- * Firestore transaction in `claimWaterRequest()` — that transaction
- * remains the sole authority over whether a claim succeeds.
+ * Since issue #123 there are no pending offers: a record is created only
+ * AFTER `claimWaterRequest()` has atomically assigned the request, and it
+ * is born resolved (`"assigned"`). Selection and assignment are a single
+ * atomic step — showing a delivery to a driver and assigning it are the
+ * same operation. The atomic claim transaction remains the sole
+ * authority over whether an assignment succeeds.
  */
-
 const DRIVER_OFFERS_COLLECTION = "driverOffers";
 
-function toDriverOffer(id: string, data: DocumentData): DriverOffer {
+// ---------------------------------------------------------------------------
+// Dispatch records
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the document payload for a dispatch record that is already
+ * resolved at creation. Written inside the caller's transaction so the
+ * ledger entry commits atomically with the state change it describes —
+ * `"assigned"` inside the claim transaction, `"declined"` inside the
+ * release transaction.
+ */
+export function buildDispatchRecord(
+  driverId: string,
+  requestId: string,
+  response: "assigned" | "declined",
+): Record<string, unknown> {
   return {
-    id,
-    requestId: data.requestId,
-    driverId: data.driverId,
-    offeredAt:
-      data.offeredAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
-    response: (data.response ?? null) as DriverOfferResponse,
-    respondedAt: data.respondedAt?.toDate?.().toISOString() ?? null,
+    requestId,
+    driverId,
+    offeredAt: FieldValue.serverTimestamp(),
+    response,
+    respondedAt: FieldValue.serverTimestamp(),
   };
 }
 
-// ---------------------------------------------------------------------------
-// Create / respond
-// ---------------------------------------------------------------------------
-
-/**
- * Creates a new pending offer of `requestId` to `driverId`, or returns
- * the existing one. The transaction serializes concurrent page loads so
- * at most one pending offer exists per (driver, request).
- */
-export async function createDriverOffer(
-  driverId: string,
-  requestId: string,
-): Promise<DriverOffer> {
-  const db = getAdminDb();
-  const collection = db.collection(DRIVER_OFFERS_COLLECTION);
-
-  const ref = await db.runTransaction(async (txn) => {
-    const existing = await txn.get(
-      collection
-        .where("driverId", "==", driverId)
-        .where("requestId", "==", requestId)
-        .where("response", "==", null)
-        .limit(1),
-    );
-    if (!existing.empty) return existing.docs[0].ref;
-
-    const newRef = collection.doc();
-    txn.set(newRef, {
-      requestId,
-      driverId,
-      offeredAt: FieldValue.serverTimestamp(),
-      response: null,
-      respondedAt: null,
-    });
-    return newRef;
-  });
-
-  const created = await ref.get();
-  return toDriverOffer(ref.id, created.data()!);
+export function driverOffersCollection(db: Firestore) {
+  return db.collection(DRIVER_OFFERS_COLLECTION);
 }
 
 /**
- * Records a driver's response (or system expiration) to an offer.
+ * Resolves an offer record in place (system expiration of a legacy
+ * pending offer). Internal: new records are born resolved via
+ * `buildDispatchRecord` — only legacy pending records are ever resolved
+ * after creation.
  */
-export async function recordOfferResponse(
+async function recordOfferResponse(
   offerId: string,
   response: Exclude<DriverOfferResponse, null>,
 ): Promise<void> {
@@ -91,40 +72,48 @@ export async function recordOfferResponse(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Queries
-// ---------------------------------------------------------------------------
-
 /**
- * Returns the driver's currently pending (unanswered) offer, if any.
- * Used so reloading the driver portal shows the *same* offer rather than
- * generating a new one on every page view.
+ * Expires every pending (`response == null`) offer record for a driver.
+ *
+ * Pending offers are a legacy concept — before issue #123 an offer was
+ * displayed before the request was claimed. Any that survive deployment
+ * must never again be treated as meaningful: expiring them here is the
+ * idempotent deployment reconciliation. Runs unconditionally on each
+ * assignment pass so a pending offer can never resurrect the old
+ * "displayed but not assigned" state.
  */
-export async function getPendingOfferForDriver(
+export async function expirePendingOffersForDriver(
   driverId: string,
-): Promise<DriverOffer | null> {
+): Promise<number> {
   const db = getAdminDb();
   const snapshot = await db
     .collection(DRIVER_OFFERS_COLLECTION)
     .where("driverId", "==", driverId)
     .where("response", "==", null)
     .orderBy("offeredAt", "desc")
-    .limit(1)
     .get();
 
-  if (snapshot.empty) return null;
-  return toDriverOffer(snapshot.docs[0].id, snapshot.docs[0].data());
+  if (snapshot.empty) return 0;
+  await Promise.all(
+    snapshot.docs.map((doc) => recordOfferResponse(doc.id, "expired")),
+  );
+  return snapshot.size;
 }
+
+// ---------------------------------------------------------------------------
+// Queries
+// ---------------------------------------------------------------------------
 
 /**
  * Returns the set of request IDs this driver has declined within the
  * recent dispatch window.
  *
- * Declining an offer is meant to give other eligible drivers the first
- * opportunity on that specific request, not to permanently blacklist the
- * request for the declining driver. Historical decline records remain in
- * `driverOffers` for audit/statistics, but only recent declines affect
- * future offers. The default lookback is 24 hours.
+ * Declining/releasing an assignment is meant to give other eligible
+ * drivers the first opportunity on that specific request, not to
+ * permanently blacklist the request for the declining driver. Historical
+ * decline records remain in `driverOffers` for audit/statistics, but only
+ * recent declines affect future assignments. The default lookback is 24
+ * hours.
  */
 export async function getDeclinedRequestIdsForDriver(
   driverId: string,
@@ -143,8 +132,8 @@ export async function getDeclinedRequestIdsForDriver(
 }
 
 /**
- * Counts how many offers this driver has declined during the current
- * Saba-local operational day (see src/lib/utils/datetime.ts).
+ * Counts how many dispatch decisions this driver has declined during the
+ * current Saba-local operational day (see src/lib/utils/datetime.ts).
  *
  * Implementation note: we bound the Firestore query with a generous
  * 26-hour lookback (covers any timezone offset safely) and then filter
@@ -176,15 +165,21 @@ export async function countDeclinesToday(driverId: string): Promise<number> {
 }
 
 /**
- * Returns aggregate offer counts across all drivers for the statistics
- * dashboard. Reads are unbounded by driver but bounded by period at the
- * call site (see src/lib/domain/statistics.ts).
+ * Returns aggregate dispatch-decision counts across all drivers for the
+ * statistics dashboard. Reads are unbounded by driver but bounded by
+ * period at the call site (see src/lib/domain/statistics.ts).
+ *
+ * `accepted` counts only legacy explicit-accept records; current
+ * assignments are `"assigned"`. `pending` counts surviving legacy
+ * unanswered offers — always zero under normal post-#123 operation.
  */
 export interface OfferAggregate {
   offered: number;
+  assigned: number;
   accepted: number;
   declined: number;
   expired: number;
+  pending: number;
 }
 
 export async function getOfferAggregate(
@@ -201,16 +196,20 @@ export async function getOfferAggregate(
 
   const aggregate: OfferAggregate = {
     offered: 0,
+    assigned: 0,
     accepted: 0,
     declined: 0,
     expired: 0,
+    pending: 0,
   };
   for (const doc of snapshot.docs) {
     aggregate.offered++;
     const response = doc.data().response as DriverOfferResponse;
-    if (response === "accepted") aggregate.accepted++;
+    if (response === "assigned") aggregate.assigned++;
+    else if (response === "accepted") aggregate.accepted++;
     else if (response === "declined") aggregate.declined++;
     else if (response === "expired") aggregate.expired++;
+    else aggregate.pending++;
   }
   return aggregate;
 }

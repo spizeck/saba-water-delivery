@@ -49,22 +49,26 @@ preserved.
 ## Driver workflow
 
 - A driver chooses when to go online or offline. This never affects
-  their government eligibility to deliver.
-- An online, eligible driver is offered exactly one delivery at a
-  time — never a list to browse. This keeps access to work fair across
-  all drivers.
-- The driver accepts or declines each offer. Declining too many offers
-  in a day pauses new offers for that driver for a cooldown period
-  (both numbers are set by an administrator).
-- Once a driver accepts a delivery, they cannot be offered a second one
-  until they mark the first one delivered. The resident's later
-  confirmation does not hold the driver up — the driver is free for the
-  next offer the moment they mark a delivery complete.
+  their government eligibility to deliver. Going online means the driver
+  is ready to receive an immediate delivery assignment.
+- An online, eligible driver is automatically assigned exactly one
+  delivery at a time — never a list to browse, and no separate "accept"
+  step. The delivery shown to a driver is already assigned to them;
+  closing the app does not release it. This keeps access to work fair
+  across all drivers.
+- A driver who cannot or will not make an assigned delivery uses
+  Decline / Release Delivery to return it to dispatch. Releasing too
+  many deliveries in a day pauses new assignments for that driver for a
+  cooldown period (both numbers are set by an administrator).
+- While a driver has an assigned delivery, they cannot be assigned a
+  second one until they mark the first one delivered or release it. The
+  resident's later confirmation does not hold the driver up — the driver
+  is free for the next assignment the moment they mark a delivery complete.
 - A driver may occasionally see several deliveries assigned at once,
   each marked as part of a Delivery Run. This means a dispatcher
   deliberately assigned them a group of loads as a Delivery Run —
   it does not change how each delivery is completed, and it does not
-  affect the driver's normal one-offer-at-a-time experience the rest
+  affect the driver's normal one-assignment-at-a-time experience the rest
   of the time.
 
 ## Dispatcher workflow

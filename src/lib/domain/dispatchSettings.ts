@@ -10,7 +10,7 @@ import type { DispatchSettings } from "./types";
 /**
  * Admin-configurable dispatch settings, backed by a single Firestore
  * document at `config/dispatchSettings`. These control the driver
- * decline-limit/cooldown policy (see TECHNICAL.md "Dispatch Offers").
+ * decline-limit/cooldown policy (see TECHNICAL.md "Dispatch Assignment").
  *
  * If the document does not exist yet (fresh install, or before any admin
  * has saved settings), safe defaults from `appConfig` are returned without

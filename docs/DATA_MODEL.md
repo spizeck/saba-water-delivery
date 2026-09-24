@@ -176,9 +176,9 @@ where it originated. This is the operational core of the system.
   or singly assigned as before.
 - `dispatchOverrideRank` — null by default; set to `0` by a dispatcher
   escalation to rank it ahead within its priority without changing
-  `requestedAt`. Automatic offers apply that rank only after fetching up to
+  `requestedAt`. Automatic assignment applies that rank only after fetching up to
   100 available requests by priority/age, so it is not a complete-queue
-  guarantee; see [offer selection](../TECHNICAL.md#dispatch-offer-selection).
+  guarantee; see [assignment selection](../TECHNICAL.md#dispatch-assignment-selection).
 - Timestamps: `requestedAt`, `availableAt`, `claimedAt`, `deliveredAt`,
   `confirmedAt`, `createdAt`, `updatedAt`.
 
@@ -298,15 +298,23 @@ access. New delivery-confirmation notifications use `notificationOutbox` instead
 
 ## `driverOffers/{offerId}`
 
-**Purpose:** records one instance of a single request being offered to
-a single driver, as part of the one-offer-at-a-time dispatch workflow.
-Append-only — a decline or expiration is never overwritten, preserving
-full offer history for statistics and auditing.
+**Purpose:** an append-only dispatch-decision ledger — each document
+records one resolved dispatch decision about a request/driver pair:
+`"assigned"` (automatic assignment committed atomically with the
+request claim), `"declined"` (the driver explicitly released an
+assigned delivery), `"expired"` (a legacy pending offer or
+superseded assignment retired), or `"accepted"` (legacy-only, from the
+pre-#123 explicit-accept workflow). Current code never creates a
+`null` (pending) response — pending documents in production are legacy
+records that are expired opportunistically during assignment passes.
+The name `driverOffers` is retained for compatibility; new records are
+dispatch decisions, not pending offers.
 
 **Key fields:** `requestId`, `driverId`, `offeredAt`, `response`
-(`"accepted" | "declined" | "expired" | null`), `respondedAt`.
+(`"assigned" | "declined" | "expired" | "accepted" | null`),
+`respondedAt` (always set — every current record is created resolved).
 
-**Reads:** the offered driver (their own offers), dispatcher, admin.
+**Reads:** the driver (their own records), dispatcher, admin.
 **Writes:** only through `src/lib/domain/dispatch.ts` /
 `driverOffers.ts`.
 
@@ -314,7 +322,7 @@ full offer history for statistics and auditing.
 
 **Purpose:** a Batch Dispatch run — a deliberate dispatcher-controlled
 assignment of several loads to one driver at once, printed as a driver
-dispatch sheet. This is an exception to the normal one-offer-at-a-time
+dispatch sheet. This is an exception to the normal one-assignment-at-a-time
 driver dispatch model, not a replacement for it. See
 [`DISPATCHER_GUIDE.md`](./DISPATCHER_GUIDE.md) "Batch Dispatch."
 
@@ -351,7 +359,7 @@ subcollection instead — see `waterRequests/{requestId}/events` above.
 
 ## `config/dispatchSettings`
 
-**Purpose:** admin-editable dispatch-offer policy: `maxDeclinesPerDay`,
+**Purpose:** admin-editable dispatch-decline policy: `maxDeclinesPerDay`,
 `declineCooldownHours`, plus `updatedAt`/`updatedBy`. If this document
 does not exist yet, the application falls back to code-level defaults
 in `src/lib/domain/config.ts` without writing anything.
@@ -530,8 +538,8 @@ contract" and `docs/TESTING.md`).
 
 The manifest supports:
 
-- Driver offer history lookups (`driverId` + `response` + `offeredAt`
-  descending for the pending-offer lookup; `driverId` + `response` +
+- Driver dispatch-decision lookups (`driverId` + `response` + `offeredAt`
+  descending for the legacy pending-offer expiry scan; `driverId` + `response` +
   `respondedAt` in **both** directions — descending for decline history,
   ascending for the decline-count queries whose `respondedAt >=` range
   has no explicit `orderBy` and so implicitly orders ascending).

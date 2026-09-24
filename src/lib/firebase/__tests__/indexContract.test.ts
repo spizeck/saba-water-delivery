@@ -28,7 +28,7 @@ import {
 
 interface RecordedQuery {
   collectionPath: string;
-  filters: { fieldPath: string; op: QueryFilterOp }[];
+  filters: { fieldPath: string; op: QueryFilterOp; value?: unknown }[];
   orderBy: { fieldPath: string; direction: "asc" | "desc" }[];
 }
 
@@ -55,16 +55,6 @@ function docSnap(path: string) {
     exists: ctx.docs.has(path),
     ref: makeRef(path),
     data: () => ctx.docs.get(path),
-  };
-}
-
-function emptyQuerySnapshot() {
-  const docs: unknown[] = [];
-  return {
-    docs,
-    empty: true,
-    size: 0,
-    forEach: (fn: (d: unknown) => void) => docs.forEach(fn),
   };
 }
 
@@ -129,8 +119,8 @@ function makeQuery(
   orderBy: RecordedQuery["orderBy"],
 ): FakeQueryApi {
   const api: FakeQueryApi = {
-    where: (fieldPath: string, op: QueryFilterOp, _value: unknown) =>
-      makeQuery(path, [...filters, { fieldPath, op }], orderBy),
+    where: (fieldPath: string, op: QueryFilterOp, value: unknown) =>
+      makeQuery(path, [...filters, { fieldPath, op, value }], orderBy),
     orderBy: (field: unknown, direction?: string) =>
       makeQuery(path, filters, [
         ...orderBy,
@@ -148,7 +138,31 @@ function makeQuery(
     offset: () => api,
     get: async () => {
       record(path, filters, orderBy);
-      return emptyQuerySnapshot();
+      // Return seeded docs that satisfy the equality filters (range and
+      // other ops are ignored — the fake only needs enough fidelity for
+      // control flow, not data semantics). Depth check confines matches
+      // to direct children of `path`.
+      const depth = path.split("/").length;
+      const matched = [...ctx.docs.entries()]
+        .filter(
+          ([p]) =>
+            p.startsWith(`${path}/`) && p.split("/").length === depth + 1,
+        )
+        .filter(([, data]) =>
+          filters.every((f) => {
+            if (f.op === "==") return data[f.fieldPath] === f.value;
+            if (f.op === "in")
+              return (f.value as unknown[]).includes(data[f.fieldPath]);
+            return true;
+          }),
+        )
+        .map(([p]) => docSnap(p));
+      return {
+        docs: matched,
+        empty: matched.length === 0,
+        size: matched.length,
+        forEach: (fn: (d: unknown) => void) => matched.forEach(fn),
+      };
     },
     count: () => ({
       get: async () => {
@@ -237,14 +251,13 @@ vi.mock("@/lib/firebase/admin", () => ({
 
 import {
   countDeclinesToday,
-  createDriverOffer,
+  expirePendingOffersForDriver,
   getDeclinedRequestIdsForDriver,
   getOfferAggregate,
-  getPendingOfferForDriver,
 } from "@/lib/domain/driverOffers";
 import {
-  declineDriverOffer,
-  getNextOfferForDriver,
+  assignNextDeliveryForDriver,
+  releaseAssignedDelivery,
 } from "@/lib/domain/dispatch";
 import {
   createWaterRequest,
@@ -501,7 +514,7 @@ describe("recorded query shapes match the contract", () => {
   });
 
   it("driver offer readers issue the registered shapes", async () => {
-    await getPendingOfferForDriver("driver-1");
+    await expirePendingOffersForDriver("driver-1");
     await getDeclinedRequestIdsForDriver("driver-1");
     await countDeclinesToday("driver-1");
     await getOfferAggregate(null);
@@ -525,45 +538,59 @@ describe("recorded query shapes match the contract", () => {
     }
   });
 
-  it("declineDriverOffer transaction issues the incident shape", async () => {
+  it("releaseAssignedDelivery transaction issues the incident shapes", async () => {
+    ctx.docs.set("waterRequests/req-1", {
+      status: "claimed",
+      assignedDriverId: "driver-1",
+      dispatchBatchId: null,
+      loadCollections: null,
+    });
+    ctx.docs.set("driverRegistry/reg-1", {
+      linkedUserId: "driver-1",
+      activeRequestId: "req-1",
+    });
     ctx.docs.set("driverOffers/offer-1", {
       driverId: "driver-1",
       requestId: "req-1",
       response: null,
     });
-    ctx.docs.set("waterRequests/req-1", { status: "available" });
 
-    await declineDriverOffer({ offerId: "offer-1", driverId: "driver-1" });
+    const result = await releaseAssignedDelivery({
+      requestId: "req-1",
+      driverId: "driver-1",
+    });
+    expect(result.released).toBe(true);
 
     const produced = recordedSignatures();
     const incident = QUERY_SHAPES.find(
       (s) => s.id === "driverOffers/recent-declines-unordered",
     )!;
-    const duplicateGuard = QUERY_SHAPES.find(
+    const pendingSweep = QUERY_SHAPES.find(
       (s) => s.id === "driverOffers/pending-for-request",
     )!;
-    for (const spec of [incident, duplicateGuard]) {
+    const registryLookup = QUERY_SHAPES.find(
+      (s) => s.id === "driverRegistry/by-linked-user",
+    )!;
+    for (const spec of [incident, pendingSweep, registryLookup]) {
       const sig = registrySignature(spec);
       expect(
         [...produced].some((p) => signatureMatches(sig, p)),
-        `decline transaction did not issue ${spec.id}: ${sig}`,
+        `release transaction did not issue ${spec.id}: ${sig}`,
       ).toBe(true);
     }
   });
 
-  it("createDriverOffer issues the duplicate-offer guard query", async () => {
-    await createDriverOffer("driver-1", "req-1");
-    const produced = recordedSignatures();
-    const spec = QUERY_SHAPES.find(
-      (s) => s.id === "driverOffers/pending-for-request",
-    )!;
-    expect(
-      [...produced].some((p) => signatureMatches(registrySignature(spec), p)),
-    ).toBe(true);
-  });
+  it("assignNextDeliveryForDriver issues every dispatch selection shape", async () => {
+    ctx.docs.set("driverRegistry/reg-1", {
+      linkedUserId: "user-1",
+      eligibilityStatus: "eligible",
+      availabilityStatus: "online",
+      archivedAt: null,
+      cooldownUntil: null,
+      activeRequestId: null,
+    });
 
-  it("getNextOfferForDriver issues every dispatch selection shape", async () => {
-    await getNextOfferForDriver("user-1");
+    await assignNextDeliveryForDriver("user-1");
 
     const produced = recordedSignatures();
     const expectedIds = [

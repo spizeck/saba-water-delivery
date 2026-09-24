@@ -1,48 +1,52 @@
 import "server-only";
 
-import {
-  type DocumentReference,
-  FieldPath,
-  FieldValue,
-} from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getLogger } from "@/lib/logging";
 
 import {
-  createDriverOffer,
+  buildDispatchRecord,
+  driverOffersCollection,
+  expirePendingOffersForDriver,
   getDeclinedRequestIdsForDriver,
-  getPendingOfferForDriver,
-  recordOfferResponse,
 } from "./driverOffers";
 import { sabaCalendarDateKey, startOfSabaDay } from "@/lib/utils/datetime";
 import { appConfig } from "./config";
 import { PRIORITY_RANK, priorityRankFor } from "./priority";
-import type { DispatchPriority, DriverOffer, WaterRequest } from "./types";
+import type { DispatchPriority, WaterRequest } from "./types";
 import {
-  isOfferableToDriver,
+  isAssignableToDriver,
   selectNextDispatchCandidate,
 } from "./dispatchSelection";
-import { reconcileActiveRequestByUserId } from "./driverRegistry";
+import {
+  getDriverByLinkedUserId,
+  reconcileActiveRequestByUserId,
+} from "./driverRegistry";
 import {
   claimWaterRequest,
   expirePreferredDriverHolds,
   getClaimedRequestsForDriver,
-  getWaterRequestById,
   toWaterRequest,
 } from "./waterRequests";
 
 /**
- * Dispatch orchestration layer implementing the one-request-at-a-time
- * driver offer workflow (see PRODUCT.md "Open Request Queue" and
- * TECHNICAL.md "Dispatch Offers").
+ * Dispatch orchestration layer implementing the one-assignment-at-a-time
+ * driver workflow (see PRODUCT.md "Dispatch Assignment" and TECHNICAL.md
+ * "Dispatch Assignment").
  *
- * This module decides WHICH request (if any) to offer a driver next, and
- * records the accept/decline decision. It deliberately does not weaken
- * the existing atomic claim guarantee in `claimWaterRequest()` — an offer
- * is just a UI/bookkeeping construct, not a reservation. Two drivers can
- * in principle be offered the same request; whichever accepts first wins
- * the transaction, and the other's accept attempt fails cleanly.
+ * Issue #123 (assignment-on-visibility): this module decides WHICH
+ * request to assign a driver next AND performs the assignment in the
+ * same step, via the atomic `claimWaterRequest()` transaction. A driver
+ * is never shown a delivery's details before it is authoritatively
+ * theirs — the request stops being dispatchable the moment it can be
+ * displayed. There is no "accept" step and no offer lease; only an
+ * explicit release (`releaseAssignedDelivery`) or a staff workflow can
+ * unassign the request.
+ *
+ * `driverOffers` records are the append-only dispatch-decision ledger:
+ * `"assigned"` records are created resolved inside the claim
+ * transaction, and a release appends a `"declined"` record.
  */
 
 const REQUESTS_COLLECTION = "waterRequests";
@@ -61,15 +65,51 @@ const logger = getLogger("domain.dispatch");
 const CANDIDATE_PAGE_SIZE = 100;
 
 /**
- * Total documents a single `getNextOfferForDriver` call may read across
- * ALL candidate streams (holds + available + the legacy catch-all).
- * Bounds a selection attempt — far beyond Saba's realistic queue size —
- * while still making a pathological queue terminate instead of scanning
- * unboundedly. Reaching this bound is a safety stop, not a completeness
- * result; it is logged as `dispatch.candidate_scan_exhausted` so an
- * inconclusive selection is observable in operational telemetry.
+ * Total documents a single `assignNextDeliveryForDriver` call may read
+ * across ALL candidate streams (holds + available + the legacy
+ * catch-all). Bounds a selection attempt — far beyond Saba's realistic
+ * queue size — while still making a pathological queue terminate instead
+ * of scanning unboundedly. Reaching this bound is a safety stop, not a
+ * completeness result; it is logged as `dispatch.candidate_scan_exhausted`
+ * so an inconclusive selection is observable in operational telemetry.
  */
 const MAX_CANDIDATE_DOCS = 1000;
+
+/**
+ * Maximum number of claim attempts per assignment pass. Selection is
+ * advisory — a concurrently-claimed or concurrently-cancelled candidate
+ * fails its `claimWaterRequest` transaction, and the loop moves on to
+ * the next eligible candidate. The bound keeps a pathological queue
+ * (or a sustained race storm) from retrying forever; normal operation
+ * succeeds on the first attempt.
+ */
+const MAX_ASSIGNMENT_ATTEMPTS = 5;
+
+/**
+ * Claim failures that mean "this candidate is gone" — the request was
+ * claimed, cancelled, held for someone else, or deleted between the
+ * advisory selection and the authoritative transaction. Safe to retry
+ * with the next candidate.
+ */
+const RETRYABLE_CLAIM_ERRORS = new Set([
+  "REQUEST_NOT_FOUND",
+  "ALREADY_CLAIMED",
+  "REQUEST_NOT_CLAIMABLE",
+  "HOLD_EXPIRED",
+  "PREFERRED_DRIVER_RESTRICTION",
+]);
+
+/**
+ * Claim failures that mean "this DRIVER cannot take work right now" —
+ * retrying another candidate would fail identically, so the pass ends.
+ */
+const DRIVER_STATE_CLAIM_ERRORS = new Set([
+  "DRIVER_NOT_FOUND",
+  "DRIVER_INELIGIBLE",
+  "DRIVER_OFFLINE",
+  "DRIVER_IN_COOLDOWN",
+  "DRIVER_HAS_ACTIVE_DELIVERY",
+]);
 
 interface CandidateScanBudget {
   docsScanned: number;
@@ -235,207 +275,206 @@ async function findFirstCandidate(
 }
 
 // ---------------------------------------------------------------------------
-// Selecting the next offer
+// Automatic assignment (issue #123 — assignment-on-visibility)
 // ---------------------------------------------------------------------------
 
-export interface NextOffer {
-  offer: DriverOffer;
-  request: WaterRequest;
+/**
+ * The driver's current normal (non-delivery-run) assignment, if any.
+ */
+async function currentNormalAssignment(
+  driverId: string,
+): Promise<WaterRequest | null> {
+  const claimed = await getClaimedRequestsForDriver(driverId);
+  return claimed.find((r) => !r.dispatchBatchId) ?? null;
 }
 
 /**
- * Returns the single request currently offered to this driver, creating a
- * new offer if none is pending. Returns null if there is nothing eligible
- * to offer right now.
+ * Returns the request currently assigned to this driver for normal
+ * dispatch — an existing assignment if one is already active, otherwise
+ * the next eligible request, claimed atomically before it is returned.
  *
- * Selection priority:
- *   1. A preferred-driver hold addressed to this driver (not yet expired).
- *      Ties (more than one hold addressed to the same driver) are broken
- *      by the canonical queue order.
- *   2. Otherwise, the highest-ranked "available" request this driver has
- *      not already declined, in canonical dispatch order — priority
- *      bucket, then `dispatchOverrideRank` (unranked last), then oldest
- *      `requestedAt` (see PRODUCT.md "Priority-Based Dispatch" /
- *      TECHNICAL.md "Dispatch Offer Selection").
+ * Assignment-on-visibility invariant (issue #123): the returned request
+ * is always already `claimed` and assigned to THIS driver. The function
+ * never returns a request that is merely "offered" or still available —
+ * full customer/delivery details may only ever be rendered from a
+ * successfully assigned request.
  *
- * Both candidate pools are produced by `iterateCandidatesInDispatchOrder`,
- * which paginates the complete matching queue in canonical order — a
- * fixed-size pre-filter window can no longer hide a better-ranked or
- * merely-later eligible request (issue #66).
+ * Returns null when there is nothing assignable: empty/ineligible queue,
+ * driver not currently dispatchable, or every claim attempt lost a race
+ * within the attempt bound.
  *
- * Callers must ensure the driver is online, eligible, and not in a
- * decline cooldown before calling this — those are prerequisites for
- * receiving offers at all, not part of request selection itself.
+ * Selection order per attempt (unchanged from the offer model):
+ *   1. A preferred-driver hold addressed to this driver (not expired).
+ *   2. The highest-ranked "available" request this driver has not
+ *      recently declined/released, in canonical dispatch order.
+ *
+ * A candidate that fails the authoritative claim (claimed by another
+ * driver, cancelled, or otherwise resolved between selection and claim)
+ * is skipped and the NEXT eligible candidate is attempted, bounded by
+ * MAX_ASSIGNMENT_ATTEMPTS — a lost race never returns "nothing
+ * available" while other work remains.
+ *
+ * Idempotent: reopening/refreshing the portal after assignment returns
+ * the same claimed request; closing the app never releases it. Only
+ * `releaseAssignedDelivery`, a staff workflow, or completing the
+ * delivery can end the assignment.
  */
-export async function getNextOfferForDriver(
+export async function assignNextDeliveryForDriver(
   driverId: string,
-): Promise<NextOffer | null> {
+): Promise<WaterRequest | null> {
   const now = new Date();
+  const db = getAdminDb();
 
-  // Reconcile stale activeRequestId before checking claimed deliveries.
-  // If the lock points to a deleted/completed/reassigned request, clear
-  // it so the driver is not permanently blocked from receiving offers.
-  await reconcileActiveRequestByUserId(driverId);
-
-  // Load the driver's current claimed delivery (if any). This is used both to
-  // enforce the one-active-delivery rule and to avoid issuing a duplicate
-  // offer while a delivery is in progress.
-  const activeDeliveries = await getClaimedRequestsForDriver(driverId);
-  const activeDelivery = activeDeliveries[0] ?? null;
-
-  // Request IDs this driver declined within the recent dispatch window.
-  // Used both to filter fresh candidates and to invalidate a stale
-  // pending offer for a request the driver has already declined.
-  const declinedIds = await getDeclinedRequestIdsForDriver(driverId);
-
-  // Reuse an existing pending offer so reloading the page doesn't
-  // manufacture a new offer while one is awaiting a response.
-  let pendingPair: { offer: DriverOffer; request: WaterRequest } | null = null;
-  const pending = await getPendingOfferForDriver(driverId);
-  if (pending) {
-    const request = await getWaterRequestById(pending.requestId);
-    if (
-      request &&
-      isOfferableToDriver(request, driverId, now) &&
-      !declinedIds.has(request.id)
-    ) {
-      pendingPair = { offer: pending, request };
-    } else {
-      // The request was claimed/cancelled/reassigned out from under this
-      // offer before the driver responded, or the driver already declined
-      // this request — expire it and select fresh.
-      await recordOfferResponse(pending.id, "expired");
-    }
-  }
-
-  // Opportunistic maintenance: expire any preferred-driver holds that have
-  // passed their window, regardless of which driver triggered this read.
-  // This keeps the general queue populated without a separate scheduled
-  // job (mirrors the previous browsable-queue behavior).
-  await expirePreferredDriverHolds(now);
-
-  // Candidate scans share one page budget so a single selection attempt
-  // is bounded across every stream it consults. When a valid pending
-  // offer exists it wins by policy — no queue reads are needed at all.
-  const budget: CandidateScanBudget = { docsScanned: 0, exhausted: false };
-
-  let holdCandidate: WaterRequest | null = null;
-  let availableCandidate: WaterRequest | null = null;
-  if (!pendingPair) {
-    // Priority 1: the canonically-first preferred-driver hold addressed
-    // to this driver that is still offerable (not expired).
-    holdCandidate = await findFirstCandidate(
-      { status: "preferred_driver_hold", preferredDriverId: driverId },
-      (request) => isOfferableToDriver(request, driverId, now),
-      budget,
-    );
-
-    // Priority 2: the canonically-first available request this driver has
-    // not recently declined — see PRODUCT.md "Priority-Based Dispatch".
-    if (!holdCandidate) {
-      availableCandidate = await findFirstCandidate(
-        { status: "available" },
-        (request) =>
-          isOfferableToDriver(request, driverId, now) &&
-          !declinedIds.has(request.id),
-        budget,
-      );
-    }
-  }
-
-  const candidate = selectNextDispatchCandidate({
-    activeDelivery,
-    pendingOffer: pendingPair,
-    // Each array carries at most the first eligible candidate found by the
-    // canonical paginated scan — the selector's "first eligible wins"
-    // iteration is unchanged, so precedence (pending → hold → available)
-    // and decline semantics stay identical.
-    holds: holdCandidate ? [holdCandidate] : [],
-    available: availableCandidate ? [availableCandidate] : [],
-    declinedRequestIds: declinedIds,
-    driverId,
-    now,
-  });
-
-  if (!candidate) {
-    if (budget.exhausted) {
-      // The scan hit its safety bound with unread candidates remaining:
-      // "no offer" here is inconclusive — eligible work may exist beyond
-      // the bound. Surface it operationally; never silently. Counts only —
-      // no request IDs or customer data.
-      logger.warn("dispatch.candidate_scan_exhausted", {
-        driverId,
-        docsScanned: budget.docsScanned,
-        docLimit: MAX_CANDIDATE_DOCS,
-      });
-    }
+  // Driver-state gate: automatic assignment must never target an
+  // offline, ineligible, unlinked, or cooldown driver — regardless of
+  // which caller invoked the pass. `claimWaterRequest` re-enforces the
+  // transactional subset of this; the early read keeps the failure cheap
+  // and keeps cooldown (a caller-side policy, not a claim condition)
+  // enforced at the domain boundary too.
+  const entry = await getDriverByLinkedUserId(driverId);
+  if (!entry) return null;
+  if (entry.archivedAt) return null;
+  if (entry.eligibilityStatus !== "eligible") return null;
+  if (entry.availabilityStatus !== "online") return null;
+  if (entry.cooldownUntil && new Date(entry.cooldownUntil) > now) {
     return null;
   }
 
-  // When the selected candidate is the request already offered to this
-  // driver, return the existing pending offer instead of minting a
-  // duplicate offer document on every page load.
-  if (pendingPair && pendingPair.request.id === candidate.id) {
-    return pendingPair;
+  // Reconcile stale activeRequestId before checking claimed deliveries.
+  // If the lock points to a deleted/completed/reassigned request, clear
+  // it so the driver is not permanently blocked from assignment.
+  await reconcileActiveRequestByUserId(driverId);
+
+  // Deployment reconciliation (issue #123): pending offers are a legacy
+  // concept. Any `response == null` records left over from the old model
+  // are expired unconditionally — they never reserved the request, and
+  // under assignment-on-visibility they must never be treated as
+  // meaningful again. Idempotent; touches offer records only, never the
+  // request.
+  await expirePendingOffersForDriver(driverId);
+
+  // Existing claimed work blocks a new assignment — a driver holds at
+  // most one normal assignment at a time, and any claimed delivery
+  // (including delivery-run loads) occupies that slot. Returns the
+  // existing normal assignment so a refresh/reopen is idempotent.
+  const claimed = await getClaimedRequestsForDriver(driverId);
+  if (claimed.length > 0) {
+    return claimed.find((r) => !r.dispatchBatchId) ?? null;
   }
 
-  const offer = await createDriverOffer(driverId, candidate.id);
-  return { offer, request: candidate };
-}
+  // Request IDs this driver declined/released within the recent window.
+  const declinedIds = await getDeclinedRequestIdsForDriver(driverId);
 
-// ---------------------------------------------------------------------------
-// Accept
-// ---------------------------------------------------------------------------
+  // Opportunistic maintenance: expire any preferred-driver holds that
+  // have passed their window, regardless of which driver triggered this
+  // read (mirrors the previous lazy-expiration behavior).
+  await expirePreferredDriverHolds(now);
 
-export interface AcceptDriverOfferInput {
-  offerId: string;
-  driverId: string;
-}
+  // Candidate scans share one page budget so a single assignment pass is
+  // bounded across every stream it consults.
+  const budget: CandidateScanBudget = { docsScanned: 0, exhausted: false };
 
-/**
- * Accepts an offer. Delegates the actual claim to `claimWaterRequest()`,
- * which is the sole source of atomic-claim correctness — this function
- * only adds offer bookkeeping around it. If the underlying claim fails
- * (e.g. another driver claimed it first), the offer is marked "expired"
- * rather than "declined" so it is not mistaken for a driver's choice, and
- * the original error is rethrown for the caller to present.
- */
-export async function acceptDriverOffer(
-  input: AcceptDriverOfferInput,
-): Promise<WaterRequest> {
-  const { offerId, driverId } = input;
-  const db = getAdminDb();
-  const offerSnap = await db.collection("driverOffers").doc(offerId).get();
+  for (let attempt = 0; attempt < MAX_ASSIGNMENT_ATTEMPTS; attempt++) {
+    // Priority 1: the canonically-first preferred-driver hold addressed
+    // to this driver that is still assignable (not expired).
+    const holdCandidate = await findFirstCandidate(
+      { status: "preferred_driver_hold", preferredDriverId: driverId },
+      (request) => isAssignableToDriver(request, driverId, now),
+      budget,
+    );
 
-  if (!offerSnap.exists) throw new Error("OFFER_NOT_FOUND");
-  const offerData = offerSnap.data()!;
-  if (offerData.driverId !== driverId) throw new Error("OFFER_NOT_FOUND");
-  if (offerData.response !== null) throw new Error("OFFER_ALREADY_RESOLVED");
+    // Priority 2: the canonically-first available request this driver
+    // has not recently declined — see PRODUCT.md "Priority-Based
+    // Dispatch".
+    const availableCandidate = holdCandidate
+      ? null
+      : await findFirstCandidate(
+          { status: "available" },
+          (request) =>
+            isAssignableToDriver(request, driverId, now) &&
+            !declinedIds.has(request.id),
+          budget,
+        );
 
-  try {
-    const request = await claimWaterRequest({
-      requestId: offerData.requestId,
+    const candidate = selectNextDispatchCandidate({
+      activeDelivery: null,
+      holds: holdCandidate ? [holdCandidate] : [],
+      available: availableCandidate ? [availableCandidate] : [],
+      declinedRequestIds: declinedIds,
       driverId,
+      now,
     });
-    await recordOfferResponse(offerId, "accepted");
-    return request;
-  } catch (err) {
-    await recordOfferResponse(offerId, "expired");
-    throw err;
+
+    if (!candidate) {
+      if (budget.exhausted) {
+        // The scan hit its safety bound with unread candidates
+        // remaining: "no assignment" here is inconclusive — eligible
+        // work may exist beyond the bound. Surface it operationally;
+        // never silently. Counts only — no request IDs or customer data.
+        logger.warn("dispatch.candidate_scan_exhausted", {
+          driverId,
+          docsScanned: budget.docsScanned,
+          docLimit: MAX_CANDIDATE_DOCS,
+        });
+      }
+      return null;
+    }
+
+    try {
+      // THE authoritative step: the request is claimed and the dispatch
+      // record is written in the same transaction. Only the post-claim
+      // snapshot is ever returned — a request that failed assignment is
+      // never exposed as a driver-visible delivery.
+      return await claimWaterRequest(
+        { requestId: candidate.id, driverId },
+        {
+          claimEventMetadata: { assignmentMode: "automatic" },
+          additionalWrites: (txn) => {
+            txn.set(
+              driverOffersCollection(db).doc(),
+              buildDispatchRecord(driverId, candidate.id, "assigned"),
+            );
+          },
+        },
+      );
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "";
+      if (RETRYABLE_CLAIM_ERRORS.has(code)) {
+        // The candidate was claimed/cancelled/held concurrently — keep
+        // going; the next scan sees the committed state and moves to
+        // the next eligible request.
+        continue;
+      }
+      if (DRIVER_STATE_CLAIM_ERRORS.has(code)) {
+        // Driver became non-dispatchable mid-pass (e.g. a dispatcher
+        // assigned them concurrently, or they went offline). Whatever
+        // committed is authoritative — re-read and return it.
+        return currentNormalAssignment(driverId);
+      }
+      throw err;
+    }
   }
+
+  // Every attempt lost a race. This is a safety stop, not "queue empty" —
+  // log it so the inconclusive outcome is observable.
+  logger.warn("dispatch.assignment_attempts_exhausted", {
+    driverId,
+    attempts: MAX_ASSIGNMENT_ATTEMPTS,
+  });
+  return null;
 }
 
 // ---------------------------------------------------------------------------
-// Decline
+// Decline / release (issue #123)
 // ---------------------------------------------------------------------------
 
-export interface DeclineDriverOfferInput {
-  offerId: string;
+export interface ReleaseAssignedDeliveryInput {
+  requestId: string;
   driverId: string;
 }
 
-export interface DeclineDriverOfferResult {
-  declined: true;
+export interface ReleaseAssignedDeliveryResult {
+  released: true;
   availabilityStatus: "available" | "cooldown" | "daily_limit";
   cooldownUntil: string | null;
   declineCount: number;
@@ -443,200 +482,215 @@ export interface DeclineDriverOfferResult {
 }
 
 /**
- * Declines an offer. Does not claim the request — it remains available
- * (at its original `requestedAt` priority) for another eligible driver.
+ * Driver-initiated release of an ASSIGNED delivery: the operational
+ * replacement for declining an unclaimed offer (issue #123).
  *
- * If the declined offer was a preferred-driver hold addressed to this
- * driver, the hold ends immediately and the request opens to the general
- * queue rather than waiting for the hold window to expire naturally (see
- * PRODUCT.md "Preferred Driver").
+ * Atomically:
+ *   1. verifies the caller is the currently assigned driver and the
+ *      request is still releasable (`claimed`, no recorded water
+ *      collection, not part of a delivery run);
+ *   2. returns the request to `available` at its ORIGINAL `requestedAt`
+ *      priority — releasing never moves a customer to the back of the
+ *      queue, and a formerly preferred-driver request enters the general
+ *      queue rather than being re-reserved for this driver;
+ *   3. clears the driver's `activeRequestId` lock (only if it points at
+ *      this request);
+ *   4. appends a `"declined"` dispatch record and expires any leftover
+ *      legacy pending offers for the pair;
+ *   5. applies the existing decline policy exactly once — daily decline
+ *      counting and cooldown start are unchanged from the offer model;
+ *   6. records a `driver_released` audit event.
  *
- * After recording the decline, checks whether the driver has now reached
- * the configured daily decline limit and, if so, starts a cooldown.
+ * A stale browser can never release work that has since been delivered,
+ * cancelled, or reassigned: the status/ownership checks re-run against
+ * committed state inside the transaction.
  */
-export async function declineDriverOffer(
-  input: DeclineDriverOfferInput,
-): Promise<DeclineDriverOfferResult> {
-  const { offerId, driverId } = input;
+export async function releaseAssignedDelivery(
+  input: ReleaseAssignedDeliveryInput,
+): Promise<ReleaseAssignedDeliveryResult> {
+  const { requestId, driverId } = input;
   const db = getAdminDb();
-  const offerRef = db.collection("driverOffers").doc(offerId);
+  const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
+  const offers = driverOffersCollection(db);
 
   const now = new Date();
   const endOfToday = startOfSabaDay(
     new Date(now.getTime() + 24 * 60 * 60 * 1000),
   );
 
-  const result = await db.runTransaction<DeclineDriverOfferResult>(
-    async (txn) => {
-      // ---- All reads first ----
-      const offerSnap = await txn.get(offerRef);
-      if (!offerSnap.exists) throw new Error("OFFER_NOT_FOUND");
-      const offerData = offerSnap.data()!;
-      if (offerData.driverId !== driverId) throw new Error("OFFER_NOT_FOUND");
-      if (offerData.response !== null)
-        throw new Error("OFFER_ALREADY_RESOLVED");
+  return db.runTransaction<ReleaseAssignedDeliveryResult>(async (txn) => {
+    // ---- All reads first ----
+    const requestSnap = await txn.get(requestRef);
+    if (!requestSnap.exists) throw new Error("REQUEST_NOT_FOUND");
+    const reqData = requestSnap.data()!;
 
-      const requestId = offerData.requestId as string;
-      const requestRef = db.collection(REQUESTS_COLLECTION).doc(requestId);
-      const requestSnap = await txn.get(requestRef);
+    if (reqData.status !== "claimed") {
+      throw new Error("REQUEST_NOT_RELEASABLE");
+    }
+    if (reqData.assignedDriverId !== driverId) {
+      throw new Error("NOT_ASSIGNED_DRIVER");
+    }
+    if (reqData.dispatchBatchId) {
+      // Delivery-run loads are staff-managed; a driver cannot detach
+      // themselves from a run.
+      throw new Error("DELIVERY_RUN_MANAGED");
+    }
+    if (
+      Array.isArray(reqData.loadCollections) &&
+      reqData.loadCollections.length > 0
+    ) {
+      // Water is already physically collected — releasing now would
+      // strand collected water. Staff must resolve this by hand.
+      throw new Error("REQUEST_HAS_COLLECTIONS");
+    }
 
-      // Any other pending offers of this same request to this driver are
-      // duplicates; expire them alongside the decline so the request is not
-      // immediately re-offered from a stale pending record. Equality-only
-      // query — no composite index required.
-      const duplicatePendingSnap = await txn.get(
-        db
-          .collection("driverOffers")
-          .where("driverId", "==", driverId)
-          .where("requestId", "==", requestId)
-          .where("response", "==", null),
+    const registrySnap = await txn.get(
+      db
+        .collection("driverRegistry")
+        .where("linkedUserId", "==", driverId)
+        .limit(1),
+    );
+    if (registrySnap.empty) throw new Error("DRIVER_NOT_FOUND");
+    const registryRef = registrySnap.docs[0].ref;
+    const registryData = registrySnap.docs[0].data();
+
+    // Leftover pending (legacy) offers for this pair — expire them so a
+    // stale record can never resurface the request to this driver.
+    const legacyPendingSnap = await txn.get(
+      offers
+        .where("driverId", "==", driverId)
+        .where("requestId", "==", requestId)
+        .where("response", "==", null),
+    );
+
+    const settingsSnap = await txn.get(
+      db.collection("config").doc("dispatchSettings"),
+    );
+    const settingsData = settingsSnap.data() ?? {};
+    const maxDeclinesPerDay =
+      typeof settingsData.maxDeclinesPerDay === "number" &&
+      settingsData.maxDeclinesPerDay >= 1
+        ? settingsData.maxDeclinesPerDay
+        : appConfig.defaultMaxDeclinesPerDay;
+    const declineCooldownHours =
+      typeof settingsData.declineCooldownHours === "number" &&
+      settingsData.declineCooldownHours > 0
+        ? settingsData.declineCooldownHours
+        : appConfig.defaultDeclineCooldownHours;
+
+    // Count declines already recorded today (this release is not yet
+    // recorded — appended below exactly once).
+    const lookback = new Date(now.getTime() - 26 * 60 * 60 * 1000);
+    const declinesSnap = await txn.get(
+      offers
+        .where("driverId", "==", driverId)
+        .where("response", "==", "declined")
+        .where("respondedAt", ">=", lookback),
+    );
+    const todayKey = sabaCalendarDateKey(now);
+    const declinesBeforeThis = declinesSnap.docs.filter((doc) => {
+      const respondedAt = doc.data().respondedAt?.toDate?.();
+      return (
+        respondedAt instanceof Date &&
+        sabaCalendarDateKey(respondedAt) === todayKey
       );
+    }).length;
 
-      const settingsRef = db.collection("config").doc("dispatchSettings");
-      const settingsSnap = await txn.get(settingsRef);
-      const settingsData = settingsSnap.data() ?? {};
-      const maxDeclinesPerDay =
-        typeof settingsData.maxDeclinesPerDay === "number" &&
-        settingsData.maxDeclinesPerDay >= 1
-          ? settingsData.maxDeclinesPerDay
-          : appConfig.defaultMaxDeclinesPerDay;
-      const declineCooldownHours =
-        typeof settingsData.declineCooldownHours === "number" &&
-        settingsData.declineCooldownHours > 0
-          ? settingsData.declineCooldownHours
-          : appConfig.defaultDeclineCooldownHours;
+    const willEnterCooldown = declinesBeforeThis + 1 >= maxDeclinesPerDay;
 
-      // Count declines already recorded today (this offer is not yet declined).
-      const lookback = new Date(now.getTime() - 26 * 60 * 60 * 1000);
-      const declinesSnap = await txn.get(
-        db
-          .collection("driverOffers")
-          .where("driverId", "==", driverId)
-          .where("response", "==", "declined")
-          .where("respondedAt", ">=", lookback),
-      );
-      const todayKey = sabaCalendarDateKey(now);
-      const declinesBeforeThis = declinesSnap.docs.filter((doc) => {
-        const respondedAt = doc.data().respondedAt?.toDate?.();
-        return (
-          respondedAt instanceof Date &&
-          sabaCalendarDateKey(respondedAt) === todayKey
-        );
-      }).length;
+    // ---- All writes after reads ----
+    const nowField = FieldValue.serverTimestamp();
 
-      const willEnterCooldown = declinesBeforeThis + 1 >= maxDeclinesPerDay;
+    // 1. Return the request to the general dispatch queue. `requestedAt`
+    //    and `dispatchPriority`/`dispatchOverrideRank` are untouched —
+    //    the customer keeps their place. `preferredDriverId`/
+    //    `preferredDriverExpiresAt` are cleared (same as the staff
+    //    return-to-queue path): the hold is never re-established for the
+    //    releasing driver, and the fresh decline record excludes
+    //    re-assignment to them for the decline window regardless.
+    txn.update(requestRef, {
+      status: "available",
+      assignedDriverId: null,
+      claimedAt: null,
+      availableAt: nowField,
+      preferredDriverId: null,
+      preferredDriverExpiresAt: null,
+      updatedAt: nowField,
+    });
 
-      // If cooldown is needed, locate the driver registry by linked user.
-      let registryRef = null as DocumentReference | null;
-      if (willEnterCooldown) {
-        const registrySnap = await txn.get(
-          db
-            .collection("driverRegistry")
-            .where("linkedUserId", "==", driverId)
-            .limit(1),
-        );
-        if (!registrySnap.empty) {
-          registryRef = registrySnap.docs[0].ref;
-        }
-      }
+    // 2. Clear the driver's active-delivery lock — only if it currently
+    //    points at this request (same convention as markWaterDelivered).
+    if (registryData.activeRequestId === requestId) {
+      txn.update(registryRef, {
+        activeRequestId: null,
+        updatedAt: nowField,
+        updatedBy: driverId,
+      });
+    }
 
-      // ---- All writes after reads ----
-      const nowField = FieldValue.serverTimestamp();
-
-      // 1. Record the offer as declined; expire duplicate pending offers of
-      // the same request so only one decline is counted.
-      txn.update(offerRef, {
-        response: "declined",
+    // 3. Expire any leftover pending offer records for the pair.
+    for (const doc of legacyPendingSnap.docs) {
+      txn.update(doc.ref, {
+        response: "expired",
         respondedAt: nowField,
       });
-      for (const doc of duplicatePendingSnap.docs) {
-        if (doc.id === offerId) continue;
-        txn.update(doc.ref, {
-          response: "expired",
-          respondedAt: nowField,
-        });
-      }
+    }
 
-      // 2. Release an active preferred-driver hold to the general queue.
-      if (requestSnap.exists) {
-        const requestData = requestSnap.data()!;
-        if (
-          requestData.status === "preferred_driver_hold" &&
-          requestData.preferredDriverId === driverId
-        ) {
-          const requestUpdate: Record<string, unknown> = {
-            availableAt: nowField,
-            updatedAt: nowField,
-          };
-          // Preserve status if it is already being updated to available. Use a
-          // single update for both status and timestamps to keep writes minimal.
-          requestUpdate.status = "available";
-          txn.update(requestRef, requestUpdate);
+    // 4. Append the decline dispatch record — exactly once.
+    txn.set(offers.doc(), buildDispatchRecord(driverId, requestId, "declined"));
 
-          const eventRef = requestRef.collection("events").doc();
-          txn.set(eventRef, {
-            type: "preferred_driver_declined",
-            actorId: driverId,
-            actorRole: "driver",
-            createdAt: nowField,
-            metadata: { preferredDriverId: driverId },
-          });
-        }
-      }
+    // 5. Audit event on the request.
+    txn.set(requestRef.collection("events").doc(), {
+      type: "driver_released",
+      actorId: driverId,
+      actorRole: "driver",
+      createdAt: nowField,
+      metadata: { previousStatus: "claimed" },
+    });
 
-      // 3. Start cooldown if threshold reached.
-      const declineCount = declinesBeforeThis + 1;
-      if (willEnterCooldown) {
-        if (!registryRef) {
-          throw new Error("DRIVER_NOT_LINKED_FOR_COOLDOWN");
-        }
+    // 6. Cooldown if the daily decline limit is now reached.
+    const declineCount = declinesBeforeThis + 1;
+    if (willEnterCooldown) {
+      const cooldownUntil = new Date(
+        now.getTime() + declineCooldownHours * 60 * 60 * 1000,
+      );
 
-        const cooldownUntil = new Date(
-          now.getTime() + declineCooldownHours * 60 * 60 * 1000,
-        );
+      txn.update(registryRef, {
+        cooldownUntil,
+        updatedAt: nowField,
+        updatedBy: driverId,
+      });
 
-        txn.update(registryRef, {
-          cooldownUntil,
-          updatedAt: nowField,
-          updatedBy: driverId,
-        });
-
-        const cooldownEventRef = registryRef.collection("events").doc();
-        txn.set(cooldownEventRef, {
-          type: "driver_cooldown_started",
-          actorId: driverId,
-          actorRole: "driver",
-          createdAt: nowField,
-          metadata: {
-            declineCount,
-            maxDeclinesPerDay,
-            cooldownUntil: cooldownUntil.toISOString(),
-          },
-        });
-
-        const availabilityStatus =
-          cooldownUntil.getTime() >= endOfToday.getTime()
-            ? "daily_limit"
-            : "cooldown";
-
-        return {
-          declined: true,
-          availabilityStatus,
-          cooldownUntil: cooldownUntil.toISOString(),
+      txn.set(registryRef.collection("events").doc(), {
+        type: "driver_cooldown_started",
+        actorId: driverId,
+        actorRole: "driver",
+        createdAt: nowField,
+        metadata: {
           declineCount,
           maxDeclinesPerDay,
-        };
-      }
+          cooldownUntil: cooldownUntil.toISOString(),
+        },
+      });
 
       return {
-        declined: true,
-        availabilityStatus: "available",
-        cooldownUntil: null,
+        released: true,
+        availabilityStatus:
+          cooldownUntil.getTime() >= endOfToday.getTime()
+            ? "daily_limit"
+            : "cooldown",
+        cooldownUntil: cooldownUntil.toISOString(),
         declineCount,
         maxDeclinesPerDay,
       };
-    },
-  );
+    }
 
-  return result;
+    return {
+      released: true,
+      availabilityStatus: "available",
+      cooldownUntil: null,
+      declineCount,
+      maxDeclinesPerDay,
+    };
+  });
 }

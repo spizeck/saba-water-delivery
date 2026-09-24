@@ -18,11 +18,17 @@ convenience.
 > comparator AND the effective retrieval order. `dispatch.ts` pages the
 > complete eligible queue in canonical order via per-bucket ranked/by-age
 > streams plus a missing-field catch-all (see
-> [TECHNICAL.md](../../TECHNICAL.md#dispatch-offer-selection)); an earlier
+> [TECHNICAL.md](../../TECHNICAL.md#dispatch-assignment-selection)); an earlier
 > implementation fetched only `limit(100)` age-ordered candidates before
-> sorting, which could hide an escalated request behind the window. Valid
-> pending offers are still reused ahead of fresh selection, and escalation
-> does not preempt one.
+> sorting, which could hide an escalated request behind the window.
+>
+> **Superseded for #123:** the "Offers, not a browsable list" mechanism below
+> described a pending-offer + explicit-accept workflow. Since
+> [0021](./0021-assignment-on-visibility-dispatch.md) the driver portal uses
+> assignment-on-visibility: the claim transaction runs before details are
+> shown, and "decline" is now an explicit release of an assigned delivery.
+> The fairness policy (ordering, one-at-a-time, decline cooldown) is
+> unchanged — only the acceptance mechanism was replaced.
 
 - **Priority ordering.** The dispatch queue comparator
   (`dispatchQueueCompare`) sorts by three keys, in this order:
@@ -53,14 +59,17 @@ convenience.
   **`urgent`/`critical`** requests, the preference is honored **only if that
   driver is immediately available**; otherwise the request goes to the fair
   queue so urgent need is not delayed waiting on one driver.
-- **One active single-request assignment per driver:** a driver is offered/holds
+- **One active single-request assignment per driver:** a driver holds
   exactly one request at a time (the `driverRegistry.activeRequestId` lock),
   enforced atomically. Delivery Runs are the deliberate exception
   ([0008](./0008-delivery-runs-batch-dispatch-exception.md)).
-- **Offers, not a browsable list:** an eligible, online driver is offered one
-  request at a time. Declining too many within a day triggers a cooldown
-  (thresholds are admin-configurable) — this discourages cherry-picking while
-  never permanently penalizing a driver.
+- **Assignments, not a browsable list:** an eligible, online driver is
+  assigned one request at a time — the assignment is committed before the
+  driver can see the delivery's details, and closing the app does not
+  release it (see [0021](./0021-assignment-on-visibility-dispatch.md)).
+  Releasing too many assigned deliveries within a day triggers a cooldown
+  (thresholds are admin-configurable) — this discourages cherry-picking
+  while never permanently penalizing a driver.
 
 ## Alternatives considered
 
@@ -74,8 +83,8 @@ convenience.
 ## Consequences
 
 - The queue balances need (priority), fairness (age within priority), resident
-  preference (bounded hold), and equitable driver workload (one-at-a-time offers
-  + decline cooldown).
+  preference (bounded hold), and equitable driver workload (one-at-a-time
+  assignments + decline cooldown).
 - Reported urgency (resident-facing) is deliberately distinct from operational
   `dispatchPriority` (staff-controlled) — self-declared urgency is not blindly
   trusted (see TECHNICAL.md "Do Not Blindly Trust Self-Declared Priority").
@@ -105,5 +114,7 @@ convenience.
   `escalateDispatchRequest`.
 - [`src/lib/domain/driverOffers.ts`](../../src/lib/domain/driverOffers.ts),
   [`src/lib/domain/dispatchSettings.ts`](../../src/lib/domain/dispatchSettings.ts)
-- TECHNICAL.md "Request Claiming", "Dispatch Offers", "Priority-Based Dispatch",
+- TECHNICAL.md "Request Claiming", "Dispatch Assignment", "Priority-Based Dispatch",
   "Preferred Driver Expiration"
+- [0021](./0021-assignment-on-visibility-dispatch.md) — supersedes the
+  pending-offer acceptance mechanism
