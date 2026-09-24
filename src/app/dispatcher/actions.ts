@@ -22,6 +22,7 @@ import {
   type AccountInvitationResult,
   type EmailAccountStatus,
 } from "@/lib/domain/identity";
+import { isValidEmail } from "@/lib/domain/identityMatching";
 import { parseRequestedLoads } from "@/lib/domain/quantity";
 import { isValidDispatchPriority } from "@/lib/domain/priority";
 import type { DispatchPriority } from "@/lib/domain/types";
@@ -178,7 +179,7 @@ export async function editRequest(
   ).trim();
   const customerPhone = String(formData.get("customerPhone") ?? "").trim();
   const customerEmail = String(formData.get("customerEmail") ?? "").trim();
-  if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+  if (customerEmail && !isValidEmail(customerEmail)) {
     return {
       status: "error",
       message: "Please enter a valid customer email address.",
