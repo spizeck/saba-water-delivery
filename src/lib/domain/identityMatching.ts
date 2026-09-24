@@ -53,6 +53,19 @@ export function normalizeEmailForMatching(
 }
 
 /**
+ * Canonical email validation for this application — a single `@` with
+ * non-empty local/domain parts and a dot in the domain. This is the same
+ * rule used by request editing (`editWaterRequest`), the dispatcher edit
+ * action, and the `requiredEmail` config validator, and is intentionally
+ * NOT RFC-complete: it only rejects input that can never be a deliverable
+ * account email so partial form input never reaches Firebase Auth lookups.
+ */
+export function isValidEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+/**
  * Simple name-similarity helper. Treats names as similar when one
  * normalized form contains the other, or they are equal. This is
  * intentionally basic — it supports small typos/whitespace/transposition

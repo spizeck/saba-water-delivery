@@ -22,6 +22,7 @@ import type {
 import {
   buildUnionMergeRoles,
   findIdentityMatches,
+  isValidEmail,
   normalizeEmailForMatching,
   normalizePhoneForMatching,
   type IdentityMatchInput,
@@ -97,9 +98,18 @@ export interface EmailAccountStatus {
 export async function getEmailAccountStatus(
   email: string,
 ): Promise<EmailAccountStatus> {
+  const noMatch: EmailAccountStatus = {
+    exists: false,
+    uid: null,
+    displayName: null,
+    email: null,
+  };
+
   const normalized = normalizeEmailForMatching(email);
-  if (!normalized) {
-    return { exists: false, uid: null, displayName: null, email: null };
+  // Malformed input (e.g. a dispatcher still typing `a@`) is normal user
+  // input, not an operational failure — it must never reach Firebase Auth.
+  if (!normalized || !isValidEmail(normalized)) {
+    return noMatch;
   }
 
   try {
@@ -112,9 +122,15 @@ export async function getEmailAccountStatus(
     };
   } catch (err: unknown) {
     const firebaseError = err as { code?: string };
-    // auth/user-not-found is the expected "no account" case.
-    if (firebaseError.code === "auth/user-not-found") {
-      return { exists: false, uid: null, displayName: null, email: null };
+    // auth/user-not-found is the expected "no account" case, and
+    // auth/invalid-email is the same expected validation outcome when the
+    // canonical check and Firebase's own validation disagree. Anything
+    // else is a real operational failure and must propagate.
+    if (
+      firebaseError.code === "auth/user-not-found" ||
+      firebaseError.code === "auth/invalid-email"
+    ) {
+      return noMatch;
     }
     throw err;
   }
@@ -880,7 +896,7 @@ export async function createAccountInvitation(
   displayName: string,
 ): Promise<AccountInvitationResult> {
   const normalized = normalizeEmailForMatching(email);
-  if (!normalized) {
+  if (!normalized || !isValidEmail(normalized)) {
     throw new Error("INVALID_EMAIL");
   }
 

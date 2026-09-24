@@ -1591,7 +1591,12 @@ the **Record customer dispute** control on the request detail page.
 
 When a dispatcher creates a request for an unregistered requestor and
 enters an email address, `checkEmailAccountStatus()` looks up the email
-in Firebase Authentication. If an account already exists, the dispatcher
+in Firebase Authentication. The form only invokes the lookup once the
+input passes the canonical `isValidEmail()` rule (debounced), and
+`getEmailAccountStatus()` treats malformed input and Firebase's
+`auth/invalid-email` as the same expected "no account" outcome rather
+than an operational failure — unexpected Auth errors still propagate.
+If an account already exists, the dispatcher
 can create the request as a registered request for that account. If no
 account exists, the dispatcher may check "Send account setup
 instructions". `createAccountInvitation()`:

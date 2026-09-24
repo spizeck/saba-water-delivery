@@ -21,6 +21,7 @@ import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import {
   findIdentityMatches,
   findStrongEmailMatch,
+  isValidEmail,
 } from "@/lib/domain/identityMatching";
 import {
   formatWaterQuantity,
@@ -188,10 +189,15 @@ export function CreateRequestForm({
 
     async function load() {
       const email = customerEmail.trim();
-      if (!email || customerType !== "new") {
+      // Only syntactically valid emails are looked up — partial input
+      // (e.g. `a@` while the dispatcher is still typing) must never reach
+      // the account-status check, and stale status/selection must not
+      // linger once the field becomes invalid.
+      if (customerType !== "new" || !isValidEmail(email)) {
         if (!cancelled) {
           setEmailStatus(null);
           setEmailStatusLoading(false);
+          setUseExistingResidentUid(null);
         }
         return;
       }

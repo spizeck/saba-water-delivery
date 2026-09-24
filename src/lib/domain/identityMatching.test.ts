@@ -5,6 +5,7 @@ import {
   findIdentityMatches,
   findPhoneMatches,
   findStrongEmailMatch,
+  isValidEmail,
   namesLookSimilar,
   normalizeEmailForMatching,
   normalizePhoneForMatching,
@@ -61,6 +62,28 @@ describe("normalizeEmailForMatching", () => {
   it("returns null for empty input", () => {
     expect(normalizeEmailForMatching(null)).toBeNull();
     expect(normalizeEmailForMatching("  ")).toBeNull();
+  });
+});
+
+describe("isValidEmail", () => {
+  it("accepts ordinary addresses", () => {
+    expect(isValidEmail("bruce@example.com")).toBe(true);
+    expect(isValidEmail("  Bruce@Example.COM  ")).toBe(true);
+    expect(isValidEmail("a.b+c@sub.domain.co")).toBe(true);
+  });
+
+  it("rejects empty and partial input", () => {
+    expect(isValidEmail(null)).toBe(false);
+    expect(isValidEmail(undefined)).toBe(false);
+    expect(isValidEmail("")).toBe(false);
+    expect(isValidEmail("   ")).toBe(false);
+    expect(isValidEmail("a@")).toBe(false);
+    expect(isValidEmail("a@b")).toBe(false);
+    expect(isValidEmail("@example.com")).toBe(false);
+    expect(isValidEmail("a@.com")).toBe(false);
+    expect(isValidEmail("a b@example.com")).toBe(false);
+    expect(isValidEmail("a@@example.com")).toBe(false);
+    expect(isValidEmail("no-at-sign")).toBe(false);
   });
 });
 
