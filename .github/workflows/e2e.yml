@@ -8,10 +8,6 @@ name: E2E
 # E2E failure easy to distinguish from a unit/build failure. It uses only
 # local emulators and synthetic data — never production Firebase, secrets,
 # email, or WhatsApp. See docs/TESTING.md "End-to-end tests (Playwright)".
-#
-# Whether this check becomes REQUIRED in branch protection is a deliberate,
-# separate decision once it has proven stable on main — this workflow does not
-# change branch-protection expectations on its own.
 on:
   pull_request:
   push:
@@ -20,9 +16,80 @@ on:
 permissions:
   contents: read
 
+# Change-aware: the `Detect changes` job classifies the PR diff and the
+# playwright job only runs when a changed file can plausibly affect a
+# user-facing or emulator-driven flow. Pushes to main always run.
+#
+# Required-check safety: gating uses job-level `if:` (never
+# workflow-level `paths:` filters): a skipped job reports Success and
+# satisfies required checks, while a filtered-out workflow would leave
+# them pending forever. The classifier fails safe: an uncomputable diff
+# or an unrecognized path runs the suite.
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      e2e: ${{ steps.classify.outputs.e2e }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: classify
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -u
+          e2e=false
+          files=""
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            # Full run on main.
+            e2e=true
+          else
+            files="$(git diff --name-only "origin/${BASE_REF}...HEAD" 2>/dev/null)" || files=""
+            if [ -z "$files" ]; then
+              # A real PR always has a diff; empty means the diff failed.
+              # Fail safe toward coverage, never toward skipping it.
+              echo "::warning::Could not compute PR diff — running E2E"
+              e2e=true
+            fi
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                # Docs / metadata / CI config / lint+unit-test config:
+                # cannot affect a browser flow.
+                *.md|*.pdf|LICENSE|docs/*|.github/*|wiki-draft/*|.env*|.gitignore|.prettier*|vercel.json|eslint.config.mjs|vitest.config.ts|vitest.rules.config.ts|vitest.auth-emulator.config.ts|*.test.ts|*.test.tsx|scripts/*)
+                  ;;
+                # Storage rules: the E2E emulators run auth+firestore
+                # only, so storage.rules cannot affect this suite.
+                storage.rules)
+                  ;;
+                # Application runtime, Playwright suite, emulator config
+                # and the Firestore rules the emulators enforce.
+                src/*|public/*|e2e/*|playwright.config.ts|firebase.json|.firebaserc|firestore.rules|firestore.indexes.json|next.config.ts|tsconfig.json|postcss.config.mjs|package.json|package-lock.json|.nvmrc)
+                  e2e=true ;;
+                # Unknown change: run the suite.
+                *)
+                  e2e=true ;;
+              esac
+            done <<< "$files"
+          fi
+
+          echo "Changed files:"
+          echo "$files"
+          echo "e2e=$e2e"
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
+
   playwright:
     name: playwright
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
