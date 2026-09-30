@@ -16,6 +16,12 @@ on:
 permissions:
   contents: read
 
+# Change-aware CI. `verify` is a single required check, so the classifier
+# step groups the expensive work by domain and gates the steps: the JDK +
+# emulator suites (rules, auth reconciliation) only run when the diff can
+# touch their surfaces, and docs/config-only PRs skip installs entirely.
+# Pushes to main always run everything. The classifier fails safe: an
+# uncomputable diff or an unrecognized path runs all step groups.
 jobs:
   verify:
     name: verify
@@ -23,8 +29,115 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: scope
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -u
+          app=false
+          rules=false
+          auth=false
+          files=""
+
+          run_all() {
+            app=true; rules=true; auth=true
+          }
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            # Full run on main.
+            run_all
+          else
+            files="$(git diff --name-only "origin/${BASE_REF}...HEAD" 2>/dev/null)" || files=""
+            if [ -z "$files" ]; then
+              # A real PR always has a diff; empty means the diff failed.
+              # Fail safe toward full coverage, never toward skipping it.
+              echo "::warning::Could not compute PR diff — running all domains"
+              run_all
+            fi
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+
+              # Cheap validation for config-only changes that no longer
+              # get exercised indirectly by a heavy suite.
+              case "$f" in
+                *.json)
+                  node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$f" || exit 1
+                  ;;
+                .github/workflows/*.yml|.github/workflows/*.yaml)
+                  if python3 -c "import yaml" 2>/dev/null; then
+                    python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" || exit 1
+                  else
+                    echo "::warning::PyYAML unavailable; skipping workflow YAML validation for $f"
+                  fi
+                  ;;
+              esac
+
+              case "$f" in
+                # Docs / metadata / CI config: cannot affect runtime.
+                *.md|*.pdf|LICENSE|docs/*|.github/*|wiki-draft/*|.env*|.gitignore|.prettier*|vercel.json)
+                  ;;
+
+                # Firestore/Storage rules, emulator config and the rules
+                # test surface.
+                firestore.rules|storage.rules|firestore.indexes.json|firebase.json|.firebaserc|firestore.rules.test.ts|firestore.rateLimit.emulator.test.ts|vitest.rules.config.ts)
+                  rules=true ;;
+
+                # Auth-emulator reconciliation tests + the auth surface
+                # they prove (session routes, account merge, linking).
+                vitest.auth-emulator.config.ts|*.auth-emulator.test.ts|src/lib/auth/*|src/app/api/auth/*|src/app/api/cron/merge-auth-reconciliation/*)
+                  auth=true; app=true ;;
+
+                # E2E suite/support — exercised by the separate
+                # "E2E / playwright" workflow, not this job.
+                e2e/*|playwright.config.ts)
+                  ;;
+
+                # Application runtime.
+                src/*|public/*|next.config.ts|tsconfig.json|postcss.config.mjs)
+                  app=true ;;
+
+                # Root dependencies / runtime pin: blast radius crosses
+                # every domain (app deps, firebase-tools, Playwright).
+                package.json|package-lock.json|.nvmrc)
+                  run_all ;;
+
+                # Lint/unit-test config, ops scripts and other tests:
+                # app gate.
+                eslint.config.mjs|vitest.config.ts|scripts/*|tests/*|*.test.ts|*.test.tsx)
+                  app=true ;;
+
+                # Unknown change: run everything.
+                *)
+                  run_all ;;
+              esac
+            done <<< "$files"
+          fi
+
+          any=$app
+          [ "$rules" = true ] && any=true
+          [ "$auth" = true ] && any=true
+          emulator=$rules
+          [ "$auth" = true ] && emulator=true
+
+          echo "Changed files:"
+          echo "$files"
+          echo "Domains: app=$app rules=$rules auth=$auth"
+          {
+            echo "app=$app"
+            echo "rules=$rules"
+            echo "auth=$auth"
+            echo "emulator=$emulator"
+            echo "any=$any"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Node.js
+        if: steps.scope.outputs.any == 'true'
         uses: actions/setup-node@v7
         with:
           # Pinned by .nvmrc (Node 24, matching the Vercel production runtime).
@@ -32,38 +145,47 @@ jobs:
           cache: npm
 
       - name: Set up Java (Firebase emulators)
+        if: steps.scope.outputs.emulator == 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Install dependencies
+        if: steps.scope.outputs.any == 'true'
         run: npm ci
 
       - name: Lint
+        if: steps.scope.outputs.app == 'true'
         run: npm run lint
 
       - name: Typecheck
+        if: steps.scope.outputs.app == 'true'
         run: npm run typecheck
 
       - name: Unit and domain tests
+        if: steps.scope.outputs.app == 'true'
         run: npm run test
 
       - name: Production build (runs the PDFKit postbuild trace verification)
+        if: steps.scope.outputs.app == 'true'
         run: npm run build
 
       - name: Firestore & Storage rules tests (local emulators)
+        if: steps.scope.outputs.rules == 'true'
         run: npm run test:rules
 
       # Account-merge Auth reconciliation tests against the REAL Auth
       # emulator (issue #73) — these prove enable/disable/delete/revoke and
       # session-boundary behavior rather than mocking the provider.
       - name: Auth emulator reconciliation tests (local emulators)
+        if: steps.scope.outputs.auth == 'true'
         run: npm run test:auth-emulator
 
       # Blocking: the repo-wide Prettier pass has landed (#37), so
       # unformatted code fails `CI / verify`. Run `npm run format` to fix.
       - name: Formatting check
+        if: steps.scope.outputs.app == 'true'
         run: npm run format:check
 
       # Advisory. The only outstanding advisories are transitive
@@ -71,5 +193,6 @@ jobs:
       # breaking upstream bumps, so this must not block merges. Dependabot
       # handles dependency updates.
       - name: Dependency audit (informational)
+        if: steps.scope.outputs.app == 'true'
         run: npm audit --audit-level=high
         continue-on-error: true
