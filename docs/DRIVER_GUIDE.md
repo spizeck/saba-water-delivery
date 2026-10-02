@@ -122,7 +122,8 @@ received the water before you can be assigned your next delivery.
 
 You may only hold one active delivery at a time. If you already have a
 delivery in progress, you will not be assigned another one until you
-mark the current one delivered. Marking it delivered also asks an eligible
+mark the current one delivered or release it (subject to any decline
+cooldown after a release). Marking it delivered also asks an eligible
 registered resident by email to review receipt. That email is separate from
 your completion action: a send failure does not keep the delivery assigned to
 you or delay your next assignment.
@@ -131,6 +132,16 @@ If the system shows you have an active delivery but you do not
 recognize it (for example, from old testing data), simply load the
 Driver portal — the system will automatically detect and clear the
 outdated reference so you can receive new assignments normally.
+
+## Workflow updates
+
+When the driver workflow changes in an important way, the portal shows a
+short notice explaining what is different. Read it and press **Got it** —
+this records once, on your driver record, that you have seen that version
+of the notice, so it will not keep appearing on any of your phones or
+browsers. If the workflow changes materially again later, a new notice
+will appear once more. The notice only explains the workflow — it never
+affects whether deliveries are assigned to you.
 
 ## Going offline
 

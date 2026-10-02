@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
 import { releaseAssignedDelivery } from "@/lib/domain/dispatch";
-import { setAvailabilityByLinkedUser } from "@/lib/domain/driverRegistry";
+import {
+  acknowledgeDriverWorkflowNotice,
+  setAvailabilityByLinkedUser,
+} from "@/lib/domain/driverRegistry";
 import {
   markWaterDelivered,
   recordWaterCollection,
@@ -81,6 +84,76 @@ export async function toggleAvailability(
       }
     }
     throw err;
+  }
+
+  revalidatePath("/driver");
+  return { status: "success" };
+}
+
+// ---------------------------------------------------------------------------
+// Workflow notice acknowledgement
+// ---------------------------------------------------------------------------
+
+export interface WorkflowNoticeActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+/**
+ * Persists the driver's acknowledgement of the current workflow-change
+ * notice (issue #123 follow-up). Authorization is structural: the session
+ * uid resolves to the caller's OWN Driver Registry entry via
+ * `linkedUserId` — no driver/registry ID is ever taken from the client.
+ * The only client input is the notice version the modal displayed, and it
+ * is validated/monotonic-guarded server-side.
+ *
+ * Acknowledgement is education only — it must never gate assignment. A
+ * failed write returns an error state so the UI can retry; it does not
+ * mark anything acknowledged client-side.
+ */
+export async function acknowledgeWorkflowNotice(
+  _prevState: WorkflowNoticeActionState,
+  formData: FormData,
+): Promise<WorkflowNoticeActionState> {
+  const session = await requireRole("driver");
+  const noticeVersion = Number(formData.get("noticeVersion"));
+
+  try {
+    await acknowledgeDriverWorkflowNotice({
+      userId: session.uid,
+      noticeVersion,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "DRIVER_NOT_FOUND":
+          return {
+            status: "error",
+            message: "Driver profile not found. Contact the water office.",
+          };
+        case "INVALID_NOTICE_VERSION":
+          return {
+            status: "error",
+            message:
+              "This notice is out of date. Refresh the page and try again.",
+          };
+        default:
+          log.error("driver.workflow_notice_ack.failed", {
+            error: serializeError(err),
+          });
+          return {
+            status: "error",
+            message: "Could not save your acknowledgement. Please try again.",
+          };
+      }
+    }
+    log.error("driver.workflow_notice_ack.failed", {
+      error: serializeError(err),
+    });
+    return {
+      status: "error",
+      message: "Could not save your acknowledgement. Please try again.",
+    };
   }
 
   revalidatePath("/driver");

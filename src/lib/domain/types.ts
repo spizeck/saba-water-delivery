@@ -502,7 +502,8 @@ export type DriverEventType =
   | "driver_account_unlinked"
   | "meter_assignment_added"
   | "meter_assignment_updated"
-  | "meter_assignment_removed";
+  | "meter_assignment_removed"
+  | "driver_workflow_notice_acknowledged";
 
 export interface DriverEvent {
   id: string;
@@ -559,6 +560,22 @@ export interface DriverRegistryEntry {
    * whether a driver can be assigned another request atomically.
    */
   activeRequestId: string | null;
+
+  /**
+   * Highest driver workflow-change notice version this driver has
+   * acknowledged — see `CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION` in
+   * `driverWorkflowNotice.ts`. 0 (or absent on pre-existing documents)
+   * means never acknowledged. Education only: never read by
+   * assignment/dispatch logic.
+   */
+  workflowNoticeAcknowledgedVersion: number;
+
+  /**
+   * Server timestamp of the write that set
+   * `workflowNoticeAcknowledgedVersion`, or null when the driver has
+   * never acknowledged a workflow notice.
+   */
+  workflowNoticeAcknowledgedAt: string | null;
 
   archivedAt: string | null;
   archivedBy: string | null;

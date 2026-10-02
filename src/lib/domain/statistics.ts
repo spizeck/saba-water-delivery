@@ -160,7 +160,7 @@ export interface DispatchDecisionMetrics {
   declined: number;
   /** Records expired without driver action. */
   expired: number;
-  /** Percentage of resolved records that were assignments. */
+  /** Percentage of assignments the driver kept (not later released). */
   assignmentRate: number | null;
 }
 
@@ -752,14 +752,22 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   // "assigned" is the current assignment outcome; "accepted" is the
   // equivalent legacy outcome from the explicit-acceptance era.
   const assignments = offerAggregate.assigned + offerAggregate.accepted;
-  const resolved = assignments + offerAggregate.declined;
+  // Under assignment-on-visibility (#123) every release appends a
+  // "declined" record for a driver/request pair that already has an
+  // "assigned" record — declines are a subset of assignments, not an
+  // alternative outcome, so `assignments / (assignments + declined)` could
+  // never fall below 50%. Report the share of assignments the driver kept
+  // instead. Legacy offer-era "declined" records (a declined pending
+  // offer had no matching "assigned" record) can inflate the subtraction
+  // during the transition window; the clamp keeps the rate sane.
+  const kept = Math.max(0, assignments - offerAggregate.declined);
   const dispatchDecisions: DispatchDecisionMetrics = {
     decisions: offerAggregate.offered,
     assigned: assignments,
     declined: offerAggregate.declined,
     expired: offerAggregate.expired,
     assignmentRate:
-      resolved > 0 ? Math.round((assignments / resolved) * 1000) / 10 : null,
+      assignments > 0 ? Math.round((kept / assignments) * 1000) / 10 : null,
   };
 
   // ---------------------------------------------------------------------------

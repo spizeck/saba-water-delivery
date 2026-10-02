@@ -17,6 +17,8 @@ import { getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
+import { CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION } from "@/lib/domain/driverWorkflowNotice";
+
 import {
   E2E_ACCOUNTS,
   E2E_CANONICAL_VILLAGE,
@@ -169,6 +171,12 @@ export async function seedDriverRegistry(): Promise<void> {
     archiveReason: null,
     archivedPreviousEligibilityStatus: null,
     archivedPreviousIneligibilityReason: null,
+    // The baseline driver has already acknowledged the current workflow
+    // notice so delivery-flow specs are not blocked by the modal. The
+    // notice itself is covered by driver-workflow-notice.spec.ts, which
+    // clears these fields first.
+    workflowNoticeAcknowledgedVersion: CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION,
+    workflowNoticeAcknowledgedAt: now,
     createdAt: now,
     createdBy: E2E_ACCOUNTS.admin.uid,
     updatedAt: now,

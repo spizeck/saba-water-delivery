@@ -24,6 +24,17 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+- Driver workflow-change acknowledgement (issue #123 follow-up): the
+  first time a driver opens the portal after a material workflow change,
+  a notice explains the new assignment-on-visibility behavior (the shown
+  delivery is already assigned — no Accept step — and closing the app
+  does not release it). Pressing **Got it** records the acknowledgement
+  on the driver's registry record, so it holds across phones and cleared
+  browser storage and reappears automatically if a future version of the
+  notice is published. A temporary "New driver workflow" banner
+  reinforces the change on the portal until its configured end date.
+  Acknowledgement is informational only and never gates assignment. Admins
+  can see each driver's acknowledgement status on the driver detail page.
 - Assignment-on-visibility dispatch (issue #123): the driver portal no
   longer shows a pending "offer" that the driver must explicitly accept.
   When an eligible online driver opens or refreshes the portal, the next

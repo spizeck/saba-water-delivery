@@ -72,7 +72,10 @@ uid of the linked account, or `null`), `eligibilityStatus`
 (`eligible`/`ineligible`), `availabilityStatus` (`online`/`offline`),
 `cooldownUntil`, `activeRequestId` (the one claimed request this
 driver currently holds, or `null` — see "The `activeRequestId` lock"
-in `TECHNICAL.md`), audit fields.
+in `TECHNICAL.md`), `workflowNoticeAcknowledgedVersion` /
+`workflowNoticeAcknowledgedAt` (versioned driver workflow-notice
+acknowledgement — see "Driver workflow notice acknowledgement" in
+`TECHNICAL.md`; absent on older records), audit fields.
 
 **Reads:** dispatcher, admin, viewer. **Writes:** only through
 `src/lib/domain/driverRegistry.ts` (Admin SDK) — never a direct client
@@ -89,7 +92,7 @@ separate and why operational code always looks up a registry entry by
 
 Audit trail: online/offline, access restricted/restored, cooldown
 started, registry created/updated, account linked/unlinked, meter
-assignment changes.
+assignment changes, workflow-notice acknowledgements.
 
 ### `driverRegistry/{driverId}/meters/{stationId}`
 
@@ -176,9 +179,12 @@ where it originated. This is the operational core of the system.
   or singly assigned as before.
 - `dispatchOverrideRank` — null by default; set to `0` by a dispatcher
   escalation to rank it ahead within its priority without changing
-  `requestedAt`. Automatic assignment applies that rank only after fetching up to
-  100 available requests by priority/age, so it is not a complete-queue
-  guarantee; see [assignment selection](../TECHNICAL.md#dispatch-assignment-selection).
+  `requestedAt`. Automatic assignment applies that rank while scanning
+  the queue in canonical order with cursor pagination — not a fixed
+  100-request window. The scan is bounded at 1,000 candidate documents
+  per pass as a pathological-queue safety stop; exhausting the bound can
+  return no assignment even with eligible work remaining. See
+  [assignment selection](../TECHNICAL.md#dispatch-assignment-selection).
 - Timestamps: `requestedAt`, `availableAt`, `claimedAt`, `deliveredAt`,
   `confirmedAt`, `createdAt`, `updatedAt`.
 

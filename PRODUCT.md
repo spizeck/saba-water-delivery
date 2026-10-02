@@ -456,10 +456,13 @@ priority, staff escalation rank precedes original request age. Equal ranks and
 unranked requests remain oldest-first. Decline, hold expiration, and
 reassignment preserve the original request time.
 
-Automatic assignments apply that ordering across the complete eligible queue:
-the selection path pages through candidates in canonical order rather than
+Automatic assignments apply that ordering across the eligible queue: the
+selection path pages through candidates in canonical order rather than
 reading a fixed-size window, so an escalated request cannot be delayed behind
-older same-priority work regardless of backlog size. An existing assignment is
+older same-priority work for any realistic backlog size. The scan is bounded
+at 1,000 candidate documents per pass as a safety stop for pathological
+queues; exhausting that bound can return no assignment even when eligible
+work remains. An existing assignment is
 always retained and returned idempotently, and preferred-driver holds are
 selected separately. See
 [TECHNICAL.md](./TECHNICAL.md#dispatch-assignment-selection) for the

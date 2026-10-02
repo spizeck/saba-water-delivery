@@ -303,18 +303,26 @@ enforces this server-side: an already-claimed request prevents new
 assignments and blocks a second claim, even through stale browser tabs or
 direct
 server-action calls. The driver stays online and remains eligible;
-accepting a delivery only makes them temporarily unavailable for another
-assignment until the current one is marked delivered — at that exact
-moment the driver's assignment is complete and they may immediately
-receive another offer. The resident's separate 24-hour delivery
+holding an assignment only makes them temporarily unavailable for another
+assignment until the current one is marked delivered or released — at
+that exact moment the driver's assignment ends and they may immediately
+receive another assignment (subject to any decline cooldown). The
+resident's separate 24-hour delivery
 confirmation window (see PRODUCT.md / TECHNICAL.md "Delivery
 Confirmation Timeout") never delays this — customer confirmation and
 driver availability are independent.
 
+Material driver-workflow changes are communicated through a versioned
+notice (`CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION` in
+`src/lib/domain/driverWorkflowNotice.ts`) acknowledged once per driver,
+persisted on their Driver Registry entry. Acknowledgement is education
+only — it never participates in assignment authority.
+
 Drivers never browse a full list of open requests — see PRODUCT.md /
-TECHNICAL.md "Dispatch Offers". Declining too many offers in a day
-(admin-configurable, default 3) pauses new offers for a cooldown period
-(admin-configurable, default 1 hour) without affecting government
+TECHNICAL.md "Dispatch Assignment". Releasing too many assigned
+deliveries in a day
+(admin-configurable, default 3) pauses new assignments for a cooldown
+period (admin-configurable, default 1 hour) without affecting government
 eligibility.
 
 Do not build a complex driver dashboard.

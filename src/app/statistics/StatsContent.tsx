@@ -175,7 +175,7 @@ export function StatsContent({ stats }: StatsContentProps) {
           <StatItem label="Assigned" value={stats.dispatchDecisions.assigned} />
           <StatItem label="Declined" value={stats.dispatchDecisions.declined} />
           <StatItem
-            label="Assignment Rate"
+            label="Assignments Kept"
             value={
               stats.dispatchDecisions.assignmentRate === null
                 ? "—"

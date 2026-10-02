@@ -1,7 +1,7 @@
 # 0021. Assignment-on-visibility dispatch
 
 - **Status:** Accepted
-- **Date:** ADR recorded 2026-10-XX (decision made for issue #123; exact
+- **Date:** ADR recorded 2026-10-01 (decision made for issue #123; exact
   merge date set at release)
 
 ## Context
@@ -111,6 +111,13 @@ delivery is already authoritatively assigned to that driver.**
   delivery," not "driver declined a pending offer" — both count toward the
   same cooldown policy, but audit readers should note the semantic shift at
   the #123 boundary.
+- **Driver communication is decoupled from dispatch authority.** A
+  versioned workflow notice (`CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION`,
+  acknowledged per driver on the registry record via
+  `acknowledgeDriverWorkflowNotice()`) educates drivers about this
+  change. It is deliberately NOT a rollout mechanism: acknowledgement
+  never gates assignment, and assignment does not wait for it — the new
+  semantics apply to every driver uniformly from deployment.
 
 ## References
 

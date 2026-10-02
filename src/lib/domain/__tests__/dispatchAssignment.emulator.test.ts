@@ -14,6 +14,7 @@ import {
   escalateDispatchRequest,
   returnAssignedRequestToQueue,
 } from "@/lib/domain/waterRequests";
+import { startOfSabaDay } from "@/lib/utils/datetime";
 
 /**
  * Emulator-backed tests for automatic dispatch assignment —
@@ -786,7 +787,18 @@ describe("releaseAssignedDelivery (#123)", () => {
       driverId: DRIVER,
     });
     expect(result.declineCount).toBe(1);
-    expect(result.availabilityStatus).toBe("cooldown");
+    // "cooldown" vs "daily_limit" depends on whether now+4h crosses the
+    // end of the Saba day — the domain computes it that way, so the
+    // expectation must too (running late in the Saba day yields
+    // "daily_limit" for the identical release).
+    const endOfToday = startOfSabaDay(
+      new Date(Date.now() + 24 * 60 * 60 * 1000),
+    );
+    const expectedStatus =
+      new Date(result.cooldownUntil!).getTime() >= endOfToday.getTime()
+        ? "daily_limit"
+        : "cooldown";
+    expect(result.availabilityStatus).toBe(expectedStatus);
     expect(result.cooldownUntil).not.toBeNull();
 
     const reg = await db.collection(REGISTRY).doc(`reg-${DRIVER}`).get();
@@ -842,20 +854,29 @@ describe("assignment vs cancellation races (#123)", () => {
     const status = req.data()?.status;
 
     if (status === "cancelled") {
-      // Cancellation won — the driver must not have received details.
-      expect(assigned.status === "fulfilled" && assigned.value === null).toBe(
-        true,
-      );
+      expect(assigned.status).toBe("fulfilled");
+      const reg = await db.collection(REGISTRY).doc(`reg-${DRIVER}`).get();
+      // Either cancellation committed first (no assignment), or the claim
+      // committed first and the staff cancellation then tore it down —
+      // both orders leave the driver lock cleared.
+      expect(reg.data()?.activeRequestId ?? null).toBeNull();
+      if (assigned.status === "fulfilled" && assigned.value !== null) {
+        // Claim-then-cancel order: the audit trail must show both.
+        const events = await db
+          .collection(REQUESTS)
+          .doc("req-1")
+          .collection("events")
+          .get();
+        const types = events.docs.map((d) => d.data().type);
+        expect(types).toContain("driver_claimed");
+        expect(types).toContain("request_cancelled");
+      }
     } else {
-      // Assignment won — request is claimed; cancellation either failed
-      // or is not allowed to tear down a committed claim without also
-      // clearing the driver (implementation detail: either way the
-      // request is not simultaneously cancelled and assigned).
+      // Assignment won — request is claimed and the concurrent
+      // cancellation must have been rejected, not silently torn down.
       expect(status).toBe("claimed");
       expect(req.data()?.assignedDriverId).toBe(DRIVER);
-      expect(
-        cancelled.status === "rejected" || cancelled.status === "fulfilled",
-      ).toBe(true);
+      expect(cancelled.status).toBe("rejected");
     }
   }, 30_000);
 });

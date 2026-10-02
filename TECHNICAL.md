@@ -284,6 +284,13 @@ never touch it.
   // transactions that assign or complete a delivery.
   activeRequestId: string | null
 
+  // Versioned driver workflow-notice acknowledgement (see "Driver
+  // workflow notice acknowledgement"). Absent on records predating the
+  // feature — interpreted as version 0. Education only; never consulted
+  // by dispatch/assignment logic.
+  workflowNoticeAcknowledgedVersion?: number
+  workflowNoticeAcknowledgedAt?: Timestamp | null
+
   createdAt: Timestamp
   createdBy: string
   updatedAt: Timestamp
@@ -312,6 +319,7 @@ driver_account_unlinked
 meter_assignment_added
 meter_assignment_updated
 meter_assignment_removed
+driver_workflow_notice_acknowledged
 ```
 
 ### driverRegistry/{driverId}/meters/{stationId}
@@ -876,6 +884,47 @@ released from being assigned to them again, bounded to a recent window of
 their own decline history — enough to prevent obvious loops without an
 unbounded read.
 
+## Driver workflow notice acknowledgement (issue #123 follow-up)
+
+Assignment-on-visibility materially changed the driver workflow, so
+`/driver` shows a versioned notice the first time a driver sees a
+material change. The acknowledgement is persisted server-side on the
+driver's registry entry — never in localStorage — so it follows the
+driver across phones, browsers, and cleared storage:
+
+- `driverRegistry/{driverId}.workflowNoticeAcknowledgedVersion` — the
+  highest notice version the driver has acknowledged (absent = 0).
+- `driverRegistry/{driverId}.workflowNoticeAcknowledgedAt` — server
+  timestamp of the write that set it.
+
+`CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION` in
+`src/lib/domain/driverWorkflowNotice.ts` is the single canonical current
+version; the `/driver` page shows the modal whenever
+`requiresWorkflowNoticeAcknowledgement(storedVersion)` is true. The "Got
+it" action calls the `acknowledgeWorkflowNotice` server action, which
+resolves the caller's own registry entry from the verified session uid
+(via `linkedUserId`) and runs `acknowledgeDriverWorkflowNotice()` — a
+transaction that only ever moves the stored version forward, so repeats,
+racing tabs, and stale-version submissions are safe no-ops. A
+`driver_workflow_notice_acknowledged` registry event is written when the
+version actually advances.
+
+**This acknowledgement is education, not authorization.** Dispatch,
+availability, and cooldown code never read it; an unacknowledged online
+driver is still assigned normally (the modal may cover the page, but the
+assignment made during that render remains authoritative). Never wire
+`acknowledged → assignment enabled` logic into this state.
+
+To introduce a future material workflow change: increment
+`CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION` and update the modal copy —
+every driver below the new version sees the notice again automatically.
+Do not bump the version for copy tweaks.
+
+A separate, temporary reinforcement banner (`WorkflowNoticeBanner`)
+renders until `DRIVER_WORKFLOW_NOTICE_BANNER_LAST_SABA_DATE` (Saba-local)
+in the same module, then stops automatically; it is independent of the
+versioned modal and is removed once the workflow is established.
+
 ---
 
 # Resident Self-Service Cancellation
@@ -1355,7 +1404,11 @@ stale `priorityRank` as irrelevant (see "Canonical candidate scan").
 The canonical queue comparator, `dispatchQueueCompare`, orders by
 priority category, then `dispatchOverrideRank` (lower first, null last), then
 original `requestedAt`. The assignment-selection query path applies that same
-order over the **complete** eligible queue — not a bounded pre-filter window.
+order over the whole eligible queue via cursor pagination — not a bounded
+pre-filter window — but a single pass stops at `MAX_CANDIDATE_DOCS`
+(1000) candidate documents across all streams; exhausting that bound can
+return no assignment even when eligible work remains (see "Canonical
+candidate scan" below).
 
 `assignNextDeliveryForDriver()` (`src/lib/domain/dispatch.ts`) currently:
 

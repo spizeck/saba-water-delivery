@@ -10,6 +10,11 @@ import {
   getMeterAssignments,
   reconcileActiveRequestByUserId,
 } from "@/lib/domain/driverRegistry";
+import {
+  CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION,
+  isDriverWorkflowNoticeBannerActive,
+  requiresWorkflowNoticeAcknowledgement,
+} from "@/lib/domain/driverWorkflowNotice";
 import { getFillStations } from "@/lib/domain/fillStations";
 import { getUserProfile } from "@/lib/domain/users";
 import { getClaimedRequestsForDriver } from "@/lib/domain/waterRequests";
@@ -21,6 +26,8 @@ import {
 
 import { AvailabilityToggle } from "./AvailabilityToggle";
 import { ClaimedDeliveries } from "./ClaimedDeliveries";
+import { WorkflowNoticeBanner } from "./WorkflowNoticeBanner";
+import { WorkflowNoticeModal } from "./WorkflowNoticeModal";
 
 export const metadata: Metadata = {
   title: "Driver — Saba Water Delivery",
@@ -122,11 +129,25 @@ export default async function DriverPortalPage() {
     }),
   );
 
+  // Versioned workflow-change notice (issue #123 follow-up): the modal
+  // shows whenever the driver's server-stored acknowledged version trails
+  // the current notice version. This is education, NOT a gate — the
+  // assignment pass above already ran authoritatively, and acknowledging
+  // changes nothing about dispatch, availability, or cooldown.
+  const showWorkflowNotice = requiresWorkflowNoticeAcknowledgement(
+    driverEntry.workflowNoticeAcknowledgedVersion,
+  );
+  // Temporary reinforcement banner — expires after
+  // DRIVER_WORKFLOW_NOTICE_BANNER_LAST_SABA_DATE; unrelated to the modal.
+  const showWorkflowBanner = isDriverWorkflowNoticeBannerActive();
+
   return (
     <>
       <PortalHeader portalName="Driver" roles={profile.roles} />
       <main className="flex-1 py-8">
         <Container className="flex flex-col gap-6">
+          {showWorkflowBanner && <WorkflowNoticeBanner />}
+
           {/* Status card */}
           <Card>
             <div className="flex items-center justify-between gap-4">
@@ -252,6 +273,13 @@ export default async function DriverPortalPage() {
           )}
         </Container>
       </main>
+      {/* Rendered over (never instead of) the page: any assignment made
+          during this render remains authoritative while it shows. */}
+      {showWorkflowNotice && (
+        <WorkflowNoticeModal
+          noticeVersion={CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION}
+        />
+      )}
     </>
   );
 }

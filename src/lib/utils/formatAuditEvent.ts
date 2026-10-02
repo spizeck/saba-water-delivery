@@ -125,6 +125,7 @@ export const DRIVER_EVENT_LABELS: Record<string, string> = {
   meter_assignment_added: "Meter assignment added",
   meter_assignment_updated: "Meter assignment updated",
   meter_assignment_removed: "Meter assignment removed",
+  driver_workflow_notice_acknowledged: "Workflow notice acknowledged",
 };
 
 // ---------------------------------------------------------------------------
@@ -614,6 +615,11 @@ const DRIVER_EVENT_FORMATTERS: Record<
       parts.push(String(m.stationName ?? m.fillStationName));
     if (m.meterCode) parts.push(`Meter: ${m.meterCode}`);
     return join(parts);
+  },
+
+  driver_workflow_notice_acknowledged: (m) => {
+    if (m.noticeVersion) return `Notice version: ${m.noticeVersion}`;
+    return "";
   },
 };
 

@@ -1,0 +1,110 @@
+"use client";
+
+import { useActionState } from "react";
+
+import { Button } from "@/components/ui/Button";
+
+import {
+  acknowledgeWorkflowNotice,
+  type WorkflowNoticeActionState,
+} from "./actions";
+
+const initialState: WorkflowNoticeActionState = { status: "idle" };
+
+interface Props {
+  /**
+   * The notice version this render showed the driver — submitted verbatim
+   * with the acknowledgement. The server validates it against
+   * `CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION`, so a stale page can never
+   * record an acknowledgement for a newer notice it did not display, and
+   * the write can never downgrade a newer stored acknowledgement.
+   */
+  noticeVersion: number;
+}
+
+/**
+ * Versioned driver workflow-change notice (issue #123 follow-up).
+ * `/driver/page.tsx` renders this only when the driver's persisted
+ * `workflowNoticeAcknowledgedVersion` is behind
+ * `CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION` — this component decides HOW
+ * the notice looks, not WHETHER it shows.
+ *
+ * There is deliberately no backdrop click, Escape handling, or close/X
+ * control: the only way past the notice is the explicit "Got it" submit,
+ * which records the acknowledgement server-side on the Driver Registry
+ * entry (so it holds across phones and cleared browser storage).
+ *
+ * The acknowledgement is education, not an assignment gate — if the
+ * server render already auto-assigned a delivery, that assignment stays
+ * authoritative underneath this overlay; acknowledging changes nothing
+ * about dispatch, availability, or cooldown state.
+ */
+export function WorkflowNoticeModal({ noticeVersion }: Props) {
+  const [state, formAction, pending] = useActionState(
+    acknowledgeWorkflowNotice,
+    initialState,
+  );
+
+  // Dismissed only after the acknowledgement has actually persisted — a
+  // failed write keeps the modal up with a retryable error, and because
+  // the trigger is the server-stored version, the notice simply returns
+  // on the next visit anyway.
+  if (state.status === "success") return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="driver-workflow-notice-heading"
+    >
+      <div className="flex w-full max-w-md flex-col gap-4 rounded-xl bg-white p-6 shadow-lg">
+        <h2
+          id="driver-workflow-notice-heading"
+          className="text-lg font-bold text-slate-900"
+        >
+          Driver workflow has changed
+        </h2>
+
+        <div className="flex flex-col gap-3 text-sm text-slate-600">
+          <p>
+            When you are <strong>Online</strong>, the delivery shown on your
+            Driver screen is now <strong>already assigned to you</strong>.
+          </p>
+          <p>
+            You no longer need to press <strong>Accept Delivery</strong>.
+          </p>
+          <p>
+            Closing the app or locking your phone{" "}
+            <strong>does not release the delivery</strong>.
+          </p>
+          <p>
+            If you cannot make the delivery, use{" "}
+            <strong>Decline / Release Delivery</strong> so it can be assigned to
+            another driver.
+          </p>
+          <p>Only go Online when you are ready to receive a delivery.</p>
+        </div>
+
+        {state.status === "error" && (
+          <p role="alert" className="text-sm font-medium text-red-700">
+            {state.message}
+          </p>
+        )}
+
+        <form action={formAction}>
+          <input type="hidden" name="noticeVersion" value={noticeVersion} />
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            disabled={pending}
+            autoFocus
+          >
+            {pending ? "Saving…" : "Got it"}
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}

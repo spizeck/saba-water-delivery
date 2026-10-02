@@ -12,6 +12,8 @@ If access is restricted or your account is not linked, contact the Water Deliver
 
 Normal dispatch assigns you one delivery at a time, not a list to choose from. The delivery shown to you is **already assigned to you** — there is no Accept step, and closing the app does not release it. Review the village, quantity, directions, and any notes, then collect and deliver.
 
+When the driver workflow changes in an important way, the portal shows a one-time notice explaining the change. Press **Got it** to confirm you have read it — this is recorded on your driver record once, across all your devices, and never affects whether deliveries are assigned to you.
+
 If you cannot or will not make the delivery, use **Decline / Release Delivery** to return it to dispatch for another driver. Reaching the administrator-set daily decline limit pauses new assignments and forces you offline for the displayed cooldown. This does not remove government eligibility. Follow the app's Saba-local availability message before returning online.
 
 ## Collect and deliver all loads
