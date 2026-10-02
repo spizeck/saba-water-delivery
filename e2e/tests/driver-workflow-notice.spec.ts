@@ -119,5 +119,15 @@ test.describe("driver workflow notice", () => {
     // The acknowledgement still persists and the modal dismisses.
     await expect(dialog).toHaveCount(0);
     await page.unroute("**/driver");
+
+    // Focus is restored into the page after dismissal — the next Tab
+    // reaches a real page control rather than a detached node.
+    await page.keyboard.press("Tab");
+    const focusInPage = await page.evaluate(
+      () =>
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement !== document.body,
+    );
+    expect(focusInPage).toBe(true);
   });
 });

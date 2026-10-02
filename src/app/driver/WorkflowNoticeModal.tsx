@@ -45,6 +45,25 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
     initialState,
   );
   const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  // On mount: remember what had focus (the notice opens automatically,
+  // so there is no trigger element) and move focus to "Got it" — what
+  // `autoFocus` would do, except autoFocus runs BEFORE effects and would
+  // have already overwritten `document.activeElement`. On unmount after
+  // a successful acknowledgement, restore focus if that element is still
+  // connected so keyboard users don't drop to <body>.
+  useEffect(() => {
+    const previous = document.activeElement;
+    restoreFocusRef.current = previous instanceof HTMLElement ? previous : null;
+    dialogRef.current
+      ?.querySelector<HTMLElement>("button:not([disabled])")
+      ?.focus();
+    return () => {
+      const el = restoreFocusRef.current;
+      if (el?.isConnected) el.focus();
+    };
+  }, []);
 
   // While the acknowledgement is saving, the only control ("Got it") is
   // disabled — the browser drops focus to <body>, which is outside this
@@ -140,13 +159,7 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
 
         <form action={formAction}>
           <input type="hidden" name="noticeVersion" value={noticeVersion} />
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full"
-            disabled={pending}
-            autoFocus
-          >
+          <Button type="submit" size="lg" className="w-full" disabled={pending}>
             {pending ? "Saving…" : "Got it"}
           </Button>
         </form>
