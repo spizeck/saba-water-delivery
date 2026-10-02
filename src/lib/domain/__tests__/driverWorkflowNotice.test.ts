@@ -59,7 +59,11 @@ describe("requiresWorkflowNoticeAcknowledgement", () => {
 
 describe("isDriverWorkflowNoticeBannerActive", () => {
   it("is active before and on the last Saba-local banner date", () => {
-    expect(isDriverWorkflowNoticeBannerActive(new Date())).toBe(true);
+    // Fixed date — a wall-clock assertion would start failing after the
+    // banner's expiry date even though the code is unchanged.
+    expect(
+      isDriverWorkflowNoticeBannerActive(new Date("2026-10-01T12:00:00Z")),
+    ).toBe(true);
     // Noon UTC is safely inside the intended Saba calendar day.
     const lastDay = new Date(
       `${DRIVER_WORKFLOW_NOTICE_BANNER_LAST_SABA_DATE}T12:00:00Z`,

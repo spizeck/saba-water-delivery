@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 
 import { Button } from "@/components/ui/Button";
 
@@ -44,6 +44,29 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
     acknowledgeWorkflowNotice,
     initialState,
   );
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // `aria-modal` announces modality but does not trap focus — keep Tab /
+  // Shift+Tab cycling inside the dialog so a keyboard user cannot reach
+  // the (visually covered) page controls behind the overlay.
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key !== "Tab") return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusables = dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   // Dismissed only after the acknowledgement has actually persisted — a
   // failed write keeps the modal up with a retryable error, and because
@@ -53,6 +76,8 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
 
   return (
     <div
+      ref={dialogRef}
+      onKeyDown={handleKeyDown}
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"

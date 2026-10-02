@@ -778,8 +778,10 @@ double deliveries.
      `driver_claimed` audit event,
    - on a lost race (`ALREADY_CLAIMED`, `REQUEST_NOT_CLAIMABLE`,
      `HOLD_EXPIRED`, `PREFERRED_DRIVER_RESTRICTION`, `REQUEST_NOT_FOUND`)
-     re-scans committed state and tries the NEXT candidate — a lost race
-     never returns "nothing available" while other work remains,
+     re-scans committed state and tries the NEXT candidate while the
+     shared `CandidateScanBudget` and `MAX_ASSIGNMENT_ATTEMPTS` limit
+     remain; when either bound is exhausted the pass can return "nothing
+     available" while other work remains,
    - on a driver-state failure (`DRIVER_*`) stops and returns whatever
      assignment committed in the meantime, if any.
 6. Before candidate selection, opportunistically expires any
