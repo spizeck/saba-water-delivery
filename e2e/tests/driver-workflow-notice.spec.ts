@@ -69,4 +69,55 @@ test.describe("driver workflow notice", () => {
     await page.keyboard.press("Escape");
     await expect(dialog).toBeVisible();
   });
+
+  test("keyboard focus stays inside the modal, including while saving", async ({
+    page,
+  }) => {
+    await clearAcknowledgement();
+    await loginAs(page, "driver");
+
+    const dialog = page.getByRole("dialog", {
+      name: "Driver workflow has changed",
+    });
+    await expect(dialog).toBeVisible();
+
+    const gotIt = dialog.getByRole("button", { name: "Got it" });
+    await expect(gotIt).toBeFocused();
+
+    // Shift+Tab from the first real control must wrap inside the modal —
+    // the hidden noticeVersion input is never a focus stop.
+    await page.keyboard.press("Shift+Tab");
+    await expect(gotIt).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(gotIt).toBeFocused();
+    const focusedName = await page.evaluate(
+      () => (document.activeElement as HTMLInputElement | null)?.name ?? null,
+    );
+    expect(focusedName).not.toBe("noticeVersion");
+
+    // While the acknowledgement is saving, "Got it" is disabled — delay
+    // the server action so the pending state is observable, then confirm
+    // Tab still cannot escape to the page behind the overlay.
+    await page.route("**/driver", async (route, request) => {
+      if (request.method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      await route.continue();
+    });
+    await gotIt.click();
+    await expect(
+      dialog.getByRole("button", { name: "Saving…" }),
+    ).toBeDisabled();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    const focusInsideDialog = await dialog.evaluate(
+      (el) =>
+        el === document.activeElement || el.contains(document.activeElement),
+    );
+    expect(focusInsideDialog).toBe(true);
+
+    // The acknowledgement still persists and the modal dismisses.
+    await expect(dialog).toHaveCount(0);
+    await page.unroute("**/driver");
+  });
 });

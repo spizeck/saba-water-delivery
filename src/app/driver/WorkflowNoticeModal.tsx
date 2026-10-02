@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/Button";
 
@@ -46,6 +46,14 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
   );
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // While the acknowledgement is saving, the only control ("Got it") is
+  // disabled — the browser drops focus to <body>, which is outside this
+  // overlay's keydown reach. Park focus on the dialog container itself
+  // for the duration so Tab still cannot escape.
+  useEffect(() => {
+    if (pending) dialogRef.current?.focus();
+  }, [pending]);
+
   // `aria-modal` announces modality but does not trap focus — keep Tab /
   // Shift+Tab cycling inside the dialog so a keyboard user cannot reach
   // the (visually covered) page controls behind the overlay.
@@ -53,16 +61,28 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
     if (e.key !== "Tab") return;
     const dialog = dialogRef.current;
     if (!dialog) return;
+    // Enabled, visible controls only. `input:not([disabled])` would also
+    // match the hidden `noticeVersion` field, which can never receive
+    // focus — counting it as "first" would break Shift+Tab containment.
     const focusables = dialog.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+      'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     );
-    if (focusables.length === 0) return;
+    if (focusables.length === 0) {
+      // Every control is disabled (e.g. "Got it" while saving) — retain
+      // focus on the dialog container instead of letting Tab escape.
+      e.preventDefault();
+      dialog.focus();
+      return;
+    }
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
+    const active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || active === dialog) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || active === dialog) {
       e.preventDefault();
       first.focus();
     }
@@ -78,6 +98,7 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
     <div
       ref={dialogRef}
       onKeyDown={handleKeyDown}
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
