@@ -12,6 +12,7 @@ import {
   getDriverEvents,
   getMeterAssignments,
 } from "@/lib/domain/driverRegistry";
+import { describeWorkflowNoticeAcknowledgement } from "@/lib/domain/driverWorkflowNotice";
 import { getResidentDirectory, getUserProfile } from "@/lib/domain/users";
 
 import { AccountLinkPanel } from "./AccountLinkPanel";
@@ -101,6 +102,13 @@ export default async function DriverDetailPage({ params }: PageProps) {
             <h1 className="text-2xl font-bold text-slate-900">
               {driver.displayName}
             </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Workflow notice:{" "}
+              {describeWorkflowNoticeAcknowledgement({
+                acknowledgedVersion: driver.workflowNoticeAcknowledgedVersion,
+                acknowledgedAt: driver.workflowNoticeAcknowledgedAt,
+              })}
+            </p>
           </div>
 
           <EditDriverForm driver={driver} />

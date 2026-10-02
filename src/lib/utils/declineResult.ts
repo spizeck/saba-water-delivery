@@ -18,18 +18,18 @@ export function isDailyCooldown(
   return cooldownUntil.getTime() >= endOfToday.getTime();
 }
 
-/** Returns the driver-facing message for a decline result. */
+/** Returns the driver-facing message for a decline/release result. */
 export function getDeclineResultMessage(summary: DeclineResultSummary): string {
   if (summary.state === "available") {
-    return "Load declined. Another offer will appear when available.";
+    return "Delivery released. It has been returned to dispatch for another driver.";
   }
   if (summary.state === "daily_limit" && summary.cooldownUntil) {
     const date = formatSabaDate(summary.cooldownUntil);
-    return `You have reached today’s decline limit and are offline for the rest of the day. You can receive offers again on ${date}.`;
+    return `You have reached today’s decline limit and are offline for the rest of the day. You can receive deliveries again on ${date}.`;
   }
   if (summary.state === "cooldown" && summary.cooldownUntil) {
     const time = formatSabaTime(summary.cooldownUntil);
     return `You have reached the decline limit. You are offline until ${time}.`;
   }
-  return "Offer declined.";
+  return "Delivery released.";
 }

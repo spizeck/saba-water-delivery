@@ -1,7 +1,7 @@
-import type { DriverOffer, WaterRequest } from "./types";
+import type { WaterRequest } from "./types";
 
-/** True if `request` is still valid to show as an offer to `driverId`. */
-export function isOfferableToDriver(
+/** True if `request` is still valid to assign to `driverId`. */
+export function isAssignableToDriver(
   request: WaterRequest,
   driverId: string,
   now: Date,
@@ -21,22 +21,26 @@ export function isOfferableToDriver(
 export interface SelectNextDispatchCandidateInput {
   /** The driver's currently claimed active delivery, if any. */
   activeDelivery: WaterRequest | null;
-  /** An existing pending offer for this driver, if any. */
-  pendingOffer: { offer: DriverOffer; request: WaterRequest } | null;
   /** Preferred-driver holds addressed to this driver, in canonical
    * dispatch order (see `dispatchQueueCompare`). */
   holds: WaterRequest[];
   /** Available requests in canonical dispatch order (priority bucket,
    * then override rank, then age). */
   available: WaterRequest[];
-  /** Request IDs this driver has recently declined. */
+  /** Request IDs this driver has recently declined/released. */
   declinedRequestIds: Set<string>;
   driverId: string;
   now: Date;
 }
 
 /**
- * Pure selection logic for the next request to offer a driver.
+ * Pure selection logic for the next request to ASSIGN to a driver.
+ *
+ * Selection is advisory only — the caller must still claim the selected
+ * candidate atomically (`claimWaterRequest`) before showing the driver
+ * any details, and must retry with the next candidate if the claim loses
+ * a race (see `assignNextDeliveryForDriver` in `dispatch.ts`, issue
+ * #123).
  *
  * The caller is responsible for all Firestore reads/writes, ordering,
  * and decline-window policy. This function exists so the selection rules
@@ -47,7 +51,6 @@ export function selectNextDispatchCandidate(
 ): WaterRequest | null {
   const {
     activeDelivery,
-    pendingOffer,
     holds,
     available,
     declinedRequestIds,
@@ -56,19 +59,12 @@ export function selectNextDispatchCandidate(
   } = input;
 
   // One-active-delivery invariant: a driver already servicing a delivery
-  // cannot be offered another until that delivery leaves "claimed" status.
+  // cannot be assigned another until that delivery leaves "claimed"
+  // status.
   if (activeDelivery) return null;
 
-  if (
-    pendingOffer &&
-    !declinedRequestIds.has(pendingOffer.request.id) &&
-    isOfferableToDriver(pendingOffer.request, driverId, now)
-  ) {
-    return pendingOffer.request;
-  }
-
   for (const request of holds) {
-    if (isOfferableToDriver(request, driverId, now)) {
+    if (isAssignableToDriver(request, driverId, now)) {
       return request;
     }
   }

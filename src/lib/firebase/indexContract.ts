@@ -282,7 +282,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     usedBy: [
       {
         file: "src/lib/domain/driverOffers.ts",
-        functions: ["getPendingOfferForDriver"],
+        functions: ["expirePendingOffersForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -333,7 +333,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
       },
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["declineDriverOffer"],
+        functions: ["releaseAssignedDelivery"],
       },
     ],
     verification: "shape-asserted",
@@ -351,16 +351,12 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     requiredIndex: null,
     usedBy: [
       {
-        file: "src/lib/domain/driverOffers.ts",
-        functions: ["createDriverOffer"],
-      },
-      {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["declineDriverOffer"],
+        functions: ["releaseAssignedDelivery"],
       },
     ],
     verification: "shape-asserted",
-    note: "Equality-only duplicate-offer guard inside transactions; merged single-field indexes suffice.",
+    note: "Equality-only legacy pending-offer sweep inside the release transaction; merged single-field indexes suffice.",
   },
   {
     id: "driverOffers/offer-window-scan",
@@ -573,7 +569,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
       },
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -673,7 +669,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
       },
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -703,7 +699,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     usedBy: [
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -730,7 +726,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     usedBy: [
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -747,7 +743,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     usedBy: [
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -776,7 +772,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     usedBy: [
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -801,7 +797,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     usedBy: [
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -815,7 +811,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
     usedBy: [
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",
@@ -1048,7 +1044,7 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
       },
       {
         file: "src/lib/domain/dispatch.ts",
-        functions: ["getNextOfferForDriver"],
+        functions: ["assignNextDeliveryForDriver"],
       },
     ],
     verification: "shape-asserted",

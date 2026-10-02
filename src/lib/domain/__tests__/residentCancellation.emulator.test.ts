@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 import type { Transaction } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
-import { getNextOfferForDriver } from "@/lib/domain/dispatch";
+import { assignNextDeliveryForDriver } from "@/lib/domain/dispatch";
 import {
   cancelOwnWaterRequest,
   claimWaterRequest,
@@ -414,23 +414,37 @@ describe("cancelOwnWaterRequest — downstream behavior", () => {
     expect(created.id).not.toBe("r1");
   }, 30_000);
 
-  it("excludes the cancelled request from fresh driver offers and expires a pending offer", async () => {
+  it("assignment-on-visibility: the request is claimed before it can be shown, so it is no longer resident-cancellable (issue #123)", async () => {
     await seedRequest("r1");
     await seedDriver(DRIVER);
 
-    // The request is offered while it is still available.
-    const offered = await getNextOfferForDriver(DRIVER);
-    expect(offered?.request.id).toBe("r1");
+    // Selection and assignment are one atomic step — the request is
+    // already "claimed" the moment the driver could ever see it.
+    const assigned = await assignNextDeliveryForDriver(DRIVER);
+    expect(assigned?.id).toBe("r1");
+    expect(assigned?.status).toBe("claimed");
+
+    // Too late for self-service cancellation: the request is already in
+    // physical delivery operations.
+    await expect(
+      cancelOwnWaterRequest({ requestId: "r1", customerId: RESIDENT }),
+    ).rejects.toThrow("REQUEST_NOT_CANCELLABLE");
+
+    // The assignment survives — reopening returns the same request and
+    // nothing was released or re-dispatched.
+    const again = await assignNextDeliveryForDriver(DRIVER);
+    expect(again?.id).toBe("r1");
+    expect(again?.assignedDriverId).toBe(DRIVER);
+  }, 30_000);
+
+  it("excludes the cancelled request from automatic assignment", async () => {
+    await seedRequest("r1");
+    await seedDriver(DRIVER);
 
     await cancelOwnWaterRequest({ requestId: "r1", customerId: RESIDENT });
 
-    // No fresh offer selects it, and the stale pending offer is expired
-    // rather than re-presented.
-    const next = await getNextOfferForDriver(DRIVER);
-    expect(next).toBeNull();
-
-    const offerSnap = await db.collection(OFFERS).doc(offered!.offer.id).get();
-    expect(offerSnap.data()?.response).toBe("expired");
+    // Nothing eligible remains — no assignment is created.
+    expect(await assignNextDeliveryForDriver(DRIVER)).toBeNull();
   }, 30_000);
 
   it("excludes the cancelled request from batch (delivery run) eligibility", async () => {
