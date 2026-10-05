@@ -37,7 +37,15 @@ import { formatSabaDate, sabaCalendarDateKey } from "@/lib/utils/datetime";
  * `WorkflowNoticeModal.tsx`; bumping this constant is the entire trigger —
  * do not scatter literal version numbers through UI or domain code.
  */
-export const CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION = 1;
+/**
+ * v1 (issue #123): assignment-on-visibility — displayed delivery is
+ *   already assigned, no Accept step, closing the app does not release.
+ * v2 (issue #135): explicit Go Offline releases an ordinary releasable
+ *   assignment (decline-accounted); committed work (recorded water
+ *   collection) blocks going offline; unattended ordinary assignments
+ *   auto-release back to dispatch after 12 hours.
+ */
+export const CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION = 2;
 
 /**
  * Whether the workflow notice must be shown for a driver whose stored

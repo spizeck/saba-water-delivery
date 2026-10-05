@@ -742,6 +742,41 @@ switch is disabled while a cooldown is active. Dispatcher and admin driver
 lists show the same reason so staff do not have to guess why a driver is not
 receiving assignments.
 
+## Going offline with an assignment (issue #135)
+
+Closing the app or navigating away never releases an assignment — that is
+intentional under assignment-on-visibility. Explicitly choosing **Go
+Offline** is different: it is the driver's deliberate end-of-work signal.
+
+- An ordinary assigned delivery that has **not started** (no water
+  collection recorded) is released back to dispatch in the same step as
+  the availability change — the driver confirms this in the UI first.
+  The release counts as a decline under the daily limit/cooldown policy,
+  exactly like Decline / Release, so Go Offline cannot be used to bypass
+  the decline accounting.
+- A delivery with water collection already recorded **cannot** be
+  released by going offline — the action fails clearly and the driver
+  stays online. Committed work is never silently abandoned; staff
+  resolve it by hand.
+- Delivery Run assignments are staff-managed: they are never released by
+  going offline and do not block it.
+
+## Unattended assignments return to dispatch after 12 hours (issue #135)
+
+An ordinary assigned delivery must not stay locked to a driver
+indefinitely. If the **current assignment** — measured from when it was
+assigned or last reassigned, not from when the request was created — has
+been open for **12 hours** without being completed, a scheduled system
+sweep automatically returns it to the dispatch queue, provided it is
+still safe to release (no water collection recorded, not part of a
+Delivery Run, still assigned to the same driver).
+
+This automatic release is a system recovery action, not a driver
+decision: it does **not** count as a decline, does **not** trigger a
+cooldown, and is recorded under its own audit event
+(`assignment_auto_released`) rather than `driver_released`.
+Reassignment always restarts the 12-hour window.
+
 ---
 
 # Batch Dispatch (UI: "Delivery Runs")

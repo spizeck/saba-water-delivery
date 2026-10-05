@@ -49,6 +49,11 @@ const CRON_EXPECTATIONS = [
     label: "Merge Auth reconciliation sweep",
     staleAfterMs: 3 * 60 * 60 * 1000,
   },
+  {
+    cron: "stale-assignments",
+    label: "Stale assignment release sweep",
+    staleAfterMs: 3 * 60 * 60 * 1000,
+  },
 ];
 
 const argv = process.argv.slice(2);

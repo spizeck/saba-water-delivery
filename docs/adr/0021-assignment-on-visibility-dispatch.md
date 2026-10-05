@@ -56,10 +56,11 @@ delivery is already authoritatively assigned to that driver.**
   `activeRequestId`, records a `"declined"` ledger record, applies the
   existing decline-count/cooldown policy, and writes a `driver_released`
   audit event.
-- **No acceptance action and no timeout release.** There is no "Accept
+- **No acceptance action.** There is no "Accept
   Delivery" button and no offer lease. Closing the app, losing connectivity,
-  or phone sleep do nothing; only release, reassignment, cancellation, or
-  completion end an assignment.
+  or phone sleep do nothing; only explicit release paths (Decline /
+  Release, Go Offline — see the amendment below), the stale-assignment
+  timeout, reassignment, cancellation, or completion end an assignment.
 - **Legacy pending offers are retired, never honored.** Deployment-time
   `response: null` documents are expired opportunistically during each
   assignment pass. They touch only offer records, never reopen a claimed
@@ -119,10 +120,42 @@ delivery is already authoritatively assigned to that driver.**
   never gates assignment, and assignment does not wait for it — the new
   semantics apply to every driver uniformly from deployment.
 
+## Amendment (issue #135) — assignment release lifecycle
+
+Two lifecycle endings are added on top of this decision, without
+changing its core invariant (a displayed delivery is an assigned
+delivery, and browser lifecycle never releases):
+
+- **Explicit Go Offline releases ordinary releasable work.**
+  `setAvailabilityByLinkedUser()` releases the driver's non-Delivery-Run
+  `claimed` requests in the same transaction as the offline write, with
+  the same decline/cooldown accounting as `releaseAssignedDelivery()` —
+  otherwise Go Offline would be a free-release bypass. Requests with
+  recorded water collection block going offline entirely (the driver
+  stays online); Delivery Run members are skipped. Each such release is
+  auditable via `releaseContext`/`trigger: "driver_went_offline"`.
+- **Stale assignments auto-release after 12 hours.** The hourly
+  `stale-assignments` cron (`releaseStaleAssignments()`) returns
+  ordinary `claimed` requests whose current `claimedAt` is ≥12h old to
+  dispatch, re-validating assignment identity (driver + `claimedAt`)
+  transactionally. This is a system recovery — no decline record, no
+  cooldown — audited as `assignment_auto_released`, never
+  `driver_released`.
+
+Rationale: assignment-on-visibility made a held assignment robust against
+browser closes, but left two hostage states — an offline driver silently
+holding queued work, and an assignment held indefinitely by an inactive
+driver. These endings close both without weakening the atomic-assignment
+guarantee.
+
 ## References
 
 - [`src/lib/domain/dispatch.ts`](../../src/lib/domain/dispatch.ts)
   (`assignNextDeliveryForDriver`, `releaseAssignedDelivery`)
+- [`src/lib/domain/staleAssignments.ts`](../../src/lib/domain/staleAssignments.ts)
+  (`releaseStaleAssignments`) — issue #135 amendment
+- [`src/lib/domain/driverRegistry.ts`](../../src/lib/domain/driverRegistry.ts)
+  (`setAvailabilityByLinkedUser`) — issue #135 amendment
 - [`src/lib/domain/waterRequests.ts`](../../src/lib/domain/waterRequests.ts)
   (`claimWaterRequest` with `additionalWrites`)
 - [`src/lib/domain/driverOffers.ts`](../../src/lib/domain/driverOffers.ts)

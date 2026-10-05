@@ -2,7 +2,11 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { type DocumentData, FieldValue } from "firebase-admin/firestore";
+import {
+  type DocumentData,
+  FieldValue,
+  Timestamp,
+} from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import { toUserRoles } from "@/lib/auth/roles";
@@ -21,7 +25,9 @@ import {
   type StaleReason,
 } from "./activeRequestValidation";
 import { CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION } from "./driverWorkflowNotice";
-import { startOfSabaDay } from "@/lib/utils/datetime";
+import { buildDispatchRecord, driverOffersCollection } from "./driverOffers";
+import { appConfig } from "./config";
+import { sabaCalendarDateKey, startOfSabaDay } from "@/lib/utils/datetime";
 
 /**
  * Government-managed Driver Registry (see PRODUCT.md / TECHNICAL.md
@@ -1049,50 +1055,320 @@ export interface SetAvailabilityByLinkedUserInput {
   availabilityStatus: DriverAvailabilityStatus;
 }
 
+/**
+ * Outcome of an availability transition. `releaseOutcome` is set only
+ * when going offline released one or more ordinary assigned deliveries
+ * back to dispatch — it mirrors `ReleaseAssignedDeliveryResult` so the
+ * UI can reuse the same decline-limit messaging.
+ */
+export interface SetAvailabilityByLinkedUserResult {
+  entry: DriverRegistryEntry;
+  releasedRequestIds: string[];
+  releaseOutcome: {
+    availabilityStatus: "available" | "cooldown" | "daily_limit";
+    cooldownUntil: string | null;
+    declineCount: number;
+    maxDeclinesPerDay: number;
+  } | null;
+}
+
+/**
+ * Sets the driver's availability — and, when going offline, releases any
+ * ordinary releasable assigned delivery in the SAME transaction (issue
+ * #135). A driver must never be offline while silently holding a queued
+ * `claimed` request.
+ *
+ * Going offline releases each non-Delivery-Run `claimed` request assigned
+ * to the driver, exactly like `releaseAssignedDelivery()`:
+ * request → `available`, ledger decline record, `driver_released`
+ * event (with `trigger: "driver_went_offline"`), and the shared daily
+ * decline/cooldown policy. This is a deliberate driver action, so it
+ * counts as a decline — exempting it would make "Go Offline" a free
+ * release that bypasses the decline limit and invites immediate
+ * re-assignment of the same request.
+ *
+ * Safety rules inside the transaction:
+ *   - Requests with recorded `loadCollections` (water already collected)
+ *     make the whole operation fail with `DRIVER_HAS_COMMITTED_DELIVERY`
+ *     — the driver stays ONLINE; committed work is never abandoned.
+ *   - Delivery Run members (`dispatchBatchId`) are skipped entirely —
+ *     they are staff-managed and neither released nor blocking.
+ *   - `activeRequestId` is cleared unless it still points at a request
+ *     that remains claimed to this driver (i.e. a run member) — a stale
+ *     or just-released lock is always cleared.
+ *   - Re-checking committed state inside the transaction makes races
+ *     with delivery, cancellation, and staff reassignment safe: a
+ *     request no longer `claimed` to this driver is simply not released.
+ *
+ * Repeated/duplicate calls are idempotent: no redundant availability
+ * event is written when the status is already the target value.
+ *
+ * Closing the app or navigating away never calls this function — an
+ * assignment survives browser lifecycle events by design (issue #123).
+ */
 export async function setAvailabilityByLinkedUser(
   input: SetAvailabilityByLinkedUserInput,
-): Promise<DriverRegistryEntry> {
+): Promise<SetAvailabilityByLinkedUserResult> {
   const { userId, availabilityStatus } = input;
   const entry = await getDriverByLinkedUserId(userId);
   if (!entry) throw new Error("DRIVER_NOT_FOUND");
 
-  if (
-    availabilityStatus === "online" &&
-    entry.eligibilityStatus !== "eligible"
-  ) {
-    throw new Error("DRIVER_INELIGIBLE");
-  }
-  if (availabilityStatus === "online" && entry.cooldownUntil) {
-    const cooldownUntil = new Date(entry.cooldownUntil);
-    if (cooldownUntil > new Date()) {
-      const endOfToday = startOfSabaDay(
-        new Date(Date.now() + 24 * 60 * 60 * 1000),
-      );
-      const err = new Error("DRIVER_IN_COOLDOWN") as Error & {
-        cooldownUntil: string;
-        isDailyLimit: boolean;
-      };
-      err.cooldownUntil = entry.cooldownUntil;
-      err.isDailyLimit = cooldownUntil.getTime() >= endOfToday.getTime();
-      throw err;
-    }
-  }
-
   const db = getAdminDb();
   const ref = db.collection(REGISTRY_COLLECTION).doc(entry.id);
-  const now = FieldValue.serverTimestamp();
-  await ref.update({ availabilityStatus, updatedAt: now, updatedBy: userId });
+  const offers = driverOffersCollection(db);
+  const now = new Date();
+  const endOfToday = startOfSabaDay(
+    new Date(now.getTime() + 24 * 60 * 60 * 1000),
+  );
 
-  await ref.collection("events").add({
-    type: availabilityStatus === "online" ? "driver_online" : "driver_offline",
-    actorId: userId,
-    actorRole: "driver",
-    createdAt: now,
-    metadata: null,
+  return db.runTransaction<SetAvailabilityByLinkedUserResult>(async (txn) => {
+    // ---- All reads first ----
+    const freshSnap = await txn.get(ref);
+    if (!freshSnap.exists) throw new Error("DRIVER_NOT_FOUND");
+    const fresh = freshSnap.data()!;
+
+    if (availabilityStatus === "online") {
+      // Re-validate on the committed read — eligibility/cooldown may
+      // have changed since the pre-transaction entry was loaded.
+      if (fresh.eligibilityStatus !== "eligible") {
+        throw new Error("DRIVER_INELIGIBLE");
+      }
+      const cooldownUntil = fresh.cooldownUntil?.toDate?.();
+      if (cooldownUntil instanceof Date && cooldownUntil > now) {
+        const err = new Error("DRIVER_IN_COOLDOWN") as Error & {
+          cooldownUntil: string;
+          isDailyLimit: boolean;
+        };
+        err.cooldownUntil = cooldownUntil.toISOString();
+        err.isDailyLimit = cooldownUntil.getTime() >= endOfToday.getTime();
+        throw err;
+      }
+    }
+
+    // The driver's currently claimed deliveries, whatever the target
+    // status — going offline must release them, and even a redundant
+    // "offline" write on an already-offline driver should repair a
+    // leftover claim rather than ignore it.
+    const claimedSnap = await txn.get(
+      db
+        .collection(REQUESTS_COLLECTION)
+        .where("assignedDriverId", "==", userId)
+        .where("status", "==", "claimed"),
+    );
+
+    // Delivery Run loads are staff-managed — a driver cannot detach
+    // themselves (same rule as releaseAssignedDelivery) — but they
+    // also must not block going offline.
+    const releasable = claimedSnap.docs.filter(
+      (doc) => !doc.data().dispatchBatchId,
+    );
+
+    if (
+      availabilityStatus === "offline" &&
+      releasable.some(
+        (doc) =>
+          Array.isArray(doc.data().loadCollections) &&
+          doc.data().loadCollections.length > 0,
+      )
+    ) {
+      // Water is already physically collected — releasing would strand
+      // it. Fail the whole operation: the driver stays online.
+      throw new Error("DRIVER_HAS_COMMITTED_DELIVERY");
+    }
+
+    // Going online never releases anything; the claimed set above is
+    // only inspected for the offline path.
+    const toRelease = availabilityStatus === "offline" ? releasable : [];
+    const releasedIds = new Set(toRelease.map((doc) => doc.id));
+    // Requests that remain claimed to this driver after this
+    // transaction — Delivery Run members always, plus (online path)
+    // everything claimed. The active-delivery lock may legitimately
+    // point at any of these.
+    const keptIds = new Set(
+      claimedSnap.docs
+        .filter((doc) => !releasedIds.has(doc.id))
+        .map((doc) => doc.id),
+    );
+
+    // Per-request legacy pending offers, dispatch settings, and the
+    // today's-declines count — only read when there is something to
+    // release.
+    const legacyPendingByRequest: Map<
+      string,
+      FirebaseFirestore.QueryDocumentSnapshot[]
+    > = new Map();
+    let settingsData: DocumentData = {};
+    let declinesBeforeThis = 0;
+    if (toRelease.length > 0) {
+      for (const doc of toRelease) {
+        const snap = await txn.get(
+          offers
+            .where("driverId", "==", userId)
+            .where("requestId", "==", doc.id)
+            .where("response", "==", null),
+        );
+        legacyPendingByRequest.set(doc.id, snap.docs);
+      }
+      const settingsSnap = await txn.get(
+        db.collection("config").doc("dispatchSettings"),
+      );
+      settingsData = settingsSnap.data() ?? {};
+      const lookback = new Date(now.getTime() - 26 * 60 * 60 * 1000);
+      const declinesSnap = await txn.get(
+        offers
+          .where("driverId", "==", userId)
+          .where("response", "==", "declined")
+          .where("respondedAt", ">=", lookback),
+      );
+      const todayKey = sabaCalendarDateKey(now);
+      declinesBeforeThis = declinesSnap.docs.filter((doc) => {
+        const respondedAt = doc.data().respondedAt?.toDate?.();
+        return (
+          respondedAt instanceof Date &&
+          sabaCalendarDateKey(respondedAt) === todayKey
+        );
+      }).length;
+    }
+
+    const maxDeclinesPerDay =
+      typeof settingsData.maxDeclinesPerDay === "number" &&
+      settingsData.maxDeclinesPerDay >= 1
+        ? settingsData.maxDeclinesPerDay
+        : appConfig.defaultMaxDeclinesPerDay;
+    const declineCooldownHours =
+      typeof settingsData.declineCooldownHours === "number" &&
+      settingsData.declineCooldownHours > 0
+        ? settingsData.declineCooldownHours
+        : appConfig.defaultDeclineCooldownHours;
+    const declineCount = declinesBeforeThis + toRelease.length;
+    const willEnterCooldown =
+      toRelease.length > 0 && declineCount >= maxDeclinesPerDay;
+
+    // ---- All writes after reads ----
+    const nowField = FieldValue.serverTimestamp();
+    const releasedRequestIds: string[] = [];
+
+    for (const doc of toRelease) {
+      // Same queue-return semantics as releaseAssignedDelivery —
+      // `requestedAt`/priority untouched; preferred-driver hold
+      // cleared so it cannot resurface to this driver.
+      txn.update(doc.ref, {
+        status: "available",
+        assignedDriverId: null,
+        claimedAt: null,
+        availableAt: nowField,
+        preferredDriverId: null,
+        preferredDriverExpiresAt: null,
+        updatedAt: nowField,
+      });
+      for (const offer of legacyPendingByRequest.get(doc.id) ?? []) {
+        txn.update(offer.ref, {
+          response: "expired",
+          respondedAt: nowField,
+        });
+      }
+      txn.set(offers.doc(), {
+        ...buildDispatchRecord(userId, doc.id, "declined"),
+        // This is a decline — but one triggered by the driver going
+        // offline, not by the Release button. Recorded explicitly so
+        // the ledger never disguises which action produced it.
+        releaseContext: "driver_went_offline",
+      });
+      txn.set(doc.ref.collection("events").doc(), {
+        type: "driver_released",
+        actorId: userId,
+        actorRole: "driver",
+        createdAt: nowField,
+        metadata: {
+          previousStatus: "claimed",
+          trigger: "driver_went_offline",
+        },
+      });
+      releasedRequestIds.push(doc.id);
+    }
+
+    const registryUpdate: Record<string, unknown> = {
+      availabilityStatus,
+      updatedAt: nowField,
+      updatedBy: userId,
+    };
+    const currentLock =
+      typeof fresh.activeRequestId === "string" ? fresh.activeRequestId : null;
+    // Clear the lock unless it still points at a request that remains
+    // claimed to this driver — covers both the released-request case
+    // and a stale leftover lock, while never breaking a live pairing.
+    if (currentLock && !keptIds.has(currentLock)) {
+      registryUpdate.activeRequestId = null;
+    }
+    txn.update(ref, registryUpdate);
+
+    // Availability events only on an actual transition — a repeated
+    // Go Offline/Go Online must not manufacture duplicate history.
+    if (fresh.availabilityStatus !== availabilityStatus) {
+      txn.set(ref.collection("events").doc(), {
+        type:
+          availabilityStatus === "online" ? "driver_online" : "driver_offline",
+        actorId: userId,
+        actorRole: "driver",
+        createdAt: nowField,
+        metadata: releasedRequestIds.length > 0 ? { releasedRequestIds } : null,
+      });
+    }
+
+    let releaseOutcome: SetAvailabilityByLinkedUserResult["releaseOutcome"] =
+      null;
+    let newCooldownUntil: Date | null = null;
+    if (willEnterCooldown) {
+      const cooldownUntil = new Date(
+        now.getTime() + declineCooldownHours * 60 * 60 * 1000,
+      );
+      newCooldownUntil = cooldownUntil;
+      txn.update(ref, {
+        cooldownUntil,
+        updatedAt: nowField,
+        updatedBy: userId,
+      });
+      txn.set(ref.collection("events").doc(), {
+        type: "driver_cooldown_started",
+        actorId: userId,
+        actorRole: "driver",
+        createdAt: nowField,
+        metadata: {
+          declineCount,
+          maxDeclinesPerDay,
+          cooldownUntil: cooldownUntil.toISOString(),
+        },
+      });
+      releaseOutcome = {
+        availabilityStatus:
+          cooldownUntil.getTime() >= endOfToday.getTime()
+            ? "daily_limit"
+            : "cooldown",
+        cooldownUntil: cooldownUntil.toISOString(),
+        declineCount,
+        maxDeclinesPerDay,
+      };
+    } else if (toRelease.length > 0) {
+      releaseOutcome = {
+        availabilityStatus: "available",
+        cooldownUntil: null,
+        declineCount,
+        maxDeclinesPerDay,
+      };
+    }
+
+    return {
+      entry: toDriverRegistryEntry(entry.id, {
+        ...fresh,
+        ...registryUpdate,
+        cooldownUntil: newCooldownUntil
+          ? Timestamp.fromDate(newCooldownUntil)
+          : fresh.cooldownUntil,
+      }),
+      releasedRequestIds,
+      releaseOutcome,
+    };
   });
-
-  const updated = await ref.get();
-  return toDriverRegistryEntry(entry.id, updated.data()!);
 }
 
 export interface StartCooldownByLinkedUserInput {

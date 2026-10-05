@@ -60,6 +60,11 @@ export const CRON_EXPECTATIONS: Record<string, CronExpectation> = {
     schedule: "hourly at :37 (vercel.json)",
     staleAfterMs: 3 * 60 * 60 * 1000, // hourly + ~2h grace
   },
+  "stale-assignments": {
+    label: "Stale assignment release sweep",
+    schedule: "hourly at :11 (vercel.json)",
+    staleAfterMs: 3 * 60 * 60 * 1000, // hourly + ~2h grace
+  },
 };
 
 /** How often the watchdog may re-log a stale heartbeat (bounded noise). */

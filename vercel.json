@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/merge-auth-reconciliation",
       "schedule": "37 * * * *"
+    },
+    {
+      "path": "/api/cron/stale-assignments",
+      "schedule": "11 * * * *"
     }
   ]
 }

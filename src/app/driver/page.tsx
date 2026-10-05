@@ -104,6 +104,18 @@ export default async function DriverPortalPage() {
     if (assigned) deliveries.push(assigned);
   }
 
+  // Ordinary (non-Delivery-Run) assignments held by this driver — drives
+  // the Go Offline confirmation. A request with water collection already
+  // recorded cannot be released, so going offline is blocked instead.
+  const ordinaryDeliveries = deliveries.filter((d) => !d.dispatchBatchId);
+  const heldAssignment = ordinaryDeliveries.some(
+    (d) => Array.isArray(d.loadCollections) && d.loadCollections.length > 0,
+  )
+    ? ("committed" as const)
+    : ordinaryDeliveries.length > 0
+      ? ("releasable" as const)
+      : ("none" as const);
+
   // Fetch customer info for legacy requests only (those without a
   // customer snapshot). Unregistered customers have no `users/{uid}`
   // document and always carry a snapshot, so they never need this.
@@ -203,6 +215,7 @@ export default async function DriverPortalPage() {
               <div className="mt-4">
                 <AvailabilityToggle
                   currentStatus={isOnline ? "online" : "offline"}
+                  heldAssignment={heldAssignment}
                 />
               </div>
             )}

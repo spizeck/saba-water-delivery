@@ -626,6 +626,7 @@ preferred_driver_declined
 request_opened
 driver_claimed
 driver_released
+assignment_auto_released
 driver_reassigned
 marked_delivered
 customer_confirmed
@@ -641,14 +642,17 @@ preferred_driver_hold_released_for_priority
 ```
 
 `request_created_by_dispatcher`, `delivery_confirmed_by_dispatcher`,
-and `customer_dispute_recorded_by_staff`
-are deliberately distinct from their resident-initiated equivalents —
-never disguise a staff-initiated action as the customer's own (see
-"Dispatcher-Created Requests" below).
+`customer_dispute_recorded_by_staff`, and `assignment_auto_released`
+(system timeout, no actor) are deliberately distinct from their
+resident/driver-initiated equivalents —
+never disguise a staff- or system-initiated action as the customer's or
+driver's own (see "Dispatcher-Created Requests" below).
 
 Driver events (`driverRegistry/{driverId}/events/{eventId}`) additionally
 include `driver_cooldown_started`, recorded when a driver reaches the daily
-decline limit (see "Dispatch Assignment" below).
+decline limit, and `assignment_auto_released`, recorded when the
+stale-assignment sweep releases a delivery the driver had left claimed
+past the assignment timeout (see "Dispatch Assignment", issue #135).
 
 Preserve events for auditing and statistics.
 
@@ -750,7 +754,8 @@ atomically. A driver who can see a delivery's full details therefore
 ALWAYS owns it: the request left `available` before the details were ever
 rendered. There is no "Accept" step and no offer lease, and **closing the
 app never releases an assignment** — only `releaseAssignedDelivery()`,
-a staff workflow, or completing the delivery can end it. This replaces
+an explicit Go Offline (issue #135), the stale-assignment timeout, a
+staff workflow, or completing the delivery can end it. This replaces
 the earlier pending-offer model, in which full details were displayed
 while the request was still `available` — the mechanism behind real
 double deliveries.
@@ -878,6 +883,92 @@ date (`Intl.DateTimeFormat` with `timeZone`) against today's local date.
 This avoids having to compute an exact UTC instant for local midnight and
 remains correct even if the timezone ever changes to one that observes
 DST.
+
+## Going Offline releases an ordinary assignment (issue #135)
+
+`setAvailabilityByLinkedUser()` — the domain function behind the driver's
+online/offline toggle — is transactional. Going **offline** now releases
+any ordinary (non-Delivery-Run) `claimed` request assigned to the driver
+in the SAME transaction as the availability write, using the exact
+queue-return and decline-accounting semantics of
+`releaseAssignedDelivery()`:
+
+- Each released request goes back to `available` (`assignedDriverId`,
+  `claimedAt`, and preferred-driver fields cleared; `requestedAt` and
+  priority preserved).
+- Each release appends a `"declined"` `driverOffers` record carrying
+  `releaseContext: "driver_went_offline"` and a `driver_released`
+  request event with `metadata.trigger: "driver_went_offline"` — it IS
+  a decline (same bypass risk), but the audit trail identifies which
+  action produced it.
+- The shared daily decline count and cooldown policy apply, so Go
+  Offline can never be a free release.
+- `activeRequestId` is cleared unless it still points at a request that
+  remains claimed to the driver (a Delivery Run member); a stale lock is
+  always cleared.
+- A claimed request with recorded `loadCollections` aborts the whole
+  transaction with `DRIVER_HAS_COMMITTED_DELIVERY` — the driver stays
+  ONLINE rather than stranding collected water.
+- Delivery Run members (`dispatchBatchId`) are skipped: they are
+  staff-managed and never block or get released by the toggle.
+- Re-validation happens on committed state inside the transaction, so a
+  request concurrently delivered, cancelled, or reassigned is simply not
+  in the claimed set and is never released.
+- Repeated presses are idempotent: the availability event is written
+  only on an actual transition, and a second call finds nothing left to
+  release.
+
+The driver portal shows a confirmation step when the driver is online
+with an ordinary assignment, and the workflow-notice modal (v2) explains
+the behavior. Closing the app still never releases — no browser-lifecycle
+code path calls this function.
+
+## Stale-assignment release — 12-hour timeout (issue #135)
+
+`releaseStaleAssignments()` (`src/lib/domain/staleAssignments.ts`) is the
+server-authoritative recovery for assignments a driver simply never acts
+on. Driven hourly by the protected cron route
+`/api/cron/stale-assignments` (`CRON_SECRET`, heartbeat
+`stale-assignments`).
+
+The authoritative clock is `waterRequests.claimedAt` — the start of the
+CURRENT assignment. Every assignment path writes it (`claimWaterRequest`,
+`dispatcherAssignRequest`, `dispatcherReassignRequest`, batch assignment)
+and every release clears it, so a reassignment — even to the same driver
+— always starts a fresh 12-hour window.
+
+Two-phase, race-safe:
+
+1. **Bounded scan** (`status == "claimed"`, limit 500 — equality-only,
+   no composite index) identifies candidates whose `claimedAt` is at or
+   past `appConfig.staleAssignmentReleaseHours` (12h). A claimed document
+   with missing/invalid `claimedAt` is an anomaly: counted in
+   `missingClaimedAt`, never released on guesswork.
+2. **Per-candidate release transaction**
+   (`releaseStaleAssignmentIfUnchanged`) re-reads committed state and
+   releases only when ALL still hold: status `claimed`, same
+   `assignedDriverId`, **identical `claimedAt`** (assignment identity —
+   a reassignment writes a new timestamp and is protected), still past
+   the threshold, no `dispatchBatchId`, no `loadCollections`. Any
+   mismatch — delivered, cancelled, reassigned, or progressed — is a
+   benign `skipped_stale`/`skipped_not_releasable` no-op, so a stale
+   candidate can never release newer work.
+
+A released request returns to `available` exactly as in a driver
+release, and the driver's `activeRequestId` is cleared only if it points
+at that request. Crucially, the sweep writes **no** `driverOffers`
+record and never touches the decline count or `cooldownUntil` — a
+system timeout is not a driver decline. Audit uses the dedicated
+`assignment_auto_released` event on both the request
+(`actorId: null`, `actorRole: null`) and the driver registry
+(`actorRole: "system"`), never `driver_released`.
+
+Idempotency and liveness: a missed or overlapping run is harmless —
+released candidates stop matching, and unreleased ones are found again
+by the next run. Per-candidate failures are counted and logged
+(`stale_assignment_release_failed`) without aborting the sweep. The
+heartbeat/staleness watchdog treats >3h without success as stale (see
+"Scheduled-operation heartbeats").
 
 ## Avoiding re-assignment loops
 

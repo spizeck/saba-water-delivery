@@ -153,6 +153,15 @@ operationally necessary (for example, a driver becomes unavailable
 mid-delivery). Reassignment preserves the request's original submitted
 time in the fairness queue.
 
+Assignments can also end without your action: a driver who explicitly
+goes **Offline** releases a pending assigned delivery back to the queue
+(it counts as a release for their daily limit), and an ordinary
+assignment left untouched for **12 hours** is automatically returned to
+dispatch by the system. Reassigning a request restarts that 12-hour
+window. Neither path touches Delivery Run members or deliveries where
+water collection was already recorded — those stay put until completed
+or handled by staff.
+
 If you see "Selected driver already has an active delivery" but the
 driver believes they have no active work, the system will
 automatically check and clear the outdated reference the next time the

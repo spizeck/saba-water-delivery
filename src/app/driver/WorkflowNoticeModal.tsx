@@ -144,9 +144,18 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
             <strong>does not release the delivery</strong>.
           </p>
           <p>
+            Pressing <strong>Go Offline</strong> releases a pending assigned
+            delivery back to dispatch — it counts toward your release limit,
+            like Decline / Release.
+          </p>
+          <p>
+            An assigned delivery left untouched for <strong>12 hours</strong> is
+            automatically returned to dispatch.
+          </p>
+          <p>
             If you cannot make the delivery, use{" "}
             <strong>Decline / Release Delivery</strong> so it can be assigned to
-            another driver.
+            another driver sooner.
           </p>
           <p>Only go Online when you are ready to receive a delivery.</p>
         </div>

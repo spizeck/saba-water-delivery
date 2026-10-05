@@ -44,6 +44,20 @@ export const appConfig = {
   defaultDeclineCooldownHours: 1,
 
   /**
+   * Hours an ordinary (non-Delivery-Run) assigned request may remain
+   * `claimed` — assigned to a driver but never completed — before the
+   * stale-assignment sweep automatically releases it back to dispatch
+   * (issue #135). The clock is the CURRENT assignment start
+   * (`waterRequests.claimedAt`), which is reset on every assignment and
+   * reassignment. The release is a system recovery action: it does NOT
+   * count as a driver decline and does not trigger cooldown, and is
+   * audited distinctly (`assignment_auto_released`). Enforced by the
+   * protected cron route `/api/cron/stale-assignments`, not lazily —
+   * the release must happen even when no driver has the app open.
+   */
+  staleAssignmentReleaseHours: 12,
+
+  /**
    * IANA timezone for ALL Saba operational date/time display and
    * calendar-boundary calculations (see TECHNICAL.md "Saba Operational
    * Timezone"). This is the single centralized setting referenced by
