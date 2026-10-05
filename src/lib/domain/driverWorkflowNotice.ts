@@ -73,7 +73,7 @@ export function requiresWorkflowNoticeAcknowledgement(
  * workflow is established, remove this constant, this function, and the
  * `WorkflowNoticeBanner` component.
  */
-export const DRIVER_WORKFLOW_NOTICE_BANNER_LAST_SABA_DATE = "2027-03-31";
+export const DRIVER_WORKFLOW_NOTICE_BANNER_LAST_SABA_DATE = "2026-10-31";
 
 /**
  * Whether the temporary reinforcement banner should render — true through
