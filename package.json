@@ -29,7 +29,7 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@sentry/nextjs": "^10.74.0",
+    "@sentry/nextjs": "^11.3.0",
     "firebase": "^12.19.0",
     "firebase-admin": "^13.10.0",
     "iconv-lite": "^0.7.3",
