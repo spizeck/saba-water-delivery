@@ -20,6 +20,7 @@ import {
   checkActiveRequestValidity,
   type StaleReason,
 } from "./activeRequestValidation";
+import { CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION } from "./driverWorkflowNotice";
 import { startOfSabaDay } from "@/lib/utils/datetime";
 
 /**
@@ -66,6 +67,14 @@ function toDriverRegistryEntry(
     restrictedBy: data.restrictedBy ?? null,
     cooldownUntil: data.cooldownUntil?.toDate?.().toISOString() ?? null,
     activeRequestId: data.activeRequestId ?? null,
+    // Missing on documents written before the workflow-notice feature —
+    // naturally interpreted as "never acknowledged" (version 0).
+    workflowNoticeAcknowledgedVersion:
+      typeof data.workflowNoticeAcknowledgedVersion === "number"
+        ? data.workflowNoticeAcknowledgedVersion
+        : 0,
+    workflowNoticeAcknowledgedAt:
+      data.workflowNoticeAcknowledgedAt?.toDate?.().toISOString() ?? null,
     archivedAt: data.archivedAt?.toDate?.().toISOString() ?? null,
     archivedBy: data.archivedBy ?? null,
     archiveReason: data.archiveReason ?? null,
@@ -1116,6 +1125,94 @@ export async function startCooldownByLinkedUser(
       maxDeclinesPerDay,
       cooldownUntil: cooldownUntil.toISOString(),
     },
+  });
+
+  const updated = await ref.get();
+  return toDriverRegistryEntry(entry.id, updated.data()!);
+}
+
+// ---------------------------------------------------------------------------
+// Workflow notice acknowledgement (by linked user — driver portal)
+// ---------------------------------------------------------------------------
+
+export interface AcknowledgeWorkflowNoticeInput {
+  /**
+   * Firebase uid of the authenticated driver — resolved server-side from
+   * the session by the server action, never accepted from the client.
+   * The registry entry is looked up BY `linkedUserId`, so a driver can
+   * only ever acknowledge their own notice.
+   */
+  userId: string;
+  /**
+   * The notice version the driver was shown. Validated against
+   * `CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION`: a client can never record
+   * an acknowledgement for a version ahead of what the app has shown,
+   * and the transaction below never lets an older acknowledgement
+   * overwrite a newer stored version.
+   */
+  noticeVersion: number;
+}
+
+/**
+ * Records the driver's acknowledgement of a workflow-change notice on
+ * their registry entry (issue #123 follow-up). Writes
+ * `workflowNoticeAcknowledgedVersion` / `workflowNoticeAcknowledgedAt`
+ * and a `driver_workflow_notice_acknowledged` audit event.
+ *
+ * EDUCATION ONLY — this state is never consulted by assignment,
+ * availability, or cooldown logic; the modal it dismisses explains the
+ * workflow, it does not gate it.
+ *
+ * Monotonic and idempotent by construction: the stored version only
+ * ever moves forward. A repeat submission, a racing second tab, or a
+ * stale browser acknowledging a superseded version is a transactionally
+ * safe no-op — a newer stored version is never downgraded, and the
+ * timestamp always records the first acknowledgement of that version.
+ * The audit event is written only when the version actually advances,
+ * so repeat submissions produce no event noise.
+ *
+ * Server time (`FieldValue.serverTimestamp()`) is always used — the
+ * client never supplies a timestamp.
+ */
+export async function acknowledgeDriverWorkflowNotice(
+  input: AcknowledgeWorkflowNoticeInput,
+): Promise<DriverRegistryEntry> {
+  const { userId, noticeVersion } = input;
+  if (
+    !Number.isInteger(noticeVersion) ||
+    noticeVersion < 1 ||
+    noticeVersion > CURRENT_DRIVER_WORKFLOW_NOTICE_VERSION
+  ) {
+    throw new Error("INVALID_NOTICE_VERSION");
+  }
+
+  const entry = await getDriverByLinkedUserId(userId);
+  if (!entry) throw new Error("DRIVER_NOT_FOUND");
+
+  const db = getAdminDb();
+  const ref = db.collection(REGISTRY_COLLECTION).doc(entry.id);
+
+  await db.runTransaction(async (txn) => {
+    const snap = await txn.get(ref);
+    if (!snap.exists) throw new Error("DRIVER_NOT_FOUND");
+    const stored = snap.data()!.workflowNoticeAcknowledgedVersion;
+    const storedVersion = typeof stored === "number" ? stored : 0;
+    if (storedVersion >= noticeVersion) return;
+
+    const now = FieldValue.serverTimestamp();
+    txn.update(ref, {
+      workflowNoticeAcknowledgedVersion: noticeVersion,
+      workflowNoticeAcknowledgedAt: now,
+      updatedAt: now,
+      updatedBy: userId,
+    });
+    txn.create(ref.collection("events").doc(), {
+      type: "driver_workflow_notice_acknowledged",
+      actorId: userId,
+      actorRole: "driver",
+      createdAt: now,
+      metadata: { noticeVersion },
+    });
   });
 
   const updated = await ref.get();

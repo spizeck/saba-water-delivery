@@ -13,7 +13,12 @@ import { areAllLoadsCollected } from "@/lib/domain/loadCollection";
 import { formatWaterQuantity } from "@/lib/domain/quantity";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 
-import { markDelivered, type MarkDeliveredActionState } from "./actions";
+import {
+  markDelivered,
+  releaseDelivery,
+  type MarkDeliveredActionState,
+  type ReleaseActionState,
+} from "./actions";
 import { WaterCollectionSection } from "./WaterCollectionSection";
 
 interface CustomerInfo {
@@ -41,7 +46,7 @@ export function ClaimedDeliveries({
   return (
     <Card>
       <h2 className="text-lg font-bold text-slate-900">
-        My deliveries ({deliveries.length})
+        Assigned Deliveries ({deliveries.length})
       </h2>
       <div className="mt-4 flex flex-col gap-4">
         {deliveries.map((req) => (
@@ -68,6 +73,7 @@ export function ClaimedDeliveries({
 }
 
 const initialState: MarkDeliveredActionState = { status: "idle" };
+const releaseInitialState: ReleaseActionState = { status: "idle" };
 
 function DeliveryCard({
   request,
@@ -81,14 +87,33 @@ function DeliveryCard({
   meters: MeterAssignment[];
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [releaseConfirming, setReleaseConfirming] = useState(false);
   const [state, formAction, pending] = useActionState(
     markDelivered,
     initialState,
+  );
+  const [releaseState, releaseAction, releasePending] = useActionState(
+    releaseDelivery,
+    releaseInitialState,
   );
   const allCollected = areAllLoadsCollected(
     request.loads,
     request.loadCollections,
   );
+  // Delivery-run loads are staff-managed, and a request with recorded
+  // water collection can no longer be released by the driver.
+  const canRelease =
+    !request.dispatchBatchId && (request.loadCollections?.length ?? 0) === 0;
+
+  if (releaseState.status === "success") {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-medium text-slate-700">
+          {releaseState.message ?? "Delivery released back to dispatch."}
+        </p>
+      </div>
+    );
+  }
 
   if (state.status === "success") {
     return (
@@ -102,7 +127,13 @@ function DeliveryCard({
 
   return (
     <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
-      <div className="flex items-center justify-between gap-2">
+      {/* Assignment-on-visibility (issue #123): anything rendered here is
+          already authoritatively assigned — there is no accept step, and
+          closing the app never releases it. */}
+      <p className="rounded-md bg-indigo-100/60 px-2.5 py-1.5 text-xs font-medium text-indigo-900">
+        This delivery is assigned to you. Closing the app will not release it.
+      </p>
+      <div className="mt-2 flex items-center justify-between gap-2">
         <p className="font-medium text-slate-900">
           {formatWaterQuantity(request.loads)} &mdash; {request.village}
         </p>
@@ -172,9 +203,9 @@ function DeliveryCard({
         meters={meters}
       />
 
-      {state.status === "error" && (
+      {(state.status === "error" || releaseState.status === "error") && (
         <p role="alert" className="mt-2 text-sm font-medium text-red-700">
-          {state.message}
+          {state.message ?? releaseState.message}
         </p>
       )}
 
@@ -218,6 +249,46 @@ function DeliveryCard({
           </form>
         </div>
       )}
+
+      {/* Decline / Release — clearly separated from the delivery flow.
+          Only the assigned driver can release, and only before water
+          collection starts; delivery-run loads are staff-managed. */}
+      {canRelease &&
+        (!releaseConfirming ? (
+          <div className="mt-3 border-t border-indigo-100 pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => setReleaseConfirming(true)}
+              className="w-full"
+            >
+              Decline / Release Delivery
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-sm font-medium text-red-800">
+              Release this delivery? It will be returned to dispatch for another
+              driver.
+            </p>
+            <form action={releaseAction} className="mt-2 flex gap-2">
+              <input type="hidden" name="requestId" value={request.id} />
+              <Button type="submit" size="md" disabled={releasePending}>
+                {releasePending ? "Releasing\u2026" : "Yes, release it"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                onClick={() => setReleaseConfirming(false)}
+                disabled={releasePending}
+              >
+                Keep it
+              </Button>
+            </form>
+          </div>
+        ))}
     </div>
   );
 }

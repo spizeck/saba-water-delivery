@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  isOfferableToDriver,
+  isAssignableToDriver,
   selectNextDispatchCandidate,
 } from "@/lib/domain/dispatchSelection";
-import type {
-  DriverOffer,
-  StandardLoadGallons,
-  WaterRequest,
-} from "@/lib/domain/types";
+import type { StandardLoadGallons, WaterRequest } from "@/lib/domain/types";
 
 const baseTime = new Date("2026-08-20T12:00:00.000Z");
 
@@ -55,23 +51,6 @@ function makeRequest(
   };
 }
 
-function makePendingOffer(request: WaterRequest): {
-  offer: DriverOffer;
-  request: WaterRequest;
-} {
-  return {
-    offer: {
-      id: `offer-${request.id}`,
-      requestId: request.id,
-      driverId: "driver-1",
-      offeredAt: baseTime.toISOString(),
-      response: null,
-      respondedAt: null,
-    },
-    request,
-  };
-}
-
 function priorityRank(priority: WaterRequest["dispatchPriority"]): number {
   return { critical: 0, urgent: 1, normal: 2 }[priority];
 }
@@ -86,7 +65,7 @@ function byPriorityThenAge(a: WaterRequest, b: WaterRequest): number {
 describe("dispatch selection", () => {
   const driverId = "driver-1";
 
-  it("offers the next available request after a delivery is completed", () => {
+  it("selects the next available request after a delivery is completed", () => {
     const _requestA = makeRequest("req-a", "delivered", {
       assignedDriverId: driverId,
       deliveredAt: baseTime.toISOString(),
@@ -95,7 +74,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [],
       available: [requestB],
       declinedRequestIds: new Set(),
@@ -119,7 +97,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [],
       available: [requestC],
       declinedRequestIds: new Set(),
@@ -130,7 +107,7 @@ describe("dispatch selection", () => {
     expect(result).toEqual(requestC);
   });
 
-  it("does not offer a new request while the driver has an active claimed delivery", () => {
+  it("does not select a new request while the driver has an active claimed delivery", () => {
     const activeDelivery = makeRequest("req-active", "claimed", {
       assignedDriverId: driverId,
       claimedAt: baseTime.toISOString(),
@@ -139,7 +116,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery,
-      pendingOffer: null,
       holds: [],
       available: [requestB],
       declinedRequestIds: new Set(),
@@ -150,33 +126,12 @@ describe("dispatch selection", () => {
     expect(result).toBeNull();
   });
 
-  it("does not reuse a pending offer while the driver has an active claimed delivery", () => {
-    const activeDelivery = makeRequest("req-active", "claimed", {
-      assignedDriverId: driverId,
-      claimedAt: baseTime.toISOString(),
-    });
-    const pendingRequest = makeRequest("req-pending", "available");
-
-    const result = selectNextDispatchCandidate({
-      activeDelivery,
-      pendingOffer: makePendingOffer(pendingRequest),
-      holds: [],
-      available: [],
-      declinedRequestIds: new Set(),
-      driverId,
-      now: baseTime,
-    });
-
-    expect(result).toBeNull();
-  });
-
-  it("excludes recently-declined requests but still offers other available requests", () => {
+  it("excludes recently-declined requests but still selects other available requests", () => {
     const requestA = makeRequest("req-a", "available");
     const requestB = makeRequest("req-b", "available");
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [],
       available: [requestA, requestB],
       declinedRequestIds: new Set([requestA.id]),
@@ -192,7 +147,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [],
       available: [requestA],
       declinedRequestIds: new Set([requestA.id]),
@@ -201,23 +155,6 @@ describe("dispatch selection", () => {
     });
 
     expect(result).toBeNull();
-  });
-
-  it("does not reuse a pending offer for a request the driver has recently declined", () => {
-    const requestA = makeRequest("req-a", "available");
-    const requestB = makeRequest("req-b", "available");
-
-    const result = selectNextDispatchCandidate({
-      activeDelivery: null,
-      pendingOffer: makePendingOffer(requestA),
-      holds: [],
-      available: [requestA, requestB],
-      declinedRequestIds: new Set([requestA.id]),
-      driverId,
-      now: baseTime,
-    });
-
-    expect(result).toEqual(requestB);
   });
 
   it("returns higher-priority requests before lower-priority requests", () => {
@@ -236,7 +173,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [],
       available: [normal, urgent, critical].sort(byPriorityThenAge),
       declinedRequestIds: new Set(),
@@ -258,7 +194,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [],
       available: [escalated, older],
       declinedRequestIds: new Set(),
@@ -279,7 +214,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [],
       available: [older, newer],
       declinedRequestIds: new Set(),
@@ -301,7 +235,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [hold],
       available: [available],
       declinedRequestIds: new Set(),
@@ -323,7 +256,6 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [hold],
       available: [available],
       declinedRequestIds: new Set(),
@@ -345,44 +277,7 @@ describe("dispatch selection", () => {
 
     const result = selectNextDispatchCandidate({
       activeDelivery: null,
-      pendingOffer: null,
       holds: [hold],
-      available: [available],
-      declinedRequestIds: new Set(),
-      driverId,
-      now: baseTime,
-    });
-
-    expect(result).toEqual(available);
-  });
-
-  it("reuses a pending offer when the request is still offerable", () => {
-    const request = makeRequest("req-pending", "available");
-
-    const result = selectNextDispatchCandidate({
-      activeDelivery: null,
-      pendingOffer: makePendingOffer(request),
-      holds: [],
-      available: [makeRequest("req-other", "available")],
-      declinedRequestIds: new Set(),
-      driverId,
-      now: baseTime,
-    });
-
-    expect(result).toEqual(request);
-  });
-
-  it("drops a stale pending offer and selects from the available queue", () => {
-    const stalePending = makeRequest("req-stale", "delivered", {
-      assignedDriverId: driverId,
-      deliveredAt: baseTime.toISOString(),
-    });
-    const available = makeRequest("req-available", "available");
-
-    const result = selectNextDispatchCandidate({
-      activeDelivery: null,
-      pendingOffer: makePendingOffer(stalePending),
-      holds: [],
       available: [available],
       declinedRequestIds: new Set(),
       driverId,
@@ -393,49 +288,49 @@ describe("dispatch selection", () => {
   });
 });
 
-describe("isOfferableToDriver", () => {
+describe("isAssignableToDriver", () => {
   const driverId = "driver-1";
   const now = baseTime;
 
-  it("offers available requests with no assigned driver", () => {
+  it("assigns available requests with no assigned driver", () => {
     const request = makeRequest("req", "available");
-    expect(isOfferableToDriver(request, driverId, now)).toBe(true);
+    expect(isAssignableToDriver(request, driverId, now)).toBe(true);
   });
 
-  it("does not offer available requests that are already assigned", () => {
+  it("does not assign available requests that are already assigned", () => {
     const request = makeRequest("req", "available", {
       assignedDriverId: "driver-2",
     });
-    expect(isOfferableToDriver(request, driverId, now)).toBe(false);
+    expect(isAssignableToDriver(request, driverId, now)).toBe(false);
   });
 
-  it("offers an active preferred-driver hold addressed to this driver", () => {
+  it("assigns an active preferred-driver hold addressed to this driver", () => {
     const request = makeRequest("req", "preferred_driver_hold", {
       preferredDriverId: driverId,
       preferredDriverExpiresAt: new Date(
         baseTime.getTime() + 60_000,
       ).toISOString(),
     });
-    expect(isOfferableToDriver(request, driverId, now)).toBe(true);
+    expect(isAssignableToDriver(request, driverId, now)).toBe(true);
   });
 
-  it("does not offer a preferred-driver hold addressed to another driver", () => {
+  it("does not assign a preferred-driver hold addressed to another driver", () => {
     const request = makeRequest("req", "preferred_driver_hold", {
       preferredDriverId: "driver-2",
       preferredDriverExpiresAt: new Date(
         baseTime.getTime() + 60_000,
       ).toISOString(),
     });
-    expect(isOfferableToDriver(request, driverId, now)).toBe(false);
+    expect(isAssignableToDriver(request, driverId, now)).toBe(false);
   });
 
-  it("does not offer an expired preferred-driver hold even for this driver", () => {
+  it("does not assign an expired preferred-driver hold even for this driver", () => {
     const request = makeRequest("req", "preferred_driver_hold", {
       preferredDriverId: driverId,
       preferredDriverExpiresAt: new Date(
         baseTime.getTime() - 60_000,
       ).toISOString(),
     });
-    expect(isOfferableToDriver(request, driverId, now)).toBe(false);
+    expect(isAssignableToDriver(request, driverId, now)).toBe(false);
   });
 });

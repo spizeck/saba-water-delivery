@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { requireRole } from "@/lib/auth/session";
-import { acceptDriverOffer, declineDriverOffer } from "@/lib/domain/dispatch";
+import { releaseAssignedDelivery } from "@/lib/domain/dispatch";
 import {
-  reconcileActiveRequestByUserId,
+  acknowledgeDriverWorkflowNotice,
   setAvailabilityByLinkedUser,
 } from "@/lib/domain/driverRegistry";
 import {
@@ -63,7 +63,7 @@ export async function toggleAvailability(
             return {
               status: "error",
               message:
-                "You have reached today’s decline limit and are offline for the rest of the day. You can receive offers again tomorrow.",
+                "You have reached today’s decline limit and are offline for the rest of the day. You can receive deliveries again tomorrow.",
             };
           }
           const until = e.cooldownUntil
@@ -91,108 +91,100 @@ export async function toggleAvailability(
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch offer: accept / decline
+// Workflow notice acknowledgement
 // ---------------------------------------------------------------------------
 
-export interface OfferActionState {
+export interface WorkflowNoticeActionState {
   status: "idle" | "success" | "error";
   message?: string;
 }
 
-export async function acceptOffer(
-  _prevState: OfferActionState,
+/**
+ * Persists the driver's acknowledgement of the current workflow-change
+ * notice (issue #123 follow-up). Authorization is structural: the session
+ * uid resolves to the caller's OWN Driver Registry entry via
+ * `linkedUserId` — no driver/registry ID is ever taken from the client.
+ * The only client input is the notice version the modal displayed, and it
+ * is validated/monotonic-guarded server-side.
+ *
+ * Acknowledgement is education only — it must never gate assignment. A
+ * failed write returns an error state so the UI can retry; it does not
+ * mark anything acknowledged client-side.
+ */
+export async function acknowledgeWorkflowNotice(
+  _prevState: WorkflowNoticeActionState,
   formData: FormData,
-): Promise<OfferActionState> {
+): Promise<WorkflowNoticeActionState> {
   const session = await requireRole("driver");
-  const offerId = String(formData.get("offerId") ?? "").trim();
-
-  if (!offerId) {
-    return { status: "error", message: "Missing offer ID." };
-  }
-
-  // Reconcile stale activeRequestId before attempting the claim so a
-  // deleted/completed request does not permanently block this driver.
-  await reconcileActiveRequestByUserId(session.uid);
+  const noticeVersion = Number(formData.get("noticeVersion"));
 
   try {
-    await acceptDriverOffer({ offerId, driverId: session.uid });
+    await acknowledgeDriverWorkflowNotice({
+      userId: session.uid,
+      noticeVersion,
+    });
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
-        case "ALREADY_CLAIMED":
+        case "DRIVER_NOT_FOUND":
           return {
             status: "error",
-            message: "This request was already claimed by another driver.",
+            message: "Driver profile not found. Contact the water office.",
           };
-        case "PREFERRED_DRIVER_RESTRICTION":
-          return {
-            status: "error",
-            message: "This request is reserved for a preferred driver.",
-          };
-        case "HOLD_EXPIRED":
-          return {
-            status: "error",
-            message: "The preferred-driver hold has expired. Please refresh.",
-          };
-        case "REQUEST_NOT_CLAIMABLE":
+        case "INVALID_NOTICE_VERSION":
           return {
             status: "error",
             message:
-              "This request is no longer available. Refresh for a new offer.",
-          };
-        case "REQUEST_NOT_FOUND":
-          return { status: "error", message: "Request not found." };
-        case "DRIVER_INELIGIBLE":
-          return {
-            status: "error",
-            message: "You are not currently eligible to claim requests.",
-          };
-        case "DRIVER_OFFLINE":
-          return {
-            status: "error",
-            message: "You must be online to claim requests.",
-          };
-        case "DRIVER_HAS_ACTIVE_DELIVERY":
-          return {
-            status: "error",
-            message: "Complete your current delivery before accepting another.",
-          };
-        case "DRIVER_NOT_FOUND":
-          return { status: "error", message: "Driver profile not found." };
-        case "OFFER_NOT_FOUND":
-          return {
-            status: "error",
-            message: "This offer is no longer valid. Refresh for a new offer.",
-          };
-        case "OFFER_ALREADY_RESOLVED":
-          return {
-            status: "error",
-            message: "This offer was already responded to.",
+              "This notice is out of date. Refresh the page and try again.",
           };
         default:
-          throw err;
+          log.error("driver.workflow_notice_ack.failed", {
+            error: serializeError(err),
+          });
+          return {
+            status: "error",
+            message: "Could not save your acknowledgement. Please try again.",
+          };
       }
     }
-    throw err;
+    log.error("driver.workflow_notice_ack.failed", {
+      error: serializeError(err),
+    });
+    return {
+      status: "error",
+      message: "Could not save your acknowledgement. Please try again.",
+    };
   }
 
   revalidatePath("/driver");
-  return { status: "success", message: "Delivery accepted!" };
+  return { status: "success" };
 }
 
-export async function declineOffer(
-  _prevState: OfferActionState,
-  formData: FormData,
-): Promise<OfferActionState> {
-  const session = await requireRole("driver");
-  const offerId = String(formData.get("offerId") ?? "").trim();
+// ---------------------------------------------------------------------------
+// Assigned delivery: release
+// ---------------------------------------------------------------------------
 
-  if (!offerId) {
-    return { status: "error", message: "Missing offer ID." };
+export interface ReleaseActionState {
+  status: "idle" | "success" | "error";
+  message?: string;
+}
+
+export async function releaseDelivery(
+  _prevState: ReleaseActionState,
+  formData: FormData,
+): Promise<ReleaseActionState> {
+  const session = await requireRole("driver");
+  const requestId = String(formData.get("requestId") ?? "").trim();
+
+  if (!requestId) {
+    return { status: "error", message: "Missing request ID." };
   }
 
   try {
-    const result = await declineDriverOffer({ offerId, driverId: session.uid });
+    const result = await releaseAssignedDelivery({
+      requestId,
+      driverId: session.uid,
+    });
     revalidatePath("/driver");
     const message = getDeclineResultMessage({
       state: result.availabilityStatus,
@@ -204,22 +196,34 @@ export async function declineOffer(
   } catch (err: unknown) {
     if (err instanceof Error) {
       switch (err.message) {
-        case "OFFER_NOT_FOUND":
-          return {
-            status: "error",
-            message: "This offer is no longer valid. Refresh for a new offer.",
-          };
-        case "OFFER_ALREADY_RESOLVED":
-          return {
-            status: "error",
-            message: "This offer was already responded to.",
-          };
-        case "DRIVER_NOT_LINKED_FOR_COOLDOWN":
+        case "REQUEST_NOT_FOUND":
+          return { status: "error", message: "Request not found." };
+        case "REQUEST_NOT_RELEASABLE":
           return {
             status: "error",
             message:
-              "Unable to apply the decline cooldown. Contact the water office.",
+              "This delivery can no longer be released. Refresh the page.",
           };
+        case "NOT_ASSIGNED_DRIVER":
+          return {
+            status: "error",
+            message:
+              "This delivery is no longer assigned to you. Refresh the page.",
+          };
+        case "DELIVERY_RUN_MANAGED":
+          return {
+            status: "error",
+            message:
+              "This delivery is part of a delivery run. Contact the water office to change it.",
+          };
+        case "REQUEST_HAS_COLLECTIONS":
+          return {
+            status: "error",
+            message:
+              "Water collection has already been recorded for this delivery. Contact the water office to release it.",
+          };
+        case "DRIVER_NOT_FOUND":
+          return { status: "error", message: "Driver profile not found." };
         default:
           throw err;
       }

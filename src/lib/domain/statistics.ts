@@ -151,12 +151,17 @@ export interface DisputeMetrics {
   disputeRate: number | null; // percentage
 }
 
-export interface DispatchOfferMetrics {
-  offersSent: number;
-  accepted: number;
+export interface DispatchDecisionMetrics {
+  /** Total dispatch-decision ledger records in the period. */
+  decisions: number;
+  /** Automatic assignments made (includes legacy "accepted" records). */
+  assigned: number;
+  /** Driver declines/releases. */
   declined: number;
+  /** Records expired without driver action. */
   expired: number;
-  acceptanceRate: number | null; // percentage of responded offers accepted
+  /** Percentage of assignments the driver kept (not later released). */
+  assignmentRate: number | null;
 }
 
 export interface FillStationMetrics {
@@ -185,7 +190,7 @@ export interface StatsData {
   drivers: DriverMetrics[];
   preferredDriver: PreferredDriverMetrics;
   disputes: DisputeMetrics;
-  dispatchOffers: DispatchOfferMetrics;
+  dispatchDecisions: DispatchDecisionMetrics;
   priorityTiming: PriorityTimingRow[];
   fillStations: FillStationMetrics[];
   meters: MeterMetrics[];
@@ -741,19 +746,28 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
   };
 
   // ---------------------------------------------------------------------------
-  // Dispatch offer metrics (single-offer driver dispatch workflow)
+  // Dispatch decision metrics (assignment-on-visibility workflow, #123)
   // ---------------------------------------------------------------------------
   const offerAggregate = await getOfferAggregate(periodStart);
-  const responded = offerAggregate.accepted + offerAggregate.declined;
-  const dispatchOffers: DispatchOfferMetrics = {
-    offersSent: offerAggregate.offered,
-    accepted: offerAggregate.accepted,
+  // "assigned" is the current assignment outcome; "accepted" is the
+  // equivalent legacy outcome from the explicit-acceptance era.
+  const assignments = offerAggregate.assigned + offerAggregate.accepted;
+  // Under assignment-on-visibility (#123) every release appends a
+  // "declined" record for a driver/request pair that already has an
+  // "assigned" record — declines are a subset of assignments, not an
+  // alternative outcome, so `assignments / (assignments + declined)` could
+  // never fall below 50%. Report the share of assignments the driver kept
+  // instead. Legacy offer-era "declined" records (a declined pending
+  // offer had no matching "assigned" record) can inflate the subtraction
+  // during the transition window; the clamp keeps the rate sane.
+  const kept = Math.max(0, assignments - offerAggregate.declined);
+  const dispatchDecisions: DispatchDecisionMetrics = {
+    decisions: offerAggregate.offered,
+    assigned: assignments,
     declined: offerAggregate.declined,
     expired: offerAggregate.expired,
-    acceptanceRate:
-      responded > 0
-        ? Math.round((offerAggregate.accepted / responded) * 1000) / 10
-        : null,
+    assignmentRate:
+      assignments > 0 ? Math.round((kept / assignments) * 1000) / 10 : null,
   };
 
   // ---------------------------------------------------------------------------
@@ -838,7 +852,7 @@ export async function getStatistics(period: StatsPeriod): Promise<StatsData> {
     drivers,
     preferredDriver,
     disputes,
-    dispatchOffers,
+    dispatchDecisions,
     priorityTiming,
     fillStations,
     meters,
