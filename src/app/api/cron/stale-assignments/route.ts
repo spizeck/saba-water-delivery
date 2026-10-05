@@ -51,7 +51,10 @@ export const GET = withApiRoute(
     const startedAt = Date.now();
     try {
       const result = await releaseStaleAssignments();
-      await recordCronHeartbeat("stale-assignments", "success");
+      await recordCronHeartbeat(
+        "stale-assignments",
+        result.failed > 0 ? "failure" : "success",
+      );
       return NextResponse.json({
         ok: true,
         ...result,
