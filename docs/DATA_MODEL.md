@@ -92,7 +92,12 @@ separate and why operational code always looks up a registry entry by
 
 Audit trail: online/offline, access restricted/restored, cooldown
 started, registry created/updated, account linked/unlinked, meter
-assignment changes, workflow-notice acknowledgements.
+assignment changes, workflow-notice acknowledgements, and
+`assignment_auto_released` (a held assignment timed out and was returned
+to dispatch by the stale-assignment sweep — issue #135). A
+`driver_offline` event triggered by an explicit Go Offline carries
+`metadata.releasedRequestIds` when the same transaction released
+assigned work.
 
 ### `driverRegistry/{driverId}/meters/{stationId}`
 
@@ -186,7 +191,11 @@ where it originated. This is the operational core of the system.
   return no assignment even with eligible work remaining. See
   [assignment selection](../TECHNICAL.md#dispatch-assignment-selection).
 - Timestamps: `requestedAt`, `availableAt`, `claimedAt`, `deliveredAt`,
-  `confirmedAt`, `createdAt`, `updatedAt`.
+  `confirmedAt`, `createdAt`, `updatedAt`. `claimedAt` is the canonical
+  CURRENT-assignment start: written on every claim, dispatcher
+  assignment, reassignment, and batch assignment; cleared on every
+  release/requeue. It is the clock for the 12-hour stale-assignment
+  sweep (issue #135) — a reassignment always starts a new window.
 
 **Status lifecycle:** `requested` → `preferred_driver_hold` (if
 applicable) → `available` → `claimed` → `delivered` → `confirmed`, with
@@ -235,6 +244,15 @@ New event type: `customer_history_linked` — admin-initiated relink of an
 unregistered request to a registered user. Records previous/new
 `customerId`, the preserved customer snapshot, the acting admin, the
 reason, and timestamp.
+
+New event type: `assignment_auto_released` (issue #135) — the
+stale-assignment sweep released a `claimed` request whose current
+assignment exceeded `appConfig.staleAssignmentReleaseHours` (12h).
+`actorId`/`actorRole` are `null` (system action), and metadata records
+`driverId`, the released `claimedAt`, and `thresholdHours`. Deliberately
+distinct from `driver_released`: a timeout is a system recovery, never
+recorded as a driver decline. The mirror driver event is also
+`assignment_auto_released` on `driverRegistry/{driverId}/events`.
 
 New event types: `water_collected` — driver-recorded collection of one
 1,000-gallon load; `water_collected_by_staff` — dispatcher/admin-recorded
@@ -504,7 +522,7 @@ guarantee; the rule is defense in depth.
 **Purpose:** scheduled-operation heartbeat records (issue #62;
 [ADR 0020](./adr/0020-scheduled-operation-heartbeat-monitoring.md)). One
 document per registered cron (`continuity-report`, `notifications`,
-`merge-auth-reconciliation`) so a scheduled job that is **never invoked**
+`merge-auth-reconciliation`, `stale-assignments`) so a scheduled job that is **never invoked**
 — which otherwise emits no error anywhere — becomes detectable as
 staleness. Written only by trusted cron route code via the Admin SDK;
 surfaced read-only on `/admin/notifications` and by

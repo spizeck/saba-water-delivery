@@ -14,7 +14,7 @@ The canonical queue comparator considers Critical before Urgent before Normal. W
 
 A preferred driver gets limited first access, normally up to 24 hours. For Urgent/Critical requests, the driver must be immediately available or the request opens to general dispatch. Release or expiry ends the hold without resetting request age. A preference does not guarantee a particular driver or arrival time.
 
-Normal dispatch assigns drivers one delivery at a time, discouraging selection of only easy deliveries. The delivery shown to a driver is already atomically assigned to them (assignment-on-visibility, issue #123): there is no accept step, and closing the app does not release it. A driver who will not serve an assignment explicitly releases it. Eligibility, chosen availability, and temporary decline cooldown are different conditions.
+Normal dispatch assigns drivers one delivery at a time, discouraging selection of only easy deliveries. The delivery shown to a driver is already atomically assigned to them (assignment-on-visibility, issue #123): there is no accept step, and closing the app does not release it. A driver who will not serve an assignment explicitly releases it — either via Decline / Release or by going Offline (both count toward the decline limit). An ordinary assignment left unattended for 12 hours is automatically returned to dispatch without counting as a decline; assignments with recorded water collection and Delivery Run members are exempt from both paths. Eligibility, chosen availability, and temporary decline cooldown are different conditions.
 
 ## Delivery Runs and physical work
 

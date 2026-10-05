@@ -41,8 +41,9 @@ export async function toggleAvailability(
     return { status: "error", message: "Invalid availability status." };
   }
 
+  let result;
   try {
-    await setAvailabilityByLinkedUser({
+    result = await setAvailabilityByLinkedUser({
       userId: session.uid,
       availabilityStatus: newStatus,
     });
@@ -74,6 +75,12 @@ export async function toggleAvailability(
             message: `You have reached the decline limit. You are offline until ${until}.`,
           };
         }
+        case "DRIVER_HAS_COMMITTED_DELIVERY":
+          return {
+            status: "error",
+            message:
+              "Water collection has already been recorded for your assigned delivery, so it cannot be released. Complete the delivery or contact the water office — you cannot go offline while committed work remains.",
+          };
         case "DRIVER_NOT_FOUND":
           return {
             status: "error",
@@ -87,6 +94,21 @@ export async function toggleAvailability(
   }
 
   revalidatePath("/driver");
+  // Going offline may have released an assigned delivery back to
+  // dispatch in the same step — say so explicitly, including any
+  // decline-limit consequence, rather than showing a bare "offline".
+  if (newStatus === "offline" && result.releaseOutcome) {
+    const releasedMessage = getDeclineResultMessage({
+      state: result.releaseOutcome.availabilityStatus,
+      cooldownUntil: result.releaseOutcome.cooldownUntil
+        ? new Date(result.releaseOutcome.cooldownUntil)
+        : null,
+    });
+    return {
+      status: "success",
+      message: `You are offline. ${releasedMessage}`,
+    };
+  }
   return { status: "success" };
 }
 

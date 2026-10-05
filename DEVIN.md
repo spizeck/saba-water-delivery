@@ -176,6 +176,7 @@ disputeWaterDelivery
 cancelWaterRequest
 assignNextDeliveryForDriver
 releaseAssignedDelivery
+releaseStaleAssignments            — src/lib/domain/staleAssignments.ts (12h sweep, issue #135)
 confirmDeliveryByStaff
 changeRequestPriority
 getMostRecentConfirmedRequest
@@ -296,7 +297,16 @@ Primary driver workflow:
 
 A driver who will not serve an assigned delivery uses Decline / Release
 Delivery — it returns the request to the queue and applies the
-decline/cooldown policy.
+decline/cooldown policy. Explicitly pressing **Go Offline** does the same
+for any ordinary releasable assignment (same transaction, same decline
+accounting, confirmation step in the UI) — a driver can never be offline
+while holding queued claimed work. A delivery with recorded water
+collection blocks going offline entirely; Delivery Run members are
+unaffected. An ordinary assignment left untouched for 12 hours
+(`claimedAt` is the clock, reset on every assignment/reassignment) is
+automatically returned to dispatch by the hourly `stale-assignments`
+cron — a system recovery that is NOT a decline and never triggers
+cooldown (issue #135).
 
 A driver may have only one active claimed delivery at a time. The system
 enforces this server-side: an already-claimed request prevents new

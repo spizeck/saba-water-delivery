@@ -59,16 +59,30 @@ describe("requiresWorkflowNoticeAcknowledgement", () => {
 
 describe("isDriverWorkflowNoticeBannerActive", () => {
   it("is active before and on the last Saba-local banner date", () => {
-    // Fixed date — a wall-clock assertion would start failing after the
+    // Fixed dates — wall-clock assertions would start failing after the
     // banner's expiry date even though the code is unchanged.
     expect(
       isDriverWorkflowNoticeBannerActive(new Date("2026-10-01T12:00:00Z")),
+    ).toBe(true);
+    // Explicit boundary literals pin the configured cutoff itself (Oct 31,
+    // 2026 Saba-local) rather than only round-tripping the constant.
+    expect(
+      isDriverWorkflowNoticeBannerActive(new Date("2026-10-30T12:00:00Z")),
+    ).toBe(true);
+    expect(
+      isDriverWorkflowNoticeBannerActive(new Date("2026-10-31T12:00:00Z")),
     ).toBe(true);
     // Noon UTC is safely inside the intended Saba calendar day.
     const lastDay = new Date(
       `${DRIVER_WORKFLOW_NOTICE_BANNER_LAST_SABA_DATE}T12:00:00Z`,
     );
     expect(isDriverWorkflowNoticeBannerActive(lastDay)).toBe(true);
+  });
+
+  it("is hidden from November 1, 2026 onward", () => {
+    expect(
+      isDriverWorkflowNoticeBannerActive(new Date("2026-11-01T12:00:00Z")),
+    ).toBe(false);
   });
 
   it("expires after the last Saba-local banner date", () => {

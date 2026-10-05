@@ -24,6 +24,19 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+- Assignment release lifecycle (issue #135, builds on #123): pressing
+  **Go Offline** while holding an ordinary assigned delivery now returns
+  it to dispatch in the same step (with a confirmation prompt), counting
+  toward the daily release limit — a driver can no longer be offline
+  while silently holding queued work. A delivery with water collection
+  already recorded blocks going offline until completed or resolved by
+  staff; Delivery Run assignments are unaffected. Separately, an ordinary
+  assignment left untouched for **12 hours** (measured from the current
+  assignment/reassignment time) is now automatically returned to dispatch
+  by a scheduled sweep — a system recovery that does not count as a
+  decline and never triggers a cooldown. Closing the app still never
+  releases an assignment. The driver workflow notice moves to version 2
+  and re-appears once per driver.
 - Driver workflow-change acknowledgement (issue #123 follow-up): the
   first time a driver opens the portal after a material workflow change,
   a notice explains the new assignment-on-visibility behavior (the shown

@@ -81,6 +81,7 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
   request_opened: "Opened to queue",
   driver_claimed: "Driver claimed",
   driver_released: "Delivery released by driver",
+  assignment_auto_released: "Released automatically (assignment timeout)",
   marked_delivered: "Marked delivered",
   customer_confirmed: "Customer confirmed",
   delivery_confirmed_by_dispatcher: "Delivery confirmed by staff",
@@ -115,6 +116,7 @@ export const REQUEST_EVENT_LABELS: Record<string, string> = {
 export const DRIVER_EVENT_LABELS: Record<string, string> = {
   driver_online: "Went online",
   driver_offline: "Went offline",
+  assignment_auto_released: "Assignment released (timeout)",
   driver_access_restricted: "Delivery access restricted",
   driver_access_restored: "Delivery access restored",
   driver_cooldown_started: "Decline cooldown started",
@@ -301,6 +303,18 @@ const REQUEST_EVENT_FORMATTERS: Record<
     const parts: (string | null)[] = [];
     if (m.previousStatus)
       parts.push(`Previous status: ${capitalize(String(m.previousStatus))}`);
+    parts.push("Returned to dispatch queue");
+    return join(parts);
+  },
+
+  assignment_auto_released: (m, o) => {
+    const parts: (string | null)[] = [];
+    if (m.driverId) {
+      const name = resolveName(m.driverId, o);
+      parts.push(`Driver: ${name ?? String(m.driverId)}`);
+    }
+    if (m.claimedAt)
+      parts.push(`Assigned since: ${formatDatetimeValue(m.claimedAt)}`);
     parts.push("Returned to dispatch queue");
     return join(parts);
   },
@@ -538,6 +552,11 @@ const DRIVER_EVENT_FORMATTERS: Record<
 > = {
   driver_online: () => "",
   driver_offline: () => "",
+
+  assignment_auto_released: (m) => {
+    if (m.requestId) return `Request: ${String(m.requestId)}`;
+    return "";
+  },
 
   driver_access_restricted: (m) => {
     if (m.reason) return `Reason: ${m.reason}`;

@@ -50,8 +50,9 @@ picking only the easiest or closest jobs.
 The delivery shown under **Assigned Deliveries** is already assigned to
 you the moment it appears. **You do not need to accept anything** — there
 is no Accept button. **Closing the app or putting your phone away does NOT
-release it** — the delivery stays yours until you complete it, release it,
-or the office reassigns it.
+release it** — the delivery stays yours until you complete it, release it
+(or go offline with it), the office reassigns it, or it has been assigned
+untouched for 12 hours and returns to dispatch automatically.
 
 Each assigned delivery shows the customer's name, village, quantity (for
 example, "2 loads (2,000 gallons)"), how long the request has been waiting,
@@ -146,9 +147,30 @@ affects whether deliveries are assigned to you.
 ## Going offline
 
 You can go offline whenever you are done for the day, or any time in
-between deliveries. Going offline does NOT release a delivery that is
-already assigned to you — it only means you will not receive new
-delivery assignments until you go back online.
+between deliveries. Going offline stops new delivery assignments.
+
+If you have a delivery assigned to you that you have not started,
+going offline returns it to dispatch for another driver — the app asks
+you to confirm first. This counts toward your daily release limit,
+just like Decline / Release. If water collection has already been
+recorded for the delivery, it cannot be released — complete the
+delivery or contact the water office before going offline.
+
+Deliveries assigned through a delivery run are not affected by going
+offline — staff manage those.
+
+Note the difference: **closing the app or locking your phone never
+releases an assigned delivery** — only explicitly choosing Go Offline
+(or Decline / Release) does.
+
+## Automatic release after 12 hours
+
+If a delivery stays assigned to you for 12 hours without being
+completed, the system automatically returns it to dispatch so it can
+reach a driver sooner. This is not a decline and does not count toward
+your release limit — but it does mean you cannot hold a delivery
+overnight. If you still intend to make a delivery, do not leave it
+unattended for that long.
 
 ## Delivery runs
 

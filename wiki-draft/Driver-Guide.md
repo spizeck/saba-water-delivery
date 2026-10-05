@@ -4,7 +4,7 @@
 
 ## Become available
 
-Sign in and open the Driver portal. Your account must be linked to the government Driver Registry and marked eligible. Set yourself online when ready to work and offline when finished. Availability is your working preference; eligibility is a separate government decision. Going offline does not finish a delivery already assigned to you.
+Sign in and open the Driver portal. Your account must be linked to the government Driver Registry and marked eligible. Set yourself online when ready to work and offline when finished. Availability is your working preference; eligibility is a separate government decision. Going offline returns a pending assigned delivery to dispatch (counts toward your release limit) — committed work with recorded water collection blocks going offline until it is completed or resolved by the water office.
 
 If access is restricted or your account is not linked, contact the Water Delivery Office. Installing the web app does not create a driver account or grant eligibility. The app needs connectivity for offers and updates.
 
@@ -15,6 +15,8 @@ Normal dispatch assigns you one delivery at a time, not a list to choose from. T
 When the driver workflow changes in an important way, the portal shows a one-time notice explaining the change. Press **Got it** to confirm you have read it — this is recorded on your driver record once, across all your devices, and never affects whether deliveries are assigned to you.
 
 If you cannot or will not make the delivery, use **Decline / Release Delivery** to return it to dispatch for another driver. Reaching the administrator-set daily decline limit pauses new assignments and forces you offline for the displayed cooldown. This does not remove government eligibility. Follow the app's Saba-local availability message before returning online.
+
+An assigned delivery left untouched for **12 hours** is automatically returned to dispatch — a system cleanup, not a decline, so it does not count toward your limit. Deliveries already collected or part of a delivery run are never released this way.
 
 ## Collect and deliver all loads
 

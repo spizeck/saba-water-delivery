@@ -398,6 +398,13 @@ export type WaterRequestEventType =
    * to them (issue #123 assignment-on-visibility model), returning it to
    * the dispatch queue. Counts as a decline for cooldown purposes. */
   | "driver_released"
+  /** System-initiated release of a stale `claimed` assignment whose
+   * current assignment age (`claimedAt`) reached
+   * `appConfig.staleAssignmentReleaseHours` without delivery (issue
+   * #135). Deliberately distinct from "driver_released" — the driver
+   * did not choose to release, so this is a recovery action that must
+   * never be mistaken for a driver decline in the audit trail. */
+  | "assignment_auto_released"
   | "marked_delivered"
   | "customer_confirmed"
   | "delivery_confirmed_by_dispatcher"
@@ -491,6 +498,12 @@ export interface WaterRequestEvent {
 export type DriverEventType =
   | "driver_online"
   | "driver_offline"
+  /** The stale-assignment sweep released a request this driver had left
+   * `claimed` beyond the assignment-timeout window (issue #135). Recorded
+   * on the registry entry for driver-history visibility; paired with the
+   * request-level `assignment_auto_released` event. NOT a decline — no
+   * driver choice was involved. */
+  | "assignment_auto_released"
   | "driver_access_restricted"
   | "driver_access_restored"
   | "driver_cooldown_started"

@@ -354,9 +354,13 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
         file: "src/lib/domain/dispatch.ts",
         functions: ["releaseAssignedDelivery"],
       },
+      {
+        file: "src/lib/domain/driverRegistry.ts",
+        functions: ["setAvailabilityByLinkedUser"],
+      },
     ],
     verification: "shape-asserted",
-    note: "Equality-only legacy pending-offer sweep inside the release transaction; merged single-field indexes suffice.",
+    note: "Equality-only legacy pending-offer sweep inside release transactions; merged single-field indexes suffice.",
   },
   {
     id: "driverOffers/offer-window-scan",
@@ -594,11 +598,29 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
       },
       {
         file: "src/lib/domain/driverRegistry.ts",
-        functions: ["reconcileActiveRequestByUserId"],
+        functions: [
+          "reconcileActiveRequestByUserId",
+          "setAvailabilityByLinkedUser",
+        ],
       },
     ],
     verification: "declared",
-    note: "limit(1) existence probe inside claim/assign transactions; equality-only.",
+    note: "Claimed-for-driver probe/scan inside claim/assign/offline transactions; equality-only.",
+  },
+  {
+    id: "waterRequests/claimed-scan",
+    collectionPath: "waterRequests",
+    filters: [{ fieldPath: "status", op: "==" }],
+    orderBy: [],
+    requiredIndex: null,
+    usedBy: [
+      {
+        file: "src/lib/domain/staleAssignments.ts",
+        functions: ["releaseStaleAssignments"],
+      },
+    ],
+    verification: "declared",
+    note: "Bounded whole-collection scan of claimed requests for the stale-assignment sweep (issue #135). Equality-only — claimed requests are operationally few, so no composite index and no orderBy are needed.",
   },
   {
     id: "waterRequests/batch-eligible",
@@ -1045,6 +1067,10 @@ export const QUERY_SHAPES: QueryShapeSpec[] = [
       {
         file: "src/lib/domain/dispatch.ts",
         functions: ["assignNextDeliveryForDriver"],
+      },
+      {
+        file: "src/lib/domain/staleAssignments.ts",
+        functions: ["releaseStaleAssignmentIfUnchanged"],
       },
     ],
     verification: "shape-asserted",
