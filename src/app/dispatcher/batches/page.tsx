@@ -10,6 +10,12 @@ import {
 } from "@/lib/domain/dispatchBatches";
 import { getAllDriverRegistryEntries } from "@/lib/domain/driverRegistry";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
+import { cn } from "@/lib/utils/cn";
+import {
+  focusVisibleClasses,
+  interactiveTransitionClasses,
+  pressClasses,
+} from "@/lib/utils/interactive";
 
 export const metadata: Metadata = {
   title: "Delivery Runs — Saba Water Delivery",
@@ -64,7 +70,13 @@ export default async function DeliveryRunsPage() {
             </div>
             <Link
               href="/dispatcher/batches/new"
-              className="shrink-0 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+              className={cn(
+                "shrink-0 select-none rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white",
+                interactiveTransitionClasses,
+                "hover:bg-blue-800 active:bg-blue-900",
+                pressClasses,
+                focusVisibleClasses,
+              )}
             >
               + New Delivery Run
             </Link>
@@ -109,7 +121,13 @@ function RunCard({ summary: s }: { summary: DispatchBatchSummary }) {
   return (
     <Link
       href={`/dispatcher/batches/${s.id}`}
-      className="group flex flex-col gap-2 rounded-lg border border-slate-200 p-4 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
+      className={cn(
+        "group flex flex-col gap-2 rounded-lg border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between",
+        interactiveTransitionClasses,
+        "hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100",
+        "active:scale-[0.99] motion-reduce:active:scale-100",
+        focusVisibleClasses,
+      )}
     >
       <div className="min-w-0 flex-1">
         <p className="font-semibold text-slate-900">{s.resolvedDriverName}</p>
@@ -145,7 +163,7 @@ function RunCard({ summary: s }: { summary: DispatchBatchSummary }) {
         >
           {STATE_LABELS[s.derivedState]}
         </span>
-        <span className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 group-hover:bg-white">
+        <span className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors duration-150 group-hover:bg-white motion-reduce:transition-none">
           View Run
         </span>
       </div>

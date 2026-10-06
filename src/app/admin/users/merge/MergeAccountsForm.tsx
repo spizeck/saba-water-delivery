@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import type { UserRole } from "@/lib/domain/types";
 import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
 import type { AdminUserListItem } from "@/lib/domain/admin";
+import { choiceControlClasses } from "@/lib/utils/interactive";
 
 import {
   getMergeAccountPreview,
@@ -235,6 +236,7 @@ export function MergeAccountsForm({ users }: Props) {
                       setRoleMergePolicy("union");
                       setExplicitRoles(preview.unionResultRoles);
                     }}
+                    className={choiceControlClasses}
                   />
                   Safe union (keeps canonical roles)
                 </label>
@@ -244,6 +246,7 @@ export function MergeAccountsForm({ users }: Props) {
                     name="roleMergePolicyChoice"
                     checked={roleMergePolicy === "explicit"}
                     onChange={() => setRoleMergePolicy("explicit")}
+                    className={choiceControlClasses}
                   />
                   Explicit
                 </label>
@@ -280,6 +283,7 @@ export function MergeAccountsForm({ users }: Props) {
                             else next.delete(role);
                             setExplicitRoles(Array.from(next));
                           }}
+                          className={choiceControlClasses}
                         />
                         {role}
                       </label>
@@ -323,7 +327,12 @@ export function MergeAccountsForm({ users }: Props) {
             )}
 
             <div className="mt-4">
-              <Button type="submit" size="md" disabled={!canSubmit || pending}>
+              <Button
+                type="submit"
+                size="md"
+                disabled={!canSubmit}
+                loading={pending}
+              >
                 {pending ? "Merging..." : "Confirm merge"}
               </Button>
             </div>

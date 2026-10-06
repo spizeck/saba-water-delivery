@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
 import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
+import { cn } from "@/lib/utils/cn";
+import {
+  choiceControlClasses,
+  interactiveTransitionClasses,
+} from "@/lib/utils/interactive";
 
 import {
   getHistoryMatchesForUser,
@@ -100,7 +105,11 @@ export function LinkHistoryPanel({ targetUid }: Props) {
             return (
               <label
                 key={request.id}
-                className="flex items-start gap-3 p-3 text-sm hover:bg-slate-50"
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 p-3 text-sm",
+                  interactiveTransitionClasses,
+                  "hover:bg-slate-50 active:bg-slate-100 has-[:checked]:bg-blue-50",
+                )}
               >
                 <input
                   type="checkbox"
@@ -113,7 +122,7 @@ export function LinkHistoryPanel({ targetUid }: Props) {
                     else next.delete(request.id);
                     setSelected(next);
                   }}
-                  className="mt-0.5 h-4 w-4 shrink-0"
+                  className={cn(choiceControlClasses, "mt-0.5")}
                 />
                 <div className="min-w-0">
                   <p className="font-medium text-slate-900">
@@ -154,7 +163,8 @@ export function LinkHistoryPanel({ targetUid }: Props) {
         <Button
           type="submit"
           size="md"
-          disabled={pending || selected.size === 0 || !reason.trim()}
+          disabled={selected.size === 0 || !reason.trim()}
+          loading={pending}
         >
           {pending ? "Linking..." : `Link ${selected.size} request(s)`}
         </Button>

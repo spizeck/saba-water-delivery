@@ -74,12 +74,7 @@ export function DispatchSettingsForm({ settings }: Props) {
           <p className="text-sm font-medium text-green-700">{state.message}</p>
         )}
 
-        <Button
-          type="submit"
-          size="md"
-          disabled={pending}
-          className="sm:w-auto"
-        >
+        <Button type="submit" size="md" loading={pending} className="sm:w-auto">
           {pending ? "Saving\u2026" : "Save Settings"}
         </Button>
 

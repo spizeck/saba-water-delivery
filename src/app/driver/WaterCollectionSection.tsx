@@ -187,7 +187,8 @@ function LoadCollectionPanel({
           <Button
             type="submit"
             size="md"
-            disabled={pending || hasNoMeter || !selectedStationId}
+            disabled={hasNoMeter || !selectedStationId}
+            loading={pending}
             className="w-full"
           >
             {pending ? "Recording\u2026" : "Water collected"}

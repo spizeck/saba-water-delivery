@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 
+import { chipActionClasses } from "@/lib/utils/interactive";
+
 import {
   sendContinuityReportNow,
   type SendContinuityReportState,
@@ -25,11 +27,7 @@ export function SendContinuityReportButton() {
   return (
     <div className="flex flex-col items-start gap-1 sm:items-end">
       <form action={formAction}>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-        >
+        <button type="submit" disabled={pending} className={chipActionClasses}>
           {pending ? "Sending\u2026" : "Send Continuity Report Now"}
         </button>
       </form>

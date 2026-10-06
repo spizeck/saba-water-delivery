@@ -128,7 +128,7 @@ export function MergeReconciliationPanel({ overview, entries }: Props) {
                   <Button
                     type="submit"
                     variant="outline"
-                    disabled={pending}
+                    loading={pending}
                     className="!h-9 !px-3 !text-xs"
                   >
                     {pending ? "Retrying..." : "Retry now"}

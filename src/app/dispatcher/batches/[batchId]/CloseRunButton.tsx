@@ -52,7 +52,7 @@ export function CloseRunButton({ batchId }: { batchId: string }) {
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Closing\u2026" : "Yes, close this run"}

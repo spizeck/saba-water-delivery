@@ -6,6 +6,14 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { UserRole } from "@/lib/domain/types";
+import { cn } from "@/lib/utils/cn";
+import {
+  chipActionClasses,
+  focusVisibleClasses,
+  interactiveTransitionClasses,
+  pressClasses,
+  textActionClasses,
+} from "@/lib/utils/interactive";
 
 import {
   addUserRole,
@@ -88,7 +96,7 @@ export function RoleManagement({
               {linkedDriverId && (
                 <Link
                   href={`/admin/drivers/${linkedDriverId}`}
-                  className="text-xs text-blue-700 hover:underline"
+                  className={cn("text-xs", textActionClasses)}
                 >
                   View Driver Record
                 </Link>
@@ -172,7 +180,10 @@ function RoleRow({
                 type="button"
                 onClick={onConfirmStart}
                 disabled={removePending}
-                className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                className={cn(
+                  chipActionClasses,
+                  "!border-red-200 !px-2.5 !py-1 !text-red-700 hover:!bg-red-50 active:!bg-red-100",
+                )}
               >
                 Remove
               </button>
@@ -186,7 +197,7 @@ function RoleRow({
               type="submit"
               variant="outline"
               size="md"
-              disabled={addPending}
+              loading={addPending}
               className="!h-8 !px-3 !text-xs"
             >
               {addPending ? "Adding..." : "Add"}
@@ -233,7 +244,7 @@ function RoleRow({
                 type="submit"
                 variant="primary"
                 size="md"
-                disabled={removePending}
+                loading={removePending}
                 className="!h-7 !px-3 !text-xs !bg-red-700 hover:!bg-red-800"
               >
                 {removePending ? "Removing..." : "Confirm remove"}
@@ -242,7 +253,13 @@ function RoleRow({
             <button
               type="button"
               onClick={onConfirmCancel}
-              className="rounded-lg px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              className={cn(
+                "cursor-pointer rounded-lg px-3 py-1 text-xs font-medium text-slate-600 select-none",
+                interactiveTransitionClasses,
+                "hover:bg-slate-100 active:bg-slate-200",
+                pressClasses,
+                focusVisibleClasses,
+              )}
             >
               Cancel
             </button>

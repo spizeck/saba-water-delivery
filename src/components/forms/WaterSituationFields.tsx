@@ -4,6 +4,11 @@ import type {
   ReportedUrgency,
   VulnerableCircumstance,
 } from "@/lib/domain/types";
+import { cn } from "@/lib/utils/cn";
+import {
+  choiceControlClasses,
+  interactiveTransitionClasses,
+} from "@/lib/utils/interactive";
 
 /**
  * Shared "Your Water Situation" fields used by both the resident request
@@ -130,21 +135,23 @@ export function WaterSituationFields({ value, onChange }: Props) {
         {VULNERABLE_OPTIONS.map((opt) => (
           <label
             key={opt.value}
-            className="flex items-center gap-2 text-sm text-slate-700"
+            className="flex cursor-pointer items-center gap-2 text-sm text-slate-700"
           >
             <input
               type="checkbox"
               checked={value.vulnerableCircumstances.includes(opt.value)}
               onChange={() => toggleVulnerable(opt.value)}
+              className={choiceControlClasses}
             />
             {opt.label}
           </label>
         ))}
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
             checked={noneSelected}
             onChange={() => toggleVulnerable("none")}
+            className={choiceControlClasses}
           />
           None of these
         </label>
@@ -157,12 +164,19 @@ export function WaterSituationFields({ value, onChange }: Props) {
         {URGENCY_OPTIONS.map((opt) => (
           <label
             key={opt.value}
-            className="flex items-start gap-2 rounded-lg border border-slate-200 p-2 text-sm text-slate-700"
+            className={cn(
+              "flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm text-slate-700",
+              interactiveTransitionClasses,
+              value.reportedUrgency === opt.value
+                ? "border-blue-600 bg-blue-50"
+                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
+              "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-600",
+            )}
           >
             <input
               type="radio"
               name="reportedUrgencyChoice"
-              className="mt-0.5"
+              className={cn(choiceControlClasses, "mt-0.5")}
               checked={value.reportedUrgency === opt.value}
               onChange={() =>
                 onChange({

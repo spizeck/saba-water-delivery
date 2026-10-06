@@ -16,6 +16,7 @@ import type {
 import { getUserProfile } from "@/lib/domain/users";
 import { getRequestsForDispatchBatch } from "@/lib/domain/waterRequests";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
+import { chipActionClasses } from "@/lib/utils/interactive";
 
 import { CloseRunButton } from "./CloseRunButton";
 import { RecordBatchDeliveryButton } from "./RecordBatchDeliveryButton";
@@ -178,7 +179,7 @@ export default async function DeliveryRunDetailPage({ params }: PageProps) {
                 </span>
                 <a
                   href={`/api/dispatcher/batches/${batch.id}/pdf`}
-                  className="inline-flex rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className={chipActionClasses}
                 >
                   {batch.generatedAt ? "Reprint Run Sheet" : "Print Run Sheet"}
                 </a>

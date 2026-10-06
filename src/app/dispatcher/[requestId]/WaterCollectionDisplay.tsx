@@ -273,7 +273,8 @@ function UncollectedLoad({
             <Button
               type="submit"
               size="md"
-              disabled={pending || !resolvedMeter || !assignedDriverId}
+              disabled={!resolvedMeter || !assignedDriverId}
+              loading={pending}
               className="!h-8 !px-3 !text-xs"
             >
               {pending ? "Recording\u2026" : "Record collection"}

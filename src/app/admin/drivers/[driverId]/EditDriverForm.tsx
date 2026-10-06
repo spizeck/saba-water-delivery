@@ -41,12 +41,7 @@ export function EditDriverForm({ driver }: { driver: DriverRegistryEntry }) {
             className="h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
           />
         </label>
-        <Button
-          type="submit"
-          size="md"
-          disabled={pending}
-          className="sm:w-auto"
-        >
+        <Button type="submit" size="md" loading={pending} className="sm:w-auto">
           {pending ? "Saving\u2026" : "Save"}
         </Button>
       </form>

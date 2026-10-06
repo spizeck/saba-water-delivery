@@ -168,7 +168,7 @@ export function WorkflowNoticeModal({ noticeVersion }: Props) {
 
         <form action={formAction}>
           <input type="hidden" name="noticeVersion" value={noticeVersion} />
-          <Button type="submit" size="lg" className="w-full" disabled={pending}>
+          <Button type="submit" size="lg" className="w-full" loading={pending}>
             {pending ? "Saving…" : "Got it"}
           </Button>
         </form>

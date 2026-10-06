@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { EligibleDriverOption } from "@/lib/domain/driverRegistry";
 import type { DispatchPriority, WaterRequestStatus } from "@/lib/domain/types";
+import { cn } from "@/lib/utils/cn";
+import { choiceControlClasses } from "@/lib/utils/interactive";
 
 import { SABA_VILLAGES } from "@/lib/domain/villages";
 import type { RequestedLoads } from "@/lib/domain/quantity";
@@ -433,7 +435,7 @@ function EditRequestPanel({
             type="checkbox"
             name="updateCustomerProfile"
             value="true"
-            className="mt-1"
+            className={cn(choiceControlClasses, "mt-1")}
           />
           Also update the registered customer’s saved profile. This does not
           change their sign-in email.
@@ -505,7 +507,7 @@ function EditRequestPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Saving\u2026" : "Save changes"}
@@ -561,7 +563,7 @@ function ResolveCompletePanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Resolving\u2026" : "Confirm resolution"}
@@ -617,7 +619,7 @@ function ResolveReopenPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Reopening\u2026" : "Reopen request"}
@@ -680,7 +682,7 @@ function AssignPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Assigning\u2026" : "Assign"}
@@ -749,7 +751,7 @@ function ReassignPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Reassigning\u2026" : "Reassign"}
@@ -808,7 +810,7 @@ function ReturnToQueuePanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Returning…" : "Return to queue"}
@@ -861,7 +863,7 @@ function ConfirmUnregisteredPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Confirming\u2026" : "Confirm delivery"}
@@ -925,7 +927,7 @@ function RecordCustomerDisputePanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Recording…" : "Record dispute"}
@@ -995,7 +997,7 @@ function ChangePriorityPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Saving\u2026" : "Save priority"}
@@ -1048,7 +1050,7 @@ function CancelPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Cancelling\u2026" : "Cancel request"}
@@ -1108,7 +1110,7 @@ function MarkDeliveredPanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Recording\u2026" : "Record delivery"}
@@ -1168,7 +1170,7 @@ function EscalatePanel({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Escalating\u2026" : "Escalate"}

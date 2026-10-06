@@ -74,7 +74,7 @@ export function RecordBatchDeliveryButton({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-sm !h-9 !px-3"
         >
           {pending ? "Recording\u2026" : "Yes, this was delivered"}

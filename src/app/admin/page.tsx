@@ -7,6 +7,8 @@ import { Container } from "@/components/ui/Container";
 import { requireRole } from "@/lib/auth/session";
 import { getAllUsers } from "@/lib/domain/admin";
 import { getDispatchSettings } from "@/lib/domain/dispatchSettings";
+import { cn } from "@/lib/utils/cn";
+import { chipActionClasses } from "@/lib/utils/interactive";
 
 import { DispatchSettingsForm } from "./DispatchSettingsForm";
 import { UserList } from "./UserList";
@@ -38,34 +40,25 @@ export default async function AdminPortalPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Link
-                  href="/admin/drivers"
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
+                <Link href="/admin/drivers" className={chipActionClasses}>
                   Driver Registry
                 </Link>
-                <Link
-                  href="/statistics"
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
+                <Link href="/statistics" className={chipActionClasses}>
                   View Statistics
                 </Link>
                 <Link
                   href="/admin/register"
-                  className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                  className={cn(
+                    chipActionClasses,
+                    "!border-blue-200 !bg-blue-50 !text-blue-700 hover:!bg-blue-100 active:!bg-blue-200",
+                  )}
                 >
                   Register Person
                 </Link>
-                <Link
-                  href="/admin/users/merge"
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
+                <Link href="/admin/users/merge" className={chipActionClasses}>
                   Merge Accounts
                 </Link>
-                <Link
-                  href="/admin/qr-codes"
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
+                <Link href="/admin/qr-codes" className={chipActionClasses}>
                   PWA QR Codes
                 </Link>
               </div>

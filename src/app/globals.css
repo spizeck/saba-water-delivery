@@ -15,3 +15,58 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+@layer base {
+  /*
+   * Interaction feedback defaults (see DEVIN.md "Interaction
+   * feedback"). Two cheap global behaviors so every control feels
+   * deliberate without per-component CSS:
+   *
+   * - `touch-action: manipulation` removes the legacy double-tap delay
+   *   and prevents double-tap zoom on controls — drivers use this app
+   *   on phones. Pan and pinch zoom are unaffected.
+   * - Suppressing the native tap highlight lets our own :active
+   *   feedback (background + press) be the visible response instead of
+   *   the browser's gray flash.
+   */
+  a,
+  button,
+  summary,
+  [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Subtle focus/state transition on every form control. */
+  input,
+  select,
+  textarea {
+    transition:
+      border-color 150ms ease-out,
+      background-color 150ms ease-out,
+      box-shadow 150ms ease-out;
+  }
+
+  /*
+   * Keyboard-focus fallback for plain text links — matches
+   * `focusVisibleClasses` in src/lib/utils/interactive.ts so every
+   * link, styled or not, shows the same blue-700 ring.
+   */
+  a:focus-visible {
+    outline: 2px solid #1d4ed8;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /*
+   * Reduced motion: state changes still get color/border feedback —
+   * only the movement goes away.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    input,
+    select,
+    textarea {
+      transition: none;
+    }
+  }
+}

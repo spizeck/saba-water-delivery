@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/Button";
 import type { DeliveryProfileRequiredField } from "@/lib/domain/deliveryProfileReminder";
 import type { UserProfile } from "@/lib/domain/types";
 import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
+import { cn } from "@/lib/utils/cn";
+import {
+  focusVisibleClasses,
+  iconButtonClasses,
+  interactiveTransitionClasses,
+  pressClasses,
+} from "@/lib/utils/interactive";
 
 import { confirmDeliveryProfileInfo, type ProfileFormState } from "./actions";
 
@@ -98,7 +105,7 @@ export function DeliveryProfileReminderModal({
               type="button"
               aria-label="Close"
               onClick={() => setOpen(false)}
-              className="shrink-0 text-xl leading-none text-slate-400 hover:text-slate-600"
+              className={cn(iconButtonClasses, "shrink-0 text-xl leading-none")}
             >
               &times;
             </button>
@@ -176,7 +183,13 @@ export function DeliveryProfileReminderModal({
           <a
             href="#delivery-profile-form"
             onClick={closeAndGoToProfile}
-            className="inline-flex h-11 w-full items-center justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:text-base"
+            className={cn(
+              "inline-flex h-11 w-full select-none items-center justify-center whitespace-nowrap rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 sm:text-base",
+              interactiveTransitionClasses,
+              "hover:bg-slate-50 active:bg-slate-100",
+              pressClasses,
+              focusVisibleClasses,
+            )}
           >
             Review My Information
           </a>
@@ -186,7 +199,7 @@ export function DeliveryProfileReminderModal({
                 type="submit"
                 size="lg"
                 className="w-full whitespace-nowrap px-4 text-sm sm:text-base"
-                disabled={pending}
+                loading={pending}
               >
                 {pending ? "Saving\u2026" : "Everything Is Correct"}
               </Button>

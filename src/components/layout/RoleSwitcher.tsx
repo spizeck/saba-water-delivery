@@ -4,6 +4,12 @@ import { useRouter, usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 
 import type { UserRole } from "@/lib/domain/types";
+import { cn } from "@/lib/utils/cn";
+import {
+  focusVisibleClasses,
+  interactiveTransitionClasses,
+  pressClasses,
+} from "@/lib/utils/interactive";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   resident: "Resident",
@@ -70,7 +76,13 @@ export function RoleSwitcher({ roles, currentPortal }: RoleSwitcherProps) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+        className={cn(
+          "flex cursor-pointer select-none items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600",
+          interactiveTransitionClasses,
+          "hover:bg-slate-100 active:bg-slate-200",
+          pressClasses,
+          focusVisibleClasses,
+        )}
         aria-expanded={open}
         aria-haspopup="true"
       >
@@ -79,7 +91,10 @@ export function RoleSwitcher({ roles, currentPortal }: RoleSwitcherProps) {
           {ROLE_LABELS[activePortal] ?? activePortal}
         </span>
         <svg
-          className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
+          className={cn(
+            "h-4 w-4 transition-transform duration-150 motion-reduce:transition-none",
+            open && "rotate-180",
+          )}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -100,11 +115,14 @@ export function RoleSwitcher({ roles, currentPortal }: RoleSwitcherProps) {
               key={role}
               type="button"
               onClick={() => handleSwitch(role)}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
+              className={cn(
+                "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm",
+                interactiveTransitionClasses,
+                focusVisibleClasses,
                 role === activePortal
                   ? "bg-blue-50 font-semibold text-blue-700"
-                  : "text-slate-700 hover:bg-slate-50"
-              }`}
+                  : "text-slate-700 hover:bg-slate-50 active:bg-slate-100",
+              )}
             >
               {ROLE_LABELS[role]}
               {role === activePortal && (

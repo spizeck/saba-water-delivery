@@ -16,6 +16,13 @@ import {
   checkDeliveryConfirmationTimeout,
   getAllRequests,
 } from "@/lib/domain/waterRequests";
+import { cn } from "@/lib/utils/cn";
+import {
+  chipActionClasses,
+  focusVisibleClasses,
+  interactiveTransitionClasses,
+  pressClasses,
+} from "@/lib/utils/interactive";
 
 import { DriverList } from "./DriverList";
 import {
@@ -165,19 +172,37 @@ export default async function DispatcherPortalPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href="/dispatcher/new"
-                className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+                className={cn(
+                  "select-none rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white",
+                  interactiveTransitionClasses,
+                  "hover:bg-blue-800 active:bg-blue-900",
+                  pressClasses,
+                  focusVisibleClasses,
+                )}
               >
                 + Create Water Request
               </Link>
               <Link
                 href="/dispatcher/batches/new"
-                className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                className={cn(
+                  "select-none rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800",
+                  interactiveTransitionClasses,
+                  "hover:bg-blue-100 active:bg-blue-200",
+                  pressClasses,
+                  focusVisibleClasses,
+                )}
               >
                 New Delivery Run
               </Link>
               <Link
                 href="/dispatcher/batches"
-                className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                className={cn(
+                  "select-none rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800",
+                  interactiveTransitionClasses,
+                  "hover:bg-blue-100 active:bg-blue-200",
+                  pressClasses,
+                  focusVisibleClasses,
+                )}
               >
                 Delivery Runs
               </Link>
@@ -185,15 +210,12 @@ export default async function DispatcherPortalPage() {
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href="/api/reports/continuity-snapshot"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className={chipActionClasses}
               >
                 Generate Continuity Report
               </a>
               <SendContinuityReportButton />
-              <Link
-                href="/statistics"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
+              <Link href="/statistics" className={chipActionClasses}>
                 View Statistics
               </Link>
             </div>

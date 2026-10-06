@@ -16,6 +16,8 @@ import {
   type RequestedLoads,
 } from "@/lib/domain/quantity";
 import { REQUEST_NOTES_MAX_LENGTH } from "@/lib/domain/requestNotes";
+import { cn } from "@/lib/utils/cn";
+import { choiceControlClasses } from "@/lib/utils/interactive";
 
 import { requestWater, type RequestWaterFormState } from "./actions";
 
@@ -92,6 +94,7 @@ export function WaterRequestForm({
                 checked={loads === 1}
                 onChange={() => setLoads(1)}
                 required
+                className={choiceControlClasses}
               />
               1 load (1,000 gallons)
             </label>
@@ -103,6 +106,7 @@ export function WaterRequestForm({
                 checked={loads === 2}
                 onChange={() => setLoads(2)}
                 required
+                className={choiceControlClasses}
               />
               2 loads (2,000 gallons)
             </label>
@@ -230,7 +234,7 @@ export function WaterRequestForm({
         <input type="hidden" name="requestNotes" value={requestNotes} />
         <WaterSituationHiddenFields value={waterSituation} />
 
-        <label className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 transition-colors duration-150 hover:bg-slate-50 has-[:checked]:border-blue-300 has-[:checked]:bg-blue-50 motion-reduce:transition-none">
           <input
             type="checkbox"
             name="attestationAccepted"
@@ -238,7 +242,7 @@ export function WaterRequestForm({
             checked={attestationChecked}
             onChange={(e) => setAttestationChecked(e.target.checked)}
             required
-            className="mt-0.5"
+            className={cn(choiceControlClasses, "mt-0.5")}
           />
           <span>
             I am authorized to request water at this location, and the
@@ -256,7 +260,8 @@ export function WaterRequestForm({
           <Button
             type="submit"
             size="lg"
-            disabled={pending || !attestationChecked}
+            disabled={!attestationChecked}
+            loading={pending}
           >
             {pending ? "Submitting\u2026" : "Request Water"}
           </Button>
