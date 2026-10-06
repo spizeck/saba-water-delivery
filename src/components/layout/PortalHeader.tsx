@@ -4,6 +4,8 @@ import { Container } from "@/components/ui/Container";
 import { LogoutButton } from "@/components/layout/LogoutButton";
 import { RoleSwitcher } from "@/components/layout/RoleSwitcher";
 import type { UserRole } from "@/lib/domain/types";
+import { cn } from "@/lib/utils/cn";
+import { navPillClasses } from "@/lib/utils/interactive";
 import { Logo } from "./Logo";
 
 interface PortalHeaderProps {
@@ -31,10 +33,7 @@ export function PortalHeader({ portalName, roles }: PortalHeaderProps) {
               currentPortal={portalName.toLowerCase()}
             />
           )}
-          <Link
-            href="/"
-            className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
+          <Link href="/" className={cn(navPillClasses, "text-slate-600")}>
             Home
           </Link>
           <LogoutButton />

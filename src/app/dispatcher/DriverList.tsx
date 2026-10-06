@@ -266,7 +266,7 @@ function RestrictForm({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-xs !px-3 !h-8"
         >
           {pending ? "Restricting\u2026" : "Restrict Delivery Access"}
@@ -311,7 +311,7 @@ function RestoreForm({
         <Button
           type="submit"
           size="md"
-          disabled={pending}
+          loading={pending}
           className="text-xs !px-3 !h-8"
         >
           {pending ? "Restoring\u2026" : "Restore Delivery Access"}

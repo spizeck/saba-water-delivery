@@ -77,7 +77,8 @@ function RestrictForm({ driverId }: { driverId: string }) {
         type="submit"
         variant="outline"
         size="md"
-        disabled={pending || !reason.trim()}
+        disabled={!reason.trim()}
+        loading={pending}
         className="!h-8 self-start !text-xs !border-red-200 !text-red-700 hover:!bg-red-50"
       >
         {pending ? "Restricting..." : "Restrict Delivery Access"}
@@ -102,7 +103,7 @@ function RestoreForm({ driverId }: { driverId: string }) {
         type="submit"
         variant="outline"
         size="md"
-        disabled={pending}
+        loading={pending}
         className="!h-8 !text-xs !border-green-200 !text-green-700 hover:!bg-green-50"
       >
         {pending ? "Restoring..." : "Restore Delivery Access"}

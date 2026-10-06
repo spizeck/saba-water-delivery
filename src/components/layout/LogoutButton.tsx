@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { clearSession } from "@/lib/auth/client-session";
 import { getFirebaseAuth } from "@/lib/firebase/client";
+import { cn } from "@/lib/utils/cn";
+import { navPillClasses } from "@/lib/utils/interactive";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -23,7 +25,7 @@ export function LogoutButton() {
       type="button"
       onClick={handleLogout}
       disabled={signingOut}
-      className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+      className={cn(navPillClasses, "text-slate-600")}
     >
       {signingOut ? "Logging out\u2026" : "Log out"}
     </button>

@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SABA_VILLAGES } from "@/lib/domain/villages";
+import { choiceControlClasses } from "@/lib/utils/interactive";
 
 import {
   registerPersonAction,
@@ -122,7 +123,7 @@ export function RegisterPersonForm() {
               value="driver"
               checked={includeDriver}
               onChange={(e) => setIncludeDriver(e.target.checked)}
-              className="rounded border-slate-300"
+              className={choiceControlClasses}
             />
             <span className="text-sm text-slate-700">Driver</span>
           </label>
@@ -176,7 +177,7 @@ export function RegisterPersonForm() {
           </p>
         </div>
 
-        <Button type="submit" size="lg" disabled={pending}>
+        <Button type="submit" size="lg" loading={pending}>
           {pending ? "Registering\u2026" : "Register Person"}
         </Button>
       </form>

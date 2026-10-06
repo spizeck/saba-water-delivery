@@ -6,6 +6,8 @@ import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import type { AdminUserListItem } from "@/lib/domain/admin";
 import type { UserRole } from "@/lib/domain/types";
+import { cn } from "@/lib/utils/cn";
+import { chipActionClasses } from "@/lib/utils/interactive";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   resident: "Resident",
@@ -119,7 +121,7 @@ export function UserList({ users }: UserListProps) {
               </div>
               <Link
                 href={`/admin/users/${user.uid}`}
-                className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className={cn("shrink-0", chipActionClasses)}
               >
                 Manage
               </Link>

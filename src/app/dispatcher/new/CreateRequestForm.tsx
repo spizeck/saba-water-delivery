@@ -32,6 +32,12 @@ import { SABA_VILLAGES, isValidSabaVillage } from "@/lib/domain/villages";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
 import { formatPhoneForDisplay } from "@/lib/utils/formatPhone";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
+import { cn } from "@/lib/utils/cn";
+import {
+  choiceControlClasses,
+  selectableRowClasses,
+  textActionClasses,
+} from "@/lib/utils/interactive";
 
 import {
   checkEmailAccountStatus,
@@ -355,6 +361,7 @@ export function CreateRequestForm({
               name="customerTypeChoice"
               checked={customerType === "existing"}
               onChange={() => setCustomerType("existing")}
+              className={choiceControlClasses}
             />
             Existing resident
           </label>
@@ -364,6 +371,7 @@ export function CreateRequestForm({
               name="customerTypeChoice"
               checked={customerType === "new"}
               onChange={() => setCustomerType("new")}
+              className={choiceControlClasses}
             />
             New / unregistered
           </label>
@@ -393,7 +401,10 @@ export function CreateRequestForm({
                         type="button"
                         key={r.uid}
                         onClick={() => selectResident(r)}
-                        className="flex items-center justify-between gap-2 p-3 text-left text-sm hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                        className={cn(
+                          selectableRowClasses,
+                          "flex items-center justify-between gap-2 p-3 text-sm",
+                        )}
                       >
                         <span className="min-w-0">
                           <span className="block truncate font-medium text-slate-900">
@@ -551,7 +562,7 @@ export function CreateRequestForm({
                             e.target.checked ? emailStatus.uid : null,
                           )
                         }
-                        className="mt-0.5 h-4 w-4 shrink-0"
+                        className={cn(choiceControlClasses, "mt-0.5")}
                       />
                       <span>Use this resident account for the request</span>
                     </label>
@@ -573,7 +584,7 @@ export function CreateRequestForm({
                         type="checkbox"
                         checked={sendInvitation}
                         onChange={(e) => setSendInvitation(e.target.checked)}
-                        className="mt-0.5 h-4 w-4 shrink-0"
+                        className={cn(choiceControlClasses, "mt-0.5")}
                       />
                       <span>Send account setup instructions</span>
                     </label>
@@ -620,7 +631,10 @@ export function CreateRequestForm({
                             onClick={() =>
                               setUseExistingResidentUid(m.resident.uid)
                             }
-                            className="shrink-0 text-xs font-medium text-blue-700 hover:underline"
+                            className={cn(
+                              "shrink-0 text-xs",
+                              textActionClasses,
+                            )}
                           >
                             Use this account
                           </button>
@@ -656,7 +670,7 @@ export function CreateRequestForm({
                     <button
                       type="button"
                       onClick={() => setUseExistingResidentUid(null)}
-                      className="text-xs font-medium text-blue-700 hover:underline"
+                      className={cn("text-xs", textActionClasses)}
                     >
                       Undo
                     </button>
@@ -725,6 +739,7 @@ export function CreateRequestForm({
                 checked={loads === 1}
                 onChange={() => setLoads(1)}
                 required
+                className={choiceControlClasses}
               />
               1 load (1,000 gallons)
             </label>
@@ -736,6 +751,7 @@ export function CreateRequestForm({
                 checked={loads === 2}
                 onChange={() => setLoads(2)}
                 required
+                className={choiceControlClasses}
               />
               2 loads (2,000 gallons)
             </label>
@@ -1025,7 +1041,7 @@ export function CreateRequestForm({
             checked={attestationChecked}
             onChange={(e) => setAttestationChecked(e.target.checked)}
             required
-            className="mt-0.5 h-4 w-4 shrink-0"
+            className={cn(choiceControlClasses, "mt-0.5")}
           />
           <span>
             I have accurately recorded the information provided by the caller
@@ -1048,7 +1064,8 @@ export function CreateRequestForm({
             <Button
               type="submit"
               size="lg"
-              disabled={pending || !attestationChecked}
+              disabled={!attestationChecked}
+              loading={pending}
               className="w-full whitespace-nowrap sm:flex-1"
             >
               {pending

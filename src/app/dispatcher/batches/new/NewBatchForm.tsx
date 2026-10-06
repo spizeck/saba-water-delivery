@@ -12,6 +12,11 @@ import { MAX_BATCH_SIZE } from "@/lib/domain/dispatchBatchSelection";
 import { formatWaterQuantity, LOAD_GALLONS } from "@/lib/domain/quantity";
 import type { DispatchPriority, RequestedLoads } from "@/lib/domain/types";
 import { formatSabaDateTime } from "@/lib/utils/datetime";
+import { cn } from "@/lib/utils/cn";
+import {
+  choiceControlClasses,
+  interactiveTransitionClasses,
+} from "@/lib/utils/interactive";
 
 interface DriverOption {
   uid: string;
@@ -128,11 +133,14 @@ export function NewBatchForm({
             {drivers.map((d) => (
               <label
                 key={d.uid}
-                className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
+                className={cn(
+                  "flex cursor-pointer items-center justify-between gap-3 rounded-lg border p-3 text-sm",
+                  interactiveTransitionClasses,
                   driverId === d.uid
                     ? "border-blue-600 bg-blue-50"
-                    : "border-slate-200"
-                }`}
+                    : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
+                  "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-600",
+                )}
               >
                 <div className="flex items-center gap-3">
                   <input
@@ -140,6 +148,7 @@ export function NewBatchForm({
                     name="driverPick"
                     checked={driverId === d.uid}
                     onChange={() => setDriverId(d.uid)}
+                    className={choiceControlClasses}
                   />
                   <span className="font-medium text-slate-900">
                     {d.displayName}
@@ -207,16 +216,19 @@ export function NewBatchForm({
               return (
                 <label
                   key={r.id}
-                  className={`flex cursor-pointer items-start justify-between gap-3 rounded-lg border p-3 text-sm ${
+                  className={cn(
+                    "flex cursor-pointer items-start justify-between gap-3 rounded-lg border p-3 text-sm",
+                    interactiveTransitionClasses,
                     selectedIds.includes(r.id)
                       ? "border-blue-600 bg-blue-50"
-                      : "border-slate-200"
-                  }`}
+                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
+                    "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-600",
+                  )}
                 >
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
-                      className="mt-1"
+                      className={cn(choiceControlClasses, "mt-1")}
                       checked={selectedIds.includes(r.id)}
                       onChange={() => toggleRequest(r.id)}
                     />
@@ -354,10 +366,10 @@ export function NewBatchForm({
                   </li>
                 ))}
               </ul>
-              <label className="mt-2 flex items-start gap-2 text-sm text-amber-900">
+              <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm text-amber-900">
                 <input
                   type="checkbox"
-                  className="mt-0.5"
+                  className={cn(choiceControlClasses, "mt-0.5")}
                   checked={acknowledgedOverrides}
                   onChange={(e) => setAcknowledgedOverrides(e.target.checked)}
                 />
@@ -378,7 +390,8 @@ export function NewBatchForm({
             <Button
               type="submit"
               size="md"
-              disabled={pending || !canSubmit}
+              disabled={!canSubmit}
+              loading={pending}
               className="text-sm !h-9 !px-3"
             >
               {pending ? "Assigning\u2026" : "Create Delivery Run"}

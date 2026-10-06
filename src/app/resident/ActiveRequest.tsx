@@ -179,12 +179,7 @@ function CancelRequest({ requestId }: { requestId: string }) {
         </Button>
         <form action={formAction}>
           <input type="hidden" name="requestId" value={requestId} />
-          <Button
-            type="submit"
-            size="md"
-            variant="secondary"
-            disabled={pending}
-          >
+          <Button type="submit" size="md" variant="secondary" loading={pending}>
             {pending ? "Cancelling…" : "Cancel Request"}
           </Button>
         </form>
@@ -249,7 +244,7 @@ function DeliveryConfirmation({ request }: { request: WaterRequest }) {
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <form action={confirmAction}>
             <input type="hidden" name="requestId" value={request.id} />
-            <Button type="submit" size="md" disabled={confirmPending}>
+            <Button type="submit" size="md" loading={confirmPending}>
               {confirmPending ? "Confirming\u2026" : "Yes, received"}
             </Button>
           </form>
@@ -278,7 +273,7 @@ function DeliveryConfirmation({ request }: { request: WaterRequest }) {
             />
           </label>
           <div className="flex gap-2">
-            <Button type="submit" size="md" disabled={disputePending}>
+            <Button type="submit" size="md" loading={disputePending}>
               {disputePending ? "Submitting\u2026" : "Report issue"}
             </Button>
             <Button

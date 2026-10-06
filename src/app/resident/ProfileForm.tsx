@@ -110,7 +110,7 @@ export function ProfileForm({ profile }: { profile: UserProfile }) {
           </p>
         )}
 
-        <Button type="submit" size="lg" disabled={pending}>
+        <Button type="submit" size="lg" loading={pending}>
           {pending ? "Saving\u2026" : "Save profile"}
         </Button>
       </form>

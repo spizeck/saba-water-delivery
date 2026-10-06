@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { DriverRegistryEntry, UserProfile } from "@/lib/domain/types";
 import type { ResidentDirectoryEntry } from "@/lib/domain/users";
+import { cn } from "@/lib/utils/cn";
+import { selectableRowClasses } from "@/lib/utils/interactive";
 
 import {
   linkDriverAccountAction,
@@ -109,7 +111,7 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
               )}
               <form action={unlinkAction} className="mt-2 flex gap-2">
                 <input type="hidden" name="driverId" value={driver.id} />
-                <Button type="submit" size="md" disabled={unlinkPending}>
+                <Button type="submit" size="md" loading={unlinkPending}>
                   {unlinkPending ? "Unlinking\u2026" : "Confirm unlink"}
                 </Button>
                 <Button
@@ -152,9 +154,13 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
                 type="button"
                 key={r.uid}
                 onClick={() => setSelectedUserId(r.uid)}
-                className={`flex flex-col p-3 text-left text-sm hover:bg-slate-50 ${
-                  selectedUserId === r.uid ? "bg-blue-50" : ""
-                }`}
+                aria-pressed={selectedUserId === r.uid}
+                className={cn(
+                  selectableRowClasses,
+                  "flex flex-col p-3 text-sm",
+                  selectedUserId === r.uid &&
+                    "bg-blue-50 hover:bg-blue-50 active:bg-blue-100",
+                )}
               >
                 <span className="font-medium text-slate-900">
                   {r.displayName || "Unnamed"}
@@ -179,7 +185,8 @@ export function AccountLinkPanel({ driver, residents, linkedUser }: Props) {
             <Button
               type="submit"
               size="md"
-              disabled={linkPending || !selectedUserId}
+              disabled={!selectedUserId}
+              loading={linkPending}
             >
               {linkPending ? "Linking\u2026" : "Link Selected Account"}
             </Button>

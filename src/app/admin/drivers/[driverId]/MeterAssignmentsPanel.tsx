@@ -107,7 +107,7 @@ function StationRow({
           <Button
             type="submit"
             size="md"
-            disabled={pending}
+            loading={pending}
             className="!h-9 !text-xs"
           >
             {pending ? "Saving\u2026" : "Save"}

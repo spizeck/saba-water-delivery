@@ -45,6 +45,30 @@ Avoid speculative architecture.
 
 Do not implement future features simply because they are mentioned in planning documents.
 
+## Interaction feedback
+
+Every deliberate user input should get an immediate, subtle, unmistakable
+response — this is a government operational app used heavily on phones.
+
+- Compose interactive elements from the shared class recipes in
+  `src/lib/utils/interactive.ts` (`pressClasses`,
+  `interactiveTransitionClasses`, `focusVisibleClasses`,
+  `chipActionClasses`, `navPillClasses`, `selectableRowClasses`,
+  `iconButtonClasses`, `choiceControlClasses`, `textActionClasses`)
+  rather than hand-rolling hover/active/focus classes.
+- Use `src/components/ui/Button.tsx` for actions and `LinkButton` for
+  button-styled navigation. Pressed feedback (subtle scale + 1px settle)
+  and `touch-action: manipulation` come from the shared base.
+- For async work pass the `useActionState` `pending` flag to
+  `Button loading` — it renders a spinner, disables the control, and sets
+  `aria-busy`; keep the existing "Verb-ing…" pending label convention.
+- Never imply a committed state before the server confirms it: buttons
+  show pending, not success, until the action resolves.
+- `prefers-reduced-motion` must remove transforms/transitions (built into
+  the shared recipes via `motion-reduce:`); color/border feedback stays.
+- Global base CSS (`src/app/globals.css`) supplies a form-field focus
+  transition, a link `focus-visible` ring, and tap-highlight suppression.
+
 ---
 
 # Stack

@@ -91,7 +91,8 @@ function ArchiveForm({ driverId }: { driverId: string }) {
         type="submit"
         variant="outline"
         size="md"
-        disabled={pending || !reason.trim()}
+        disabled={!reason.trim()}
+        loading={pending}
         className="!h-8 self-start !text-xs !border-amber-200 !text-amber-700 hover:!bg-amber-50"
       >
         {pending ? "Archiving..." : "Archive Driver"}
@@ -122,7 +123,7 @@ function RestoreForm({ driverId }: { driverId: string }) {
         type="submit"
         variant="outline"
         size="md"
-        disabled={pending}
+        loading={pending}
         className="!h-8 !text-xs !border-green-200 !text-green-700 hover:!bg-green-50"
       >
         {pending ? "Restoring..." : "Restore from Archive"}
@@ -224,10 +225,10 @@ function DeleteSection({
             variant="outline"
             size="md"
             disabled={
-              pending ||
               confirmation.trim().toLowerCase() !==
-                driver.displayName.toLowerCase()
+              driver.displayName.toLowerCase()
             }
+            loading={pending}
             className="!h-8 self-start !text-xs !border-red-300 !text-red-700 hover:!bg-red-100"
           >
             {pending ? "Deleting..." : "Permanently Delete Record"}

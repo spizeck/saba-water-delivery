@@ -66,7 +66,7 @@ export function AvailabilityToggle({
               type="submit"
               variant={heldAssignment === "committed" ? "outline" : "primary"}
               size="lg"
-              disabled={pending}
+              loading={pending}
               className="w-full"
             >
               {pending ? "Updating…" : "Go Offline"}
@@ -90,7 +90,7 @@ export function AvailabilityToggle({
           type={needsConfirm ? "button" : "submit"}
           variant={isOnline ? "outline" : "primary"}
           size="lg"
-          disabled={pending}
+          loading={pending}
           className="w-full"
           onClick={needsConfirm ? () => setConfirming(true) : undefined}
         >

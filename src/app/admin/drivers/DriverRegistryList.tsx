@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import type { DriverRegistryEntry } from "@/lib/domain/types";
 import { formatSabaTime, startOfSabaDay } from "@/lib/utils/datetime";
+import { cn } from "@/lib/utils/cn";
+import { chipActionClasses } from "@/lib/utils/interactive";
 
 interface Props {
   drivers: DriverRegistryEntry[];
@@ -88,7 +90,7 @@ export function DriverRegistryList({ drivers, title, showStatus }: Props) {
               </div>
               <Link
                 href={`/admin/drivers/${driver.id}`}
-                className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className={cn("shrink-0", chipActionClasses)}
               >
                 Manage
               </Link>

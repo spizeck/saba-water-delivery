@@ -36,7 +36,9 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Tracks which flow is in flight so the spinner lands on the button
+  // actually pressed (and the other controls just go inert).
+  const [submitting, setSubmitting] = useState<"google" | "email" | null>(null);
   const [sessionStep, setSessionStep] = useState<SessionStep>("idle");
   const [sessionResult, setSessionResult] = useState<Extract<
     EstablishSessionResult,
@@ -159,12 +161,12 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
     const auth = getFirebaseAuth();
     if (!auth) return;
     try {
-      setSubmitting(true);
+      setSubmitting("google");
       await signInWithPopup(auth, provider);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   }
 
@@ -174,7 +176,7 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
     const auth = getFirebaseAuth();
     if (!auth) return;
     try {
-      setSubmitting(true);
+      setSubmitting("email");
       if (mode === "sign-in") {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
@@ -183,7 +185,7 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   }
 
@@ -202,7 +204,8 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
         <Button
           variant="outline"
           size="lg"
-          disabled={submitting}
+          disabled={submitting === "email"}
+          loading={submitting === "google"}
           onClick={() => handleProviderSignIn(new GoogleAuthProvider())}
         >
           Continue with Google
@@ -263,8 +266,19 @@ export function LoginForm({ intendedPortal, returnTo }: LoginFormProps) {
           </p>
         )}
 
-        <Button type="submit" size="lg" disabled={submitting}>
-          {mode === "sign-in" ? "Log in" : "Create account"}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting === "google"}
+          loading={submitting === "email"}
+        >
+          {submitting === "email"
+            ? mode === "sign-in"
+              ? "Signing in…"
+              : "Creating account…"
+            : mode === "sign-in"
+              ? "Log in"
+              : "Create account"}
         </Button>
       </form>
 

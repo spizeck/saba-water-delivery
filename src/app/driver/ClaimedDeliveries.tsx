@@ -234,7 +234,7 @@ function DeliveryCard({
           </p>
           <form action={formAction} className="mt-2 flex gap-2">
             <input type="hidden" name="requestId" value={request.id} />
-            <Button type="submit" size="md" disabled={pending}>
+            <Button type="submit" size="md" loading={pending}>
               {pending ? "Submitting\u2026" : "Yes, delivered"}
             </Button>
             <Button
@@ -274,7 +274,7 @@ function DeliveryCard({
             </p>
             <form action={releaseAction} className="mt-2 flex gap-2">
               <input type="hidden" name="requestId" value={request.id} />
-              <Button type="submit" size="md" disabled={releasePending}>
+              <Button type="submit" size="md" loading={releasePending}>
                 {releasePending ? "Releasing\u2026" : "Yes, release it"}
               </Button>
               <Button
