@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
+import { rowPendingState } from "@/lib/utils/interactive";
 import type { OutboxAdminEntry } from "@/lib/notifications/outboxAdmin";
 
 import { retryNotification, type RetryNotificationState } from "./actions";
@@ -25,6 +26,11 @@ export function NotificationOutboxList({
 }: {
   failed: OutboxAdminEntry[];
 }) {
+  // All rows share one action, so `pending` alone cannot say which row was
+  // submitted — each form records its id on submit so only that button
+  // looks busy. `retryingId` may stay set after the action settles; every
+  // consumer gates on `pending`.
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(
     retryNotification,
     initialState,
@@ -87,7 +93,10 @@ export function NotificationOutboxList({
                   {formatTime(entry.lastAttemptAt)}
                 </td>
                 <td className="py-2 pr-4">
-                  <form action={formAction}>
+                  <form
+                    action={formAction}
+                    onSubmit={() => setRetryingId(entry.id)}
+                  >
                     <input
                       type="hidden"
                       name="notificationId"
@@ -96,7 +105,7 @@ export function NotificationOutboxList({
                     <Button
                       type="submit"
                       variant="outline"
-                      loading={pending}
+                      {...rowPendingState(pending, retryingId, entry.id)}
                       className="!h-9 !px-3 !text-sm"
                     >
                       Retry

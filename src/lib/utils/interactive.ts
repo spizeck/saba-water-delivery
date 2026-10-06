@@ -102,3 +102,22 @@ export const textActionClasses = cn(
   "cursor-pointer rounded-sm font-medium text-blue-700 underline-offset-2 hover:underline",
   focusVisibleClasses,
 );
+
+/**
+ * Scoped pending state for a per-row action sharing one `useActionState`
+ * (e.g. a table of Retry buttons driven by a single form action).
+ *
+ * `submittedId` is the row id captured when a form is dispatched. Only
+ * that row reports `loading` (spinner + `aria-busy`); siblings are
+ * `disabled` so a second action cannot start concurrently, but they must
+ * never look busy. When `pending` is false every row returns to normal
+ * regardless of `submittedId`.
+ */
+export function rowPendingState(
+  pending: boolean,
+  submittedId: string | null,
+  rowId: string,
+): { loading: boolean; disabled: boolean } {
+  const isSubmittedRow = pending && submittedId === rowId;
+  return { loading: isSubmittedRow, disabled: pending && !isSubmittedRow };
+}

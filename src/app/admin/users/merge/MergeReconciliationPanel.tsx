@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { rowPendingState } from "@/lib/utils/interactive";
 import type {
   MergeReconciliationEntry,
   MergeReconciliationOverview,
@@ -43,6 +44,11 @@ const CATEGORY_LABELS: Record<string, string> = {
  * ids, state names, and failure categories only; never provider payloads.
  */
 export function MergeReconciliationPanel({ overview, entries }: Props) {
+  // All rows share one action, so `pending` alone cannot say which row was
+  // submitted — each form records its id on submit so only that button
+  // looks busy. `retryingId` may stay set after the action settles; every
+  // consumer gates on `pending`.
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState(
     retryMergeReconciliationAction,
     initialState,
@@ -100,43 +106,53 @@ export function MergeReconciliationPanel({ overview, entries }: Props) {
         </p>
       ) : (
         <div className="mt-4 flex flex-col divide-y divide-slate-100">
-          {entries.map((entry) => (
-            <div key={entry.eventId} className="flex items-start gap-3 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900">
-                  Merge {entry.eventId.slice(0, 8)}
-                  <span className="ml-2 text-xs font-normal text-slate-500">
-                    {STATE_LABELS[entry.state] ?? entry.state}
-                    {entry.lastFailureCategory
-                      ? ` — ${CATEGORY_LABELS[entry.lastFailureCategory] ?? entry.lastFailureCategory}`
-                      : ""}
-                  </span>
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Merged {formatWhen(entry.createdAt)}
-                  {entry.attemptCount > 0 &&
-                    ` · ${entry.attemptCount} attempt${entry.attemptCount === 1 ? "" : "s"}`}
-                  {entry.duplicateDisabled && " · account disabled"}
-                  {entry.nextAttemptAt &&
-                    entry.state === "pending" &&
-                    ` · next retry ${formatWhen(entry.nextAttemptAt)}`}
-                </p>
-              </div>
-              {entry.state !== "processing" && (
-                <form action={formAction}>
-                  <input type="hidden" name="eventId" value={entry.eventId} />
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    loading={pending}
-                    className="!h-9 !px-3 !text-xs"
+          {entries.map((entry) => {
+            const retryState = rowPendingState(
+              pending,
+              retryingId,
+              entry.eventId,
+            );
+            return (
+              <div key={entry.eventId} className="flex items-start gap-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-900">
+                    Merge {entry.eventId.slice(0, 8)}
+                    <span className="ml-2 text-xs font-normal text-slate-500">
+                      {STATE_LABELS[entry.state] ?? entry.state}
+                      {entry.lastFailureCategory
+                        ? ` — ${CATEGORY_LABELS[entry.lastFailureCategory] ?? entry.lastFailureCategory}`
+                        : ""}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Merged {formatWhen(entry.createdAt)}
+                    {entry.attemptCount > 0 &&
+                      ` · ${entry.attemptCount} attempt${entry.attemptCount === 1 ? "" : "s"}`}
+                    {entry.duplicateDisabled && " · account disabled"}
+                    {entry.nextAttemptAt &&
+                      entry.state === "pending" &&
+                      ` · next retry ${formatWhen(entry.nextAttemptAt)}`}
+                  </p>
+                </div>
+                {entry.state !== "processing" && (
+                  <form
+                    action={formAction}
+                    onSubmit={() => setRetryingId(entry.eventId)}
                   >
-                    {pending ? "Retrying..." : "Retry now"}
-                  </Button>
-                </form>
-              )}
-            </div>
-          ))}
+                    <input type="hidden" name="eventId" value={entry.eventId} />
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      {...retryState}
+                      className="!h-9 !px-3 !text-xs"
+                    >
+                      {retryState.loading ? "Retrying..." : "Retry now"}
+                    </Button>
+                  </form>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </Card>

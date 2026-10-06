@@ -11,6 +11,7 @@ import {
   interactiveTransitionClasses,
   navPillClasses,
   pressClasses,
+  rowPendingState,
   selectableRowClasses,
   textActionClasses,
 } from "@/lib/utils/interactive";
@@ -138,6 +139,35 @@ describe("Button interaction contract", () => {
     expect((el.props as Record<string, unknown>)["aria-label"]).toBe(
       "Save settings",
     );
+  });
+});
+
+describe("rowPendingState — scoped per-row loading", () => {
+  it("marks only the submitted row as loading", () => {
+    const submitted = rowPendingState(true, "row-a", "row-a");
+    expect(submitted.loading).toBe(true);
+    expect(submitted.disabled).toBe(false);
+  });
+
+  it("disables sibling rows without implying they are busy", () => {
+    const sibling = rowPendingState(true, "row-a", "row-b");
+    expect(sibling.loading).toBe(false);
+    expect(sibling.disabled).toBe(true);
+  });
+
+  it("every row returns to normal once the action settles", () => {
+    for (const id of ["row-a", "row-b"]) {
+      expect(rowPendingState(false, "row-a", id)).toEqual({
+        loading: false,
+        disabled: false,
+      });
+    }
+  });
+
+  it("a null submitted id (pending without a resolved id) disables all rows but loads none", () => {
+    const row = rowPendingState(true, null, "row-a");
+    expect(row.loading).toBe(false);
+    expect(row.disabled).toBe(true);
   });
 });
 
