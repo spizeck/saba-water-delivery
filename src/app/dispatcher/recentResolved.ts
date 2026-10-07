@@ -29,23 +29,30 @@ export const RECENT_RESOLVED_LIMIT = 20;
  * The canonical time a request was resolved: `confirmedAt` for
  * `"confirmed"` (written by every confirmation path — resident, staff,
  * auto-timeout, dispute-resolved) and `cancelledAt` for `"cancelled"`
- * (written by both staff and resident cancellation). `updatedAt` is the
- * last-write approximation for historical resolved documents that
- * predate the timestamp field — imperfect (admin relinks/merges still
- * bump it) but the best canonical data available without per-request
- * audit-event reads, and never `requestedAt` (request age is not
- * resolution time).
+ * (written by both staff and resident cancellation).
+ *
+ * Returns `null` — resolution time unknown — when the canonical field
+ * is absent or unparseable. Deliberately NO fallback to `updatedAt`
+ * (admin customer-history relinks and account merges still bump it on
+ * resolved documents, so a recently relinked legacy cancellation would
+ * impersonate a fresh resolution and displace genuinely recent records)
+ * and never `requestedAt` (request age is not resolution time).
  */
-function resolvedAtMs(request: WaterRequest): number {
-  const iso = request.confirmedAt ?? request.cancelledAt ?? request.updatedAt;
+function resolvedAtMs(request: WaterRequest): number | null {
+  const iso =
+    request.status === "cancelled" ? request.cancelledAt : request.confirmedAt;
+  if (!iso) return null;
   const ms = new Date(iso).getTime();
-  return Number.isFinite(ms) ? ms : 0;
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /**
  * The up-to-`limit` most recently resolved requests, newest resolution
- * first, with `id` as a deterministic tie-breaker. Does not mutate or
- * depend on the input ordering.
+ * first. Records with a known canonical resolution time always rank
+ * ahead of legacy/malformed records whose resolution time is unknown;
+ * unknown-time records stay visible but can never outrank a genuinely
+ * recent resolution. `id` is the deterministic tie-breaker in both
+ * groups. Does not mutate or depend on the input ordering.
  */
 export function selectRecentResolved(
   requests: WaterRequest[],
@@ -53,9 +60,14 @@ export function selectRecentResolved(
 ): WaterRequest[] {
   return requests
     .filter((r) => RESOLVED_STATUSES.includes(r.status))
-    .sort(
-      (a, b) => resolvedAtMs(b) - resolvedAtMs(a) || a.id.localeCompare(b.id),
-    )
+    .sort((a, b) => {
+      const aMs = resolvedAtMs(a);
+      const bMs = resolvedAtMs(b);
+      if (aMs === null && bMs === null) return a.id.localeCompare(b.id);
+      if (aMs === null) return 1;
+      if (bMs === null) return -1;
+      return bMs - aMs || a.id.localeCompare(b.id);
+    })
     .slice(0, limit);
 }
 

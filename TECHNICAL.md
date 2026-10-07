@@ -487,8 +487,9 @@ referencing driver IDs inconsistently.
   deliveredAt: Timestamp | null
   confirmedAt: Timestamp | null
   // Canonical cancellation time (null on requests cancelled before
-  // this field existed — `updatedAt` is the last-write approximation
-  // for those). Written by both staff and resident cancellation.
+  // this field existed — resolution time is unknown for those, since
+  // `updatedAt` can be bumped by later relinks/merges). Written by
+  // both staff and resident cancellation.
   cancelledAt: Timestamp | null
 
   createdAt: Timestamp

@@ -136,7 +136,26 @@ describe("selectRecentResolved", () => {
     expect(result.map((r) => r.id)).not.toContain("req-04");
   });
 
-  it("falls back to updatedAt for legacy cancelled records without cancelledAt", () => {
+  it("does not let a recently relinked legacy cancellation outrank a real recent resolution", () => {
+    // Regression for the Sourcery finding on PR #141: account relinks
+    // and merges bump `updatedAt` on already-cancelled documents, so it
+    // must never be treated as a resolution time. This legacy record was
+    // cancelled long ago but relinked yesterday — its bumped updatedAt
+    // must NOT place it ahead of the genuinely recent cancellation.
+    const legacy = makeRequest({
+      id: "legacy-cancelled",
+      status: "cancelled",
+      cancelledAt: null,
+      updatedAt: "2024-06-11T00:00:00.000Z",
+    });
+    const recent = cancelled("new-cancelled", "2024-06-10T00:00:00.000Z");
+    expect(selectRecentResolved([legacy, recent]).map((r) => r.id)).toEqual([
+      "new-cancelled",
+      "legacy-cancelled",
+    ]);
+  });
+
+  it("sorts legacy cancelled records (no cancelledAt) after known-time resolutions", () => {
     const legacy = makeRequest({
       id: "legacy-cancelled",
       status: "cancelled",
@@ -147,7 +166,76 @@ describe("selectRecentResolved", () => {
     const older = confirmed("old-confirmed", "2024-06-01T00:00:00.000Z");
     expect(
       selectRecentResolved([older, legacy, newer]).map((r) => r.id),
-    ).toEqual(["new-cancelled", "legacy-cancelled", "old-confirmed"]);
+    ).toEqual(["new-cancelled", "old-confirmed", "legacy-cancelled"]);
+  });
+
+  it("sorts a malformed confirmed record (no confirmedAt) after known-time resolutions", () => {
+    const malformed = makeRequest({
+      id: "malformed-confirmed",
+      status: "confirmed",
+      confirmedAt: null,
+      updatedAt: "2024-06-11T00:00:00.000Z",
+    });
+    const known = cancelled("known-cancelled", "2024-06-01T00:00:00.000Z");
+    expect(selectRecentResolved([malformed, known]).map((r) => r.id)).toEqual([
+      "known-cancelled",
+      "malformed-confirmed",
+    ]);
+  });
+
+  it("orders unknown-time records deterministically by id", () => {
+    const a = makeRequest({
+      id: "legacy-b",
+      status: "cancelled",
+      cancelledAt: null,
+      updatedAt: "2024-06-11T00:00:00.000Z",
+    });
+    const b = makeRequest({
+      id: "legacy-a",
+      status: "cancelled",
+      cancelledAt: null,
+      updatedAt: "2024-06-12T00:00:00.000Z",
+    });
+    const known = confirmed("known", "2024-06-01T00:00:00.000Z");
+    // updatedAt differs between the unknowns — it must not influence
+    // ordering; only id order does, and both stay below the known-time
+    // record.
+    expect(selectRecentResolved([a, b, known]).map((r) => r.id)).toEqual([
+      "known",
+      "legacy-a",
+      "legacy-b",
+    ]);
+    expect(selectRecentResolved([b, a, known]).map((r) => r.id)).toEqual([
+      "known",
+      "legacy-a",
+      "legacy-b",
+    ]);
+  });
+
+  it("keeps unknown-time records visible when fewer than 20 known-time records exist", () => {
+    const known = Array.from({ length: 18 }, (_, i) =>
+      confirmed(
+        `known-${String(i).padStart(2, "0")}`,
+        new Date(
+          Date.parse("2024-06-10T00:00:00.000Z") + i * 60_000,
+        ).toISOString(),
+      ),
+    );
+    const unknown = Array.from({ length: 5 }, (_, i) =>
+      makeRequest({
+        id: `legacy-${i}`,
+        status: "cancelled",
+        cancelledAt: null,
+      }),
+    );
+    const result = selectRecentResolved([...unknown, ...known]);
+    expect(result).toHaveLength(RECENT_RESOLVED_LIMIT);
+    // The 18 known-time records fill the top slots in resolution order;
+    // the 5 unknowns fill the remainder in id order.
+    expect(result.slice(0, 18).map((r) => r.id)).toEqual(
+      known.map((r) => r.id).reverse(),
+    );
+    expect(result.slice(18).map((r) => r.id)).toEqual(["legacy-0", "legacy-1"]);
   });
 
   it("breaks identical resolution timestamps deterministically by id", () => {
