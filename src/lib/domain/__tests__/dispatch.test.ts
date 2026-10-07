@@ -41,6 +41,7 @@ function makeRequest(
     claimedAt: null,
     deliveredAt: null,
     confirmedAt: null,
+    cancelledAt: null,
     createdAt: baseTime.toISOString(),
     updatedAt: baseTime.toISOString(),
     dispatchBatchId: null,

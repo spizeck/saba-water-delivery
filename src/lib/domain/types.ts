@@ -303,6 +303,14 @@ export interface WaterRequest {
   claimedAt: string | null;
   deliveredAt: string | null;
   confirmedAt: string | null;
+  /**
+   * When the request reached `"cancelled"`. Canonical cancellation
+   * timestamp — `updatedAt` is NOT a safe substitute because admin
+   * customer-history relinks and account merges still bump it on
+   * already-cancelled documents (see `linkRequestHistoryToUser()`).
+   * Null on historical documents cancelled before this field existed.
+   */
+  cancelledAt: string | null;
 
   createdAt: string;
   updatedAt: string;

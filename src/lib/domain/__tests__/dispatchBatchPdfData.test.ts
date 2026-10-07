@@ -47,6 +47,7 @@ function makeRequest(overrides: Partial<WaterRequest> = {}): WaterRequest {
     claimedAt: baseTime.toISOString(),
     deliveredAt: null,
     confirmedAt: null,
+    cancelledAt: null,
     createdAt: baseTime.toISOString(),
     updatedAt: baseTime.toISOString(),
     dispatchBatchId: "batch-1",

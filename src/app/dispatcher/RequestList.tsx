@@ -9,6 +9,8 @@ import type {
   WaterRequestStatus,
 } from "@/lib/domain/types";
 
+import { selectActiveRequests, selectRecentResolved } from "./recentResolved";
+
 const PRIORITY_LABELS: Record<DispatchPriority, string> = {
   normal: "Normal",
   urgent: "Urgent",
@@ -61,12 +63,11 @@ interface Props {
 }
 
 export function RequestList({ requests, customerNames, driverNames }: Props) {
-  // Split into active and resolved for display.
-  const resolved: WaterRequestStatus[] = ["confirmed", "cancelled"];
-  const activeRequests = requests.filter((r) => !resolved.includes(r.status));
-  const recentResolved = requests
-    .filter((r) => resolved.includes(r.status))
-    .slice(0, 20);
+  // Split into active and resolved for display. Active requests keep the
+  // caller's operational queue order; resolved requests are re-ordered by
+  // actual resolution time, newest first (issue #140).
+  const activeRequests = selectActiveRequests(requests);
+  const recentResolved = selectRecentResolved(requests);
 
   return (
     <>

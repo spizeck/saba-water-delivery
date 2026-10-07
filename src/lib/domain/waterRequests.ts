@@ -201,6 +201,7 @@ export function toWaterRequest(id: string, data: DocumentData): WaterRequest {
     claimedAt: data.claimedAt?.toDate?.().toISOString() ?? null,
     deliveredAt: data.deliveredAt?.toDate?.().toISOString() ?? null,
     confirmedAt: data.confirmedAt?.toDate?.().toISOString() ?? null,
+    cancelledAt: data.cancelledAt?.toDate?.().toISOString() ?? null,
     createdAt:
       data.createdAt?.toDate?.().toISOString() ?? new Date(0).toISOString(),
     updatedAt:
@@ -694,6 +695,7 @@ export async function createWaterRequest(
       claimedAt: null,
       deliveredAt: null,
       confirmedAt: null,
+      cancelledAt: null,
       dispatchOverrideRank: null,
       createdAt: now,
       updatedAt: now,
@@ -2276,6 +2278,7 @@ export async function cancelWaterRequest(
 
     txn.update(requestRef, {
       status: "cancelled",
+      cancelledAt: now,
       updatedAt: now,
       ...(dispatchBatchId
         ? { dispatchBatchId: null, batchSequence: null }
@@ -2418,6 +2421,7 @@ export async function cancelOwnWaterRequest(
 
     txn.update(requestRef, {
       status: "cancelled",
+      cancelledAt: now,
       updatedAt: now,
     });
 
@@ -2565,6 +2569,7 @@ export async function resolveDisputeReopened(
       claimedAt: null,
       deliveredAt: null,
       confirmedAt: null,
+      cancelledAt: null,
       availableAt: now,
       updatedAt: now,
       ...(dispatchBatchId
