@@ -191,7 +191,8 @@ where it originated. This is the operational core of the system.
   return no assignment even with eligible work remaining. See
   [assignment selection](../TECHNICAL.md#dispatch-assignment-selection).
 - Timestamps: `requestedAt`, `availableAt`, `claimedAt`, `deliveredAt`,
-  `confirmedAt`, `createdAt`, `updatedAt`. `claimedAt` is the canonical
+  `confirmedAt`, `cancelledAt`, `createdAt`, `updatedAt`. `claimedAt` is
+  the canonical
   CURRENT-assignment start: written on every claim, dispatcher
   assignment, reassignment, and batch assignment; cleared on every
   release/requeue. It is the clock for the 12-hour stale-assignment

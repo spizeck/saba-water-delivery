@@ -87,6 +87,7 @@ async function seedRequest(
       claimedAt: null,
       deliveredAt: null,
       confirmedAt: null,
+      cancelledAt: null,
       createdAt: now,
       updatedAt: now,
       ...overrides,
@@ -156,8 +157,10 @@ describe("cancelOwnWaterRequest — happy path", () => {
     });
 
     expect(result.status).toBe("cancelled");
+    expect(result.cancelledAt).not.toBeNull();
     const data = await requestData("r1");
     expect(data?.status).toBe("cancelled");
+    expect(data?.cancelledAt).toBeTruthy();
 
     const events = await getRequestEvents("r1");
     expect(events).toHaveLength(1);

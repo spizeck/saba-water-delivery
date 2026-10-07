@@ -708,6 +708,7 @@ describe("releaseAssignedDelivery (#123)", () => {
     ).rejects.toThrow("REQUEST_NOT_RELEASABLE");
     const cancelled = await db.collection(REQUESTS).doc("req-1").get();
     expect(cancelled.data()?.status).toBe("cancelled");
+    expect(cancelled.data()?.cancelledAt).toBeTruthy();
 
     // Delivered request — same story. Deliver req-2 through the real
     // pipeline: assign it to the other driver, then mark delivered via a
