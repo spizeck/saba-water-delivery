@@ -43,14 +43,14 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^26.5.1",
     "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "eslint-config-prettier": "^10.1.8",
@@ -59,7 +59,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.3"
   },
   "allowScripts": {
     "@firebase/util@1.15.3": true,
