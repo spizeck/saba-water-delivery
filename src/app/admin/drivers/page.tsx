@@ -48,16 +48,11 @@ export default async function DriverRegistryPage() {
           </div>
 
           <NewDriverForm />
-          <DriverRegistryList
-            drivers={activeDrivers}
-            title="Active drivers"
-            showStatus
-          />
+          <DriverRegistryList drivers={activeDrivers} title="Active drivers" />
           {archivedDrivers.length > 0 && (
             <DriverRegistryList
               drivers={archivedDrivers}
               title="Archived drivers"
-              showStatus
             />
           )}
         </Container>

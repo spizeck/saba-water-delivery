@@ -477,6 +477,12 @@ export async function registerPersonAction(
           return { status: "error", message: "Phone number is required." };
         case "INVALID_VILLAGE":
           return { status: "error", message: "Please select a valid village." };
+        case "PROFILE_FIELD_TOO_LONG":
+          return {
+            status: "error",
+            message:
+              "Profile fields are too long. Please shorten them and try again.",
+          };
         default:
           // Re-throw Next.js redirect errors
           throw err;

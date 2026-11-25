@@ -9,10 +9,9 @@ import { chipActionClasses } from "@/lib/utils/interactive";
 interface Props {
   drivers: DriverRegistryEntry[];
   title?: string;
-  showStatus?: boolean;
 }
 
-export function DriverRegistryList({ drivers, title, showStatus }: Props) {
+export function DriverRegistryList({ drivers, title }: Props) {
   const now = new Date();
   const endOfToday = startOfSabaDay(
     new Date(now.getTime() + 24 * 60 * 60 * 1000),

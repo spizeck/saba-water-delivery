@@ -169,6 +169,37 @@ describe("updateUserProfile — delivery confirmation refresh", () => {
     ).rejects.toThrow("INVALID_VILLAGE");
   }, 30_000);
 
+  it("rejects overlong resident-editable profile fields", async () => {
+    await seedUser("uid-1");
+    await expect(
+      updateUserProfile({
+        uid: "uid-1",
+        displayName: "x".repeat(201),
+        phone: "+599 416 0000",
+        village: "Windwardside",
+        deliveryDirections: "Blue gate.",
+      }),
+    ).rejects.toThrow("PROFILE_FIELD_TOO_LONG");
+    await expect(
+      updateUserProfile({
+        uid: "uid-1",
+        displayName: "Seeded User",
+        phone: "4".repeat(51),
+        village: "Windwardside",
+        deliveryDirections: "Blue gate.",
+      }),
+    ).rejects.toThrow("PROFILE_FIELD_TOO_LONG");
+    await expect(
+      updateUserProfile({
+        uid: "uid-1",
+        displayName: "Seeded User",
+        phone: "+599 416 0000",
+        village: "Windwardside",
+        deliveryDirections: "x".repeat(1001),
+      }),
+    ).rejects.toThrow("PROFILE_FIELD_TOO_LONG");
+  }, 30_000);
+
   it("never modifies roles — role changes are a staff-only operation", async () => {
     await seedUser("uid-1", { roles: ["viewer"] });
 

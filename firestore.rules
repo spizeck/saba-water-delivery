@@ -28,10 +28,32 @@ service cloud.firestore {
       return hasRole('dispatcher') || hasRole('admin');
     }
 
+    function validResidentProfile() {
+      return request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 200
+        && (request.resource.data.phone == null
+          || (request.resource.data.phone is string
+            && request.resource.data.phone.size() <= 50))
+        && (request.resource.data.village == null
+          || request.resource.data.village in [
+            'St Johns',
+            'The Bottom',
+            'Windwardside',
+            'Zions Hill - Lower',
+            'Zions Hill - Upper'
+          ])
+        && (request.resource.data.deliveryDirections == null
+          || (request.resource.data.deliveryDirections is string
+            && request.resource.data.deliveryDirections.size() <= 1000));
+    }
+
     // Users may read their own profile; staff may read the directory for
     // operational support. Profile creation, role changes, confirmation
     // timestamps, account state, and auditing remain server-only. A direct
-    // owner update can affect only the four resident-editable profile fields.
+    // owner update can affect only the four resident-editable profile fields,
+    // and the resulting document must keep the same types, canonical village,
+    // and size limits enforced by server-side profile writes.
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isStaff());
       allow create: if false;
@@ -42,7 +64,8 @@ service cloud.firestore {
           'phone',
           'village',
           'deliveryDirections'
-        ]);
+        ])
+        && validResidentProfile();
       allow delete: if false;
 
       // Photo functionality is not active. Metadata remains locked down in

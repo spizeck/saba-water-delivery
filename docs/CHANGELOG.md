@@ -24,6 +24,10 @@ not attempt to recreate the full prelaunch development history.
 
 ## Unreleased
 
+- Resident profile validation hardening (issue #162): resident-editable
+  profile fields now enforce the same canonical village, type, and size
+  constraints through server-side writes and direct Firestore access, so
+  malformed or oversized profile data is rejected instead of stored.
 - Assignment release lifecycle (issue #135, builds on #123): pressing
   **Go Offline** while holding an ordinary assigned delivery now returns
   it to dispatch in the same step (with a confirmation prompt), counting

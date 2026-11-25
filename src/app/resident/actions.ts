@@ -76,6 +76,16 @@ export async function updateResidentProfile(
         message: "Please select a valid village from the list.",
       };
     }
+    if (err instanceof Error && err.message === "PROFILE_FIELD_TOO_LONG") {
+      return {
+        status: "error",
+        message:
+          "Profile fields are too long. Please shorten them and try again.",
+      };
+    }
+    if (err instanceof Error && err.message === "DISPLAY_NAME_REQUIRED") {
+      return { status: "error", message: "Display name is required." };
+    }
     throw err;
   }
 
