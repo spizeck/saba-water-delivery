@@ -6,15 +6,10 @@ import { getAdminDb } from "@/lib/firebase/admin";
 
 import type { AccountOrigin, AuthStatus, UserProfile, UserRole } from "./types";
 import { toUserRoles } from "@/lib/auth/roles";
+import { PROFILE_FIELD_MAX_LENGTHS } from "./profileConstraints";
 import { isValidSabaVillage } from "./villages";
 
 const USERS_COLLECTION = "users";
-
-const PROFILE_FIELD_MAX_LENGTHS = {
-  displayName: 200,
-  phone: 50,
-  deliveryDirections: 1000,
-} as const;
 
 function validateProfileFieldLengths(fields: {
   displayName: string;
