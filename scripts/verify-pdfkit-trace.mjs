@@ -13,7 +13,7 @@
  * `js/data/` or `js/standard-fonts/` trees.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 
 const outputDir = process.env.NEXT_OUTPUT_DIR || ".next";

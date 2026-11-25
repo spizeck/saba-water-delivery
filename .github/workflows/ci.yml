@@ -188,10 +188,11 @@ jobs:
         if: steps.scope.outputs.app == 'true'
         run: npm run format:check
 
-      # Advisory. The only outstanding advisories are transitive
-      # (firebase-admin/@google-cloud/* and next's sharp) and require
-      # breaking upstream bumps, so this must not block merges. Dependabot
-      # handles dependency updates.
+      # Advisory. Remaining advisories are concentrated in upstream
+      # Firebase client/admin/tooling and Sentry build-plugin dependency
+      # chains; some fixes require deferred major upgrades or incompatible
+      # downgrades, so this must not block merges. Dependabot and periodic
+      # maintenance reviews handle dependency updates.
       - name: Dependency audit (informational)
         if: steps.scope.outputs.app == 'true'
         run: npm audit --audit-level=high

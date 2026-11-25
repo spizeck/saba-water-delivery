@@ -202,6 +202,26 @@ describe("resident", () => {
         deliveryProfileConfirmedAt: new Date(),
       }),
     );
+    await assertFails(
+      updateDoc(doc(db, "users/resident-a"), { village: "Not A Village" }),
+    );
+    await assertFails(updateDoc(doc(db, "users/resident-a"), { phone: 444 }));
+    await assertFails(
+      updateDoc(doc(db, "users/resident-a"), { displayName: "" }),
+    );
+    await assertFails(
+      updateDoc(doc(db, "users/resident-a"), { displayName: "   \t\n  " }),
+    );
+    await assertFails(
+      updateDoc(doc(db, "users/resident-a"), {
+        displayName: "x".repeat(201),
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(db, "users/resident-a"), {
+        deliveryDirections: "x".repeat(1001),
+      }),
+    );
     // The merged-away marker is server-only (issue #73): a client must never
     // be able to set or clear it — it controls authentication rejection.
     await assertFails(

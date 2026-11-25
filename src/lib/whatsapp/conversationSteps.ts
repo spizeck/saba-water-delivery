@@ -19,6 +19,8 @@
  * anything else. No AI/intent classification.
  */
 
+import { PROFILE_FIELD_MAX_LENGTHS } from "@/lib/domain/profileConstraints";
+
 import * as m from "./messages";
 import {
   isCancelKeyword,
@@ -189,6 +191,9 @@ function handleCollectName(
 ): WhatsAppConversationResult {
   const name = text.trim();
   if (!name) return { session, outbound: [m.ASK_NAME] };
+  if (name.length > PROFILE_FIELD_MAX_LENGTHS.displayName) {
+    return { session, outbound: [m.NAME_TOO_LONG] };
+  }
   return {
     session: withSession(session, {
       step: "collect_village",
@@ -219,6 +224,9 @@ function handleCollectDirections(
 ): WhatsAppConversationResult {
   const directions = text.trim();
   if (!directions) return { session, outbound: [m.ASK_DIRECTIONS] };
+  if (directions.length > PROFILE_FIELD_MAX_LENGTHS.deliveryDirections) {
+    return { session, outbound: [m.DIRECTIONS_TOO_LONG] };
+  }
   return {
     session: withSession(session, {
       step: "collect_phone",
@@ -236,6 +244,9 @@ function handleCollectPhone(
   const phone =
     trimmed.toUpperCase() === "SKIP" ? session.senderPhone : trimmed;
   if (!phone) return { session, outbound: [m.ASK_PHONE] };
+  if (phone.length > PROFILE_FIELD_MAX_LENGTHS.phone) {
+    return { session, outbound: [m.PHONE_TOO_LONG] };
+  }
   return {
     session: withSession(session, {
       step: "collect_persons_affected",

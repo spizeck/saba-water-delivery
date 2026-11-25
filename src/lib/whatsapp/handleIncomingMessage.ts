@@ -53,6 +53,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_STATUS_FOR_CONFIRM: m.REQUEST_STATE_CHANGED_MESSAGE,
   INVALID_STATUS_FOR_DISPUTE: m.REQUEST_STATE_CHANGED_MESSAGE,
   DELIVERY_PROFILE_INCOMPLETE: "Please provide complete delivery information.",
+  PROFILE_FIELD_TOO_LONG:
+    "One of the profile fields is too long. Please shorten it and try again.",
+  DISPLAY_NAME_REQUIRED: "Please provide your name and try again.",
   USER_NOT_FOUND: m.BACKEND_UNAVAILABLE_MESSAGE,
 };
 

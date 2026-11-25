@@ -60,8 +60,6 @@ updates:
       test-tooling:
         patterns:
           - "vitest"
-          - "@vitejs/plugin-react"
-          - "vite-tsconfig-paths"
           - "@playwright/test"
         update-types:
           - "minor"
@@ -75,6 +73,10 @@ updates:
           - "minor"
           - "patch"
     ignore:
+      # Node type definitions should track the pinned Node 24 runtime,
+      # not the newest Node major.
+      - dependency-name: "@types/node"
+        versions: ["25.x", "26.x"]
       # firebase-admin 14.x breaks the Vercel serverless bundle
       # (jwks-rsa 4 -> ESM-only jose 6, ERR_REQUIRE_ESM); tracked in #94.
       # Remove when #94's retry criteria are met.
@@ -84,8 +86,9 @@ updates:
       # remove when that ecosystem supports TS7 cleanly.
       - dependency-name: "typescript"
         versions: ["7.x"]
-      # ESLint 10 is incompatible with the current Next/React lint stack;
-      # remove when eslint-config-next supports ESLint 10.
+      # ESLint 10 is not yet accepted by the nested import/jsx-a11y/react
+      # plugin peer ranges in the current eslint-config-next stack; remove
+      # when those plugins support ESLint 10 cleanly.
       - dependency-name: "eslint"
         versions: ["10.x"]
 

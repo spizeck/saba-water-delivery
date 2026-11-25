@@ -50,12 +50,15 @@ export function confirmProfileMessage(profile: {
 }
 
 export const ASK_NAME = "What is your full name?";
+export const NAME_TOO_LONG = `Please use a shorter name (200 characters or fewer).\n\n${ASK_NAME}`;
 export const ASK_VILLAGE = `Which village? Reply with a number:\n\n${villageMenuText()}`;
 export const INVALID_VILLAGE = `Sorry, please reply with one of the listed numbers.\n\n${ASK_VILLAGE}`;
 export const ASK_DIRECTIONS =
   "Please describe how a driver can find your home (landmarks, gate color, etc.) — a street address is not required.";
+export const DIRECTIONS_TOO_LONG = `Please use shorter delivery directions (1,000 characters or fewer).\n\n${ASK_DIRECTIONS}`;
 export const ASK_PHONE =
   "What phone number should the driver/office use to reach you? Reply with the number, or SKIP to use this WhatsApp number.";
+export const PHONE_TOO_LONG = `Please use a shorter phone number (50 characters or fewer), or SKIP to use this WhatsApp number.\n\n${ASK_PHONE}`;
 
 export const ASK_PERSONS_AFFECTED =
   "How many people rely on this water? Reply with a number, or SKIP if you'd rather not say.";

@@ -6,10 +6,7 @@ import type { Transaction } from "firebase-admin/firestore";
 
 import { getAdminDb } from "@/lib/firebase/admin";
 import { appConfig } from "@/lib/domain/config";
-import {
-  getDispatchSettings,
-  updateDispatchSettings,
-} from "@/lib/domain/dispatchSettings";
+import { updateDispatchSettings } from "@/lib/domain/dispatchSettings";
 
 /**
  * Emulator-backed regression tests for issue #49 — dispatch settings.

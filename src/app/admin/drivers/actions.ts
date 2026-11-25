@@ -7,7 +7,6 @@ import {
   archiveDriver,
   createDriver,
   deleteDriver,
-  getDeleteDriverEligibility,
   linkDriverAccount,
   removeMeterAssignment,
   restoreArchivedDriver,

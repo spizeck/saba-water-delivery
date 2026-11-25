@@ -142,6 +142,32 @@ describe("Village", () => {
   });
 });
 
+describe("Profile field limits", () => {
+  it("rejects an overlong name before confirmation", () => {
+    const session = makeSession({ step: "collect_name" });
+    const result = processMessage(session, "x".repeat(201), makeContext());
+    expect(result.session?.step).toBe("collect_name");
+    expect(result.session?.draft.displayName).toBeUndefined();
+    expect(result.outbound[0]).toContain("200 characters or fewer");
+  });
+
+  it("rejects overlong delivery directions before confirmation", () => {
+    const session = makeSession({ step: "collect_directions" });
+    const result = processMessage(session, "x".repeat(1001), makeContext());
+    expect(result.session?.step).toBe("collect_directions");
+    expect(result.session?.draft.deliveryDirections).toBeUndefined();
+    expect(result.outbound[0]).toContain("1,000 characters or fewer");
+  });
+
+  it("rejects an overlong phone number before confirmation", () => {
+    const session = makeSession({ step: "collect_phone" });
+    const result = processMessage(session, "1".repeat(51), makeContext());
+    expect(result.session?.step).toBe("collect_phone");
+    expect(result.session?.draft.phone).toBeUndefined();
+    expect(result.outbound[0]).toContain("50 characters or fewer");
+  });
+});
+
 describe("Critical", () => {
   it("cannot advance past a blank critical explanation", () => {
     const session = makeSession({

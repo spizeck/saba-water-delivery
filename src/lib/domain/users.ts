@@ -6,9 +6,31 @@ import { getAdminDb } from "@/lib/firebase/admin";
 
 import type { AccountOrigin, AuthStatus, UserProfile, UserRole } from "./types";
 import { toUserRoles } from "@/lib/auth/roles";
+import { PROFILE_FIELD_MAX_LENGTHS } from "./profileConstraints";
 import { isValidSabaVillage } from "./villages";
 
 const USERS_COLLECTION = "users";
+
+function normalizeProvisionedDisplayName(displayName: string): string {
+  const trimmed = displayName.trim();
+  if (!trimmed) return "Resident";
+  return trimmed.slice(0, PROFILE_FIELD_MAX_LENGTHS.displayName);
+}
+
+function validateProfileFieldLengths(fields: {
+  displayName: string;
+  phone: string | null;
+  deliveryDirections: string | null;
+}) {
+  if (
+    fields.displayName.length > PROFILE_FIELD_MAX_LENGTHS.displayName ||
+    (fields.phone?.length ?? 0) > PROFILE_FIELD_MAX_LENGTHS.phone ||
+    (fields.deliveryDirections?.length ?? 0) >
+      PROFILE_FIELD_MAX_LENGTHS.deliveryDirections
+  ) {
+    throw new Error("PROFILE_FIELD_TOO_LONG");
+  }
+}
 
 /**
  * Normalizes a Firestore user document into a UserProfile.
@@ -161,7 +183,7 @@ export async function ensureUserProfile(
   const defaultRoles: UserRole[] = ["resident"];
   const now = FieldValue.serverTimestamp();
   const newData = {
-    displayName: input.displayName,
+    displayName: normalizeProvisionedDisplayName(input.displayName),
     email: input.email,
     phone: input.phone,
     roles: defaultRoles,
@@ -214,7 +236,14 @@ export interface UpdateUserProfileInput {
 export async function updateUserProfile(
   input: UpdateUserProfileInput,
 ): Promise<UserProfile> {
-  if (input.village !== null && !isValidSabaVillage(input.village)) {
+  const displayName = input.displayName.trim();
+  const phone = input.phone?.trim() || null;
+  const village = input.village?.trim() || null;
+  const deliveryDirections = input.deliveryDirections?.trim() || null;
+
+  if (!displayName) throw new Error("DISPLAY_NAME_REQUIRED");
+  validateProfileFieldLengths({ displayName, phone, deliveryDirections });
+  if (village !== null && !isValidSabaVillage(village)) {
     throw new Error("INVALID_VILLAGE");
   }
 
@@ -224,16 +253,16 @@ export async function updateUserProfile(
   const existing = existingSnapshot.exists ? existingSnapshot.data()! : null;
   const deliveryFieldsChanged =
     !existing ||
-    (existing.phone ?? null) !== input.phone ||
-    (existing.village ?? null) !== input.village ||
-    (existing.deliveryDirections ?? null) !== input.deliveryDirections;
+    (existing.phone ?? null) !== phone ||
+    (existing.village ?? null) !== village ||
+    (existing.deliveryDirections ?? null) !== deliveryDirections;
 
   const now = FieldValue.serverTimestamp();
   const updateData: Record<string, unknown> = {
-    displayName: input.displayName,
-    phone: input.phone,
-    village: input.village,
-    deliveryDirections: input.deliveryDirections,
+    displayName,
+    phone,
+    village,
+    deliveryDirections,
     updatedAt: now,
   };
   if (deliveryFieldsChanged) {
@@ -338,6 +367,11 @@ export async function registerPerson(
 
   if (!displayName.trim()) throw new Error("DISPLAY_NAME_REQUIRED");
   if (!phone.trim()) throw new Error("PHONE_REQUIRED");
+  validateProfileFieldLengths({
+    displayName: displayName.trim(),
+    phone: phone.trim(),
+    deliveryDirections: deliveryDirections?.trim() || null,
+  });
   if (roles.some((role) => role !== "resident" && role !== "driver")) {
     throw new Error("INVALID_REGISTRATION_ROLE");
   }

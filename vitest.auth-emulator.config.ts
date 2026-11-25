@@ -1,9 +1,8 @@
 import { defineConfig } from "vitest/config";
-import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  // tsconfigPaths lets the emulator tests import via the `@/` alias.
-  plugins: [tsconfigPaths()],
+  // Native tsconfig-path resolution lets the emulator tests import via `@/`.
+  resolve: { tsconfigPaths: true },
   test: {
     globals: true,
     environment: "node",
