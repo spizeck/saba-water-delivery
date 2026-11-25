@@ -31,6 +31,7 @@ service cloud.firestore {
     function validResidentProfile() {
       return request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.matches('.*\\S.*')
         && request.resource.data.displayName.size() <= 200
         && (request.resource.data.phone == null
           || (request.resource.data.phone is string

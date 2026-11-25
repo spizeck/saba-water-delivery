@@ -78,6 +78,24 @@ describe("ensureUserProfile — first-login provisioning", () => {
     expect(stored.roles).toEqual(["resident"]);
   }, 30_000);
 
+  it("normalizes externally supplied Auth display names to profile constraints", async () => {
+    const overlong = await ensureUserProfile({
+      uid: "uid-long-name",
+      displayName: `  ${"x".repeat(201)}  `,
+      email: "long@example.com",
+      phone: null,
+    });
+    expect(overlong.profile.displayName).toBe("x".repeat(200));
+
+    const blank = await ensureUserProfile({
+      uid: "uid-blank-name",
+      displayName: "   \t\n  ",
+      email: "blank@example.com",
+      phone: null,
+    });
+    expect(blank.profile.displayName).toBe("Resident");
+  }, 30_000);
+
   it("returns an existing profile unchanged and never resets roles", async () => {
     await seedUser("uid-existing", { roles: ["dispatcher", "admin"] });
 

@@ -210,6 +210,9 @@ describe("resident", () => {
       updateDoc(doc(db, "users/resident-a"), { displayName: "" }),
     );
     await assertFails(
+      updateDoc(doc(db, "users/resident-a"), { displayName: "   \t\n  " }),
+    );
+    await assertFails(
       updateDoc(doc(db, "users/resident-a"), {
         displayName: "x".repeat(201),
       }),

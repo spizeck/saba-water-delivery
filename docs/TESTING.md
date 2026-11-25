@@ -281,9 +281,16 @@ displays it as **`CI / verify`**), which:
 One step is **informational only** (it runs with `continue-on-error`, so
 it never blocks a merge):
 
-- `npm audit --audit-level=high` — the only outstanding advisories are
-  transitive (`firebase-admin`/`@google-cloud/*` and Next's `sharp`) and
-  need breaking upstream bumps; Dependabot handles dependency updates.
+- `npm audit --audit-level=high` — residual advisories are concentrated in
+  upstream Firebase client/admin/tooling and Sentry build-plugin dependency
+  chains. The high findings currently come through the Firebase client /
+  rules-test `@grpc/grpc-js` chain; production exposure appears limited
+  because browser usage is Firebase Auth rather than client-side Firestore,
+  while server-side Firebase Admin resolves a patched gRPC version. Other
+  fixes require deferred major upgrades (`firebase-admin` 14 is blocked by
+  issue #94; Sentry 11 needs separate migration review) or an unacceptable
+  Firebase client downgrade, so audit output remains informational and is
+  reassessed during dependency maintenance rather than forcing unsafe fixes.
 
 What CI intentionally does **not** do:
 

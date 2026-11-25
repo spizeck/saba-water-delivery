@@ -11,6 +11,12 @@ import { isValidSabaVillage } from "./villages";
 
 const USERS_COLLECTION = "users";
 
+function normalizeProvisionedDisplayName(displayName: string): string {
+  const trimmed = displayName.trim();
+  if (!trimmed) return "Resident";
+  return trimmed.slice(0, PROFILE_FIELD_MAX_LENGTHS.displayName);
+}
+
 function validateProfileFieldLengths(fields: {
   displayName: string;
   phone: string | null;
@@ -177,7 +183,7 @@ export async function ensureUserProfile(
   const defaultRoles: UserRole[] = ["resident"];
   const now = FieldValue.serverTimestamp();
   const newData = {
-    displayName: input.displayName,
+    displayName: normalizeProvisionedDisplayName(input.displayName),
     email: input.email,
     phone: input.phone,
     roles: defaultRoles,
